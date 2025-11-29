@@ -14,10 +14,20 @@ body {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: url('../images/bck.gif') repeat center center fixed;
-  background-size: cover;
+  overflow: hidden;
+}
+
+#backgroundHue video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   transition: filter 0.3s linear;
 }
+
+
 
 /* global background layer used previously as body::before */
 body::before {

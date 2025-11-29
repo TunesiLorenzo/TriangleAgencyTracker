@@ -14,7 +14,9 @@
 </head>
 <body>
 
-<div id="backgroundHue"></div>
+<div id="backgroundHue">
+	<video id="bgVideo" autoplay muted loop playsinline></video>
+</div>
 
 <div id="pageWrapper">
 	<div class="container">
@@ -94,6 +96,10 @@ function resetAll(){
 
 // load settings and initialize
 document.addEventListener('DOMContentLoaded', () => {
+	
+	const bgVideo = document.getElementById("bgVideo");
+	bgVideo.src = "./images/bck_calm.mp4"; // set path here
+	bgVideo.play();
 
   // Init world controls
 	initWorld();
