@@ -1,0 +1,37 @@
+/* 01-variables.css */
+:root{
+  /* Colors */
+  --bg-color: #000;
+  --panel-1: #2f2f2f;
+  --panel-2: #232323;
+  --panel-3: #1f1f1f;
+  --panel-contrast: rgba(255,255,255,0.03);
+  
+  
+  /* Classes color */
+  --competency-color: #ff3b30;  /* muted red */
+  --reality-color:   #ffd60a;   /* warm yellow / gold */
+  --anomaly-color:   #0a84ff;   /* soft blue */
+
+  /* OPTIONAL: dedicated graph vars */
+  --graph-1: var(--competency-color);
+  --graph-2: var(--reality-color);
+  --graph-3: var(--anomaly-color);
+
+	/* OPTIONAL: dedicated graph vars */
+  --merit-tint: rgba(255,0,0,0.55);
+  --demerit-tint: rgba(0,0,255,0.55);
+  --gold-border: gold;
+
+
+
+  /* Layout */
+  --radius: 10px;
+  --shadow-deep: 0 30px 50px rgba(0,0,0,0.95);
+  --shadow-mid: 0 12px 20px rgba(0,0,0,0.75);
+  --inner-sheen: inset 0 1px 0 var(--panel-contrast);
+}
+
+
+
+

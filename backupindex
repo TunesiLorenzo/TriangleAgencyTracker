@@ -1,0 +1,318 @@
+// ---------------- Parameters ----------------
+
+	const rootStyles = getComputedStyle(document.documentElement);
+
+	const COLORS = {
+	  COMPETENCY: rootStyles.getPropertyValue('--graph-1').trim(),
+	  REALITY: rootStyles.getPropertyValue('--graph-2').trim(),
+	  ANOMALY: rootStyles.getPropertyValue('--graph-3').trim()
+	};
+
+
+const MAX_CHARS = 41;
+//const COLORS = {ANOMALY: '#0a84ff', REALITY: '#ffd60a', COMPETENCY: '#ff3b30' };
+const MERIT_TINT = 'merit';
+const DEMERIT_TINT = 'demerit';
+
+let charCount = 0;
+const charContainer = document.getElementById('charContainer');
+const wrapper = document.getElementById('pageWrapper');
+
+
+// ---------------- Character System ----------------
+function addChar(data) {
+    if (charCount >= MAX_CHARS) return;
+    charCount++;
+
+    const c = document.createElement('div'); 
+    c.className = 'char';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = 'X';
+    removeBtn.className = 'remove-btn';
+    removeBtn.onclick = () => { c.remove(); charCount--; saveSettings(); updateTopCharacters(); };
+
+    const img = document.createElement('img');
+    img.src = data?.icon || '';
+    img.ondragover = e => e.preventDefault();
+    img.ondrop = e => {
+        e.preventDefault();
+        const f = e.dataTransfer.files[0];
+        if (f?.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = () => { img.src = reader.result; saveSettings(); };
+            reader.readAsDataURL(f);
+        }
+    };
+
+    const stats = ['NAME', 'ANOMALY', 'REALITY', 'COMPETENCY'];
+    const statDivs = stats.map(s => {
+        const div = document.createElement('div'); div.className = 'stat';
+        const label = document.createElement('span'); label.className = 'label'; label.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+        if (s in COLORS) label.style.color = COLORS[s];
+        const value = document.createElement('input'); value.className = 'value'; value.value = data?.[s] || ''; value.style.width = '80px';
+        div.append(label, value); return div;
+    });
+
+    const merit = createTriangle(true); 
+    const demerit = createTriangle(false);
+    if (data) { merit.textContent = data.merit || 0; demerit.textContent = data.demerit || 0; }
+
+    const meritCounter = document.createElement('input');
+    meritCounter.className = 'counter-input merit';
+    meritCounter.type = 'number';
+    meritCounter.value = data?.sessionMerit || 0;
+    meritCounter.addEventListener('input', saveSettings);
+
+    const demeritCounter = document.createElement('input');
+    demeritCounter.className = 'counter-input demerit';
+    demeritCounter.type = 'number';
+    demeritCounter.value = data?.sessionDemerit || 0;
+    demeritCounter.addEventListener('input', saveSettings);
+
+    const trackerRow = document.createElement('div'); trackerRow.className = 'tracker-row';
+    trackerRow.append(merit, meritCounter, demerit, demeritCounter);
+
+    c.append(removeBtn, img, ...statDivs, trackerRow);
+    charContainer.appendChild(c);
+	
+
+
+const deathBtn = document.createElement('button');
+deathBtn.className = 'death-btn';
+deathBtn.textContent = '✖'; 
+deathBtn.title = "Toggle death state";
+
+const deathOverlay = document.createElement('div');
+deathOverlay.className = 'death-overlay';
+deathOverlay.textContent = "SICK LEAVE";
+
+c.appendChild(deathOverlay);
+deathBtn.onclick = () => {
+    c.classList.toggle('dead');
+};
+c.appendChild(deathBtn);
+
+    saveSettings(); updateTopCharacters();
+}
+window.addChar=addChar;
+
+// ---------------- Triangle Logic ----------------
+function createTriangle(isMerit) {
+    const t = document.createElement('div');
+    t.className = isMerit ? 'triangle' : 'triangle-down';
+    t.textContent = '0';
+    t.dataset.type = isMerit ? 'merit' : 'demerit';
+
+    const charBox = () => t.closest('.char');
+    const applyEffects = () => { updateTint(charBox()); saveSettings(); updateTopCharacters(); };
+
+    t.addEventListener('click', () => {
+        const n = parseInt(t.textContent) || 0; 
+        t.textContent = n + 1; 
+        animateTriangle(t);
+        applyEffects();
+        document.dispatchEvent(new CustomEvent('triangle-action', {
+      detail: { type: isMerit ? 'merit' : 'demerit', element: t }
+    }));
+    });
+
+    t.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        const n = parseInt(t.textContent) || 0;
+        t.textContent = Math.max(0, n - 1);
+        applyEffects();
+    });
+
+    return t;
+}
+
+function animateTriangle(el) { el.classList.remove("animate"); void el.offsetWidth; el.classList.add("animate"); }
+
+// ---------------- Tint Logic ----------------
+function updateTint(c) {
+    const m = parseInt(c.querySelector('.triangle')?.textContent) || 0;
+    const d = parseInt(c.querySelector('.triangle-down')?.textContent) || 0;
+    c.classList.remove(MERIT_TINT, DEMERIT_TINT);
+    if (m > d) c.classList.add(MERIT_TINT);
+    else if (d > m) c.classList.add(DEMERIT_TINT);
+}
+// ---------------- Top Characters ----------------
+function updateTopCharacters() {
+  const chars = [...document.querySelectorAll('.char')];
+  let maxMerit = -1, maxDemerit = -1, meritCount = 0, demeritCount = 0;
+
+  // 1) compute maxima and counts
+  chars.forEach(c => {
+    const m = parseInt(c.querySelector('.triangle')?.textContent) || 0;
+    const d = parseInt(c.querySelector('.triangle-down')?.textContent) || 0;
+    if (m > maxMerit) { maxMerit = m; meritCount = 1; } else if (m === maxMerit) meritCount++;
+    if (d > maxDemerit) { maxDemerit = d; demeritCount = 1; } else if (d === maxDemerit) demeritCount++;
+  });
+
+  // 2) clear previous decorations and overlays
+  chars.forEach(c => {
+    c.classList.remove('star', 'tilt', 'crooked', 'top-merit', 'top-demerit');
+    // remove thumbs
+    c.querySelectorAll('.thumb').forEach(t => t.remove());
+    // remove previous shine overlay if any
+    const oldShine = c.querySelector('.shine-overlay');
+    if (oldShine) oldShine.remove();
+    // remove previous broken overlay if any
+    const oldBroken = c.querySelector('.broken-overlay');
+    if (oldBroken) oldBroken.remove();
+  });
+
+  // 3) apply new decorations
+  chars.forEach(c => {
+    const m = parseInt(c.querySelector('.triangle')?.textContent) || 0;
+    const d = parseInt(c.querySelector('.triangle-down')?.textContent) || 0;
+
+    // Top MERIT — only if unique
+    if (m === maxMerit && meritCount === 1 && maxMerit > 0) {
+      c.classList.add('star', 'top-merit');
+      // star thumb
+      const thumb = document.createElement('div');
+      thumb.className = 'thumb';
+      thumb.textContent = '👍';
+      c.appendChild(thumb);
+
+      // add shine overlay (only one)
+      if (!c.querySelector('.shine-overlay')) {
+        const s = document.createElement('div');
+        s.className = 'shine-overlay';
+        // optional aria
+        s.setAttribute('aria-hidden', 'true');
+        c.appendChild(s);
+      }
+    }
+
+    // Top DEMERIT — only if unique
+   if (d === maxDemerit && demeritCount === 1 && maxDemerit > 0) {
+  c.classList.add('tilt', 'top-demerit', 'crooked');
+
+  // add vignette overlay (flickering/pulsating light)
+  if (!c.querySelector('.vignette-overlay')) {
+    const v = document.createElement('div');
+    v.className = 'vignette-overlay';
+    v.setAttribute('aria-hidden', 'true');
+    c.appendChild(v);
+  }
+}
+
+    // keep color tint logic intact
+    updateTint(c);
+  });
+}
+
+
+// ---------------- World Chaos and Witnesses ----------------
+let witness = 0, chaos = 0;
+import { backgroundhue } from './js/witnesseffects.js';
+const bgController = backgroundhue(document.getElementById('backgroundHue'));
+
+
+const witnessEl = document.getElementById('witnessCounter'), chaosEl = document.getElementById('chaosCounter');
+function getChaosValue() { return Number(chaosEl.textContent || 0); }
+witnessEl.addEventListener('click', () => { witness++; witnessEl.textContent = witness; saveSettings(); bgController.setWitnessCount(witness,true);});
+witnessEl.addEventListener('contextmenu', e => { e.preventDefault(); witness = Math.max(0, witness-1); witnessEl.textContent = witness; saveSettings(); bgController.setWitnessCount(witness);});
+chaosEl.addEventListener('click', () => { chaos++; chaosEl.textContent = chaos; updateEffects(); saveSettings(); });
+chaosEl.addEventListener('contextmenu', e => { e.preventDefault(); chaos = Math.max(0, chaos-1); chaosEl.textContent = chaos; updateEffects(); saveSettings(); });
+document.getElementById('branchName')?.addEventListener('input', saveSettings);
+
+
+
+/*-------------UpdateEvents--------------*/
+import { stepJitter, animateCRT, updateScanlineOverlay } from './js/effects.js';
+import { noise } from './js/noise.js';
+const crtLine=document.getElementById('crtScanline')
+const scanlineOverlay = document.getElementById('scanlineOverlay');
+noise.start(); noise.setDensity(0.5); noise.setColor('rgba(255,255,255,0.01)'); // red tint
+
+function updateEffects() {
+    const chaosVal = chaos;
+	let bottom = parseFloat(crtLine.style.bottom) || 1;
+	updateScanlineOverlay(scanlineOverlay,chaosVal);
+	stepJitter(wrapper, chaosVal);
+	animateCRT(crtLine, document.querySelectorAll('.char'), chaosVal, bottom);
+	noise.setChaos(chaosVal/30); 
+	bgController.setWitnessCount(witness);
+};
+
+// ---------------- Save / Load ----------------
+function saveSettings(){
+  const chars=[...document.querySelectorAll('.char')].map(c=>({
+    name:c.querySelector('.stat input')?.value||'',
+    anomaly:c.querySelectorAll('.stat input')[1]?.value||'',
+    reality:c.querySelectorAll('.stat input')[2]?.value||'',
+    competency:c.querySelectorAll('.stat input')[3]?.value||'',
+    merit:parseInt(c.querySelector('.triangle')?.textContent)||0,
+    demerit:parseInt(c.querySelector('.triangle-down')?.textContent)||0,
+	sessionMerit: parseInt(c.querySelector('.counter-input.merit')?.value)||0,
+    sessionDemerit: parseInt(c.querySelector('.counter-input.demerit')?.value)||0,
+    icon:c.querySelector('img')?.src||''
+  }));
+  localStorage.setItem('rpgSettings', JSON.stringify({chars,world:{branch:branchName.value,witness,chaos}}));
+}
+function loadSettings(){
+  const data=JSON.parse(localStorage.getItem('rpgSettings')||'{}'); charContainer.innerHTML=''; charCount=0;
+  if(data.chars) data.chars.forEach(addChar); else for(let i=0;i<2;i++) addChar();
+  if(data.world){ branchName.value=data.world.branch||''; witness=data.world.witness||0; chaos=data.world.chaos||0;
+    witnessEl.textContent=witness; chaosEl.textContent=chaos; }
+}
+loadSettings();
+updateTopCharacters();
+updateEffects();
+
+// ---------------- Reset ----------------
+function resetAll(){
+  document.querySelectorAll('.char').forEach(c=>{
+    c.querySelector('.triangle').textContent='0';
+    c.querySelector('.triangle-down').textContent='0';
+    c.classList.remove(MERIT_TINT,DEMERIT_TINT,'star','tilt');
+    c.querySelectorAll('.thumb').forEach(t=>t.remove());
+	
+  });
+  witness=0; chaos=0;
+  witnessEl.textContent=0; chaosEl.textContent=0;
+  
+
+  saveSettings(); updateTopCharacters();
+    updateScanlineOverlay();
+  updateEffects();
+}
+window.resetAll = resetAll;
+
+/* ---------- Merit / Demerit Effects ---------- */
+let meritMode=false, demeritMode=false;
+let effectTimer=null;
+
+function triggermeritMode(){ 
+    meritMode=true; demeritMode=false; 
+    resetEffectTimer();
+}
+
+function triggerdemeritMode(){ 
+    demeritMode=true; meritMode=false; 
+    resetEffectTimer();
+}
+
+function resetEffectTimer(){
+    if(effectTimer) clearTimeout(effectTimer);
+    effectTimer=setTimeout(()=>{ meritMode=false; demeritMode=false; }, 10000); // effect lasts 3s
+}
+ import { createCharts } from './js/chart.js';
+
+  const charts = createCharts({
+    lineCanvas: 'lineGraph',   // or pass the DOM element
+    histCanvas: 'histGraph',
+    pieCanvas: 'pieGraph',
+    intervalMs: 200
+  });
+
+  charts.start();
+document.addEventListener('triangle-action', (e) => {
+  if (e.detail.type === 'merit') charts.triggermeritMode();
+  else charts.triggerdemeritMode();
+});
+saveSettings()

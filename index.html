@@ -1,0 +1,152 @@
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Triangle Agency</title>
+
+<link rel="stylesheet" href="./css/variables.css">
+<link rel="stylesheet" href="./css/base.css">
+<link rel="stylesheet" href="./css/layout.css">
+<link rel="stylesheet" href="./css/components.css">
+<link rel="stylesheet" href="./css/effects.css">
+<link rel="stylesheet" href="./css/graphs.css">
+<link rel="stylesheet" href="./css/utilities.css">
+
+</head>
+<body>
+
+<div id="backgroundHue"></div>
+
+<div id="pageWrapper">
+	<div class="container">
+		<center>
+		<h1>Welcome, agents of the <br> TRIANGLE AGENCY</h1>
+		</center>
+		
+		<div class="top-buttons">
+		<button onclick="addChar()">Add Character</button>
+		<button onclick="resetAll()">Reset</button>
+		<button onclick="loadSettingsFile()">Load</button>
+		<button onclick="saveSettingsFile()">Save</button>
+		</div>
+
+		<div class="characters" id="charContainer"></div>
+
+		<div class="world-section">
+
+			<div class="world">
+				<div class="sphere-icon">🌐</div>
+				<label>LOCAL BRANCH: <input type="text" id="branchName"></label>
+				<div class="world-counter">👁️ WITNESSES: <span class="counter" id="witnessCounter">0</span></div>
+				<div class="world-counter">🌀 CHAOS: <span class="counter" id="chaosCounter">0</span></div>
+			
+			</div>
+			
+			<div class="graph-box">
+				<canvas id="lineGraph" width="300" height="150"></canvas>
+			</div>
+			
+			<div class="graph-box">
+				<canvas id="histGraph" width="300" height="150"></canvas>
+			</div>
+			
+			<div class="graph-box">
+				<canvas id="pieGraph" width="200" height="200"></canvas>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div id="scanlineOverlay"></div>
+
+<div id="crtScanline"></div>
+
+<script type="module">
+/*---- NEW INIT*/
+
+import { addChar, updateTopCharacters, resetChar} from './js/charSystem.js';
+import { saveSettings, loadSettings, saveSettingsFile, loadSettingsFile } from './js/storage.js';
+import { initWorld, setWorldData, updateEffects } from './js/world.js';
+import { createCharts } from './js/chart.js';
+import { noise } from './js/noise.js';
+import { playSfx } from './js/soundEffects.js';
+
+/*-----------------FULLPAGE-------------------*/
+import { initFullpageFit } from './js/fullPage.js';
+
+/*------------ save on keystroke ------------------*/
+
+
+
+// expose addChar globally if you used window.addChar previously
+window.addChar = addChar;
+window.saveSettings = saveSettings;
+window.resetAll = resetAll;
+window.loadSettingsFile = loadSettingsFile;
+window.saveSettingsFile = saveSettingsFile;
+
+function resetAll(){
+	resetChar();
+	setWorldData();
+	saveSettings();
+}
+
+
+
+// load settings and initialize
+document.addEventListener('DOMContentLoaded', () => {
+
+  // Init world controls
+	initWorld();
+  // Load saved settings and create chars
+		  const saved = loadSettings();
+		  if (saved?.chars && saved.chars.length) {
+			saved.chars.forEach(c => addChar(c));
+			if (saved.world) setWorldData(saved.world);
+		  } 
+		  updateTopCharacters();
+		  updateEffects();
+		  // Save on keystroke
+		  document.getElementById('branchName')?.addEventListener('input', () => saveSettings());
+		  document.querySelectorAll('.stat input').forEach(input => {
+		  input.addEventListener('input', () => saveSettings());
+		});
+  // Setup charts
+		   const charts = createCharts({
+			lineCanvas: 'lineGraph',
+			histCanvas: 'histGraph',
+			pieCanvas: 'pieGraph',
+			intervalMs: 200
+		   });
+		   charts.start();
+
+  // Wire triangle-action event to charts
+	  document.addEventListener('triangle-action', (e) => {
+		if (e.detail.type === 'merit') charts.triggermeritMode?.();
+		else charts.triggerdemeritMode?.();
+	  });
+
+
+	  
+	   const fullpage = initFullpageFit();
+	  // optional: expose to console for debugging
+	  window._fullpageFit = fullpage;
+	  
+	  // Press "F" to manually trigger a fit once
+	  window.addEventListener('keydown', (e) => {
+		if (e.key.toLowerCase() === 'f') {
+		  // If not active, apply scaling
+		  if (!fullpage.isActive()) {
+			fullpage.applyScale();
+		  } else {
+			// If already active, remove scaling (toggle behavior)
+			fullpage.clearScale();
+		  }
+		}
+	  });
+		  saveSettings();
+});
+
+
+</script>
+</body>
+</html>

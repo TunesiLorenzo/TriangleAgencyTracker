@@ -1,0 +1,59 @@
+/* utilities.css - small helpers, spacing and misc styles */
+
+/* headings */
+h1 { margin-bottom: 80px; z-index: 9998; }
+
+/* generic boxes used in multiple places - keep minimal */
+.char, .world, .counter, .graph-box, .box, .panel {
+  /* keep base visual consistent but minimal */
+  border-radius: 12px;
+  padding: 12px;
+}
+
+/* slight hover lift for some elements (kept conservative) */
+.char:hover, .world:hover, .counter:hover, .graph-box:hover {
+  transform: translateY(-2px);
+}
+
+/* small style for badges / thumb */
+.char .thumb { z-index: 2; }
+
+/* scanline helper classes (you can toggle these from JS) */
+.scanline-visible { opacity: 1 !important; transition: opacity 0.12s linear; }
+.scanline-hidden  { opacity: 0 !important; transition: opacity 0.25s linear; }
+
+/* small accessibility helpers */
+.hidden-visually { position: absolute !important; height: 1px; width: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); white-space: nowrap; }
+
+/* Fullpage-fit helpers */
+body.fullpage-fit {
+  overflow: hidden !important;        /* hide scrollbars */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 100vh !important;           /* ensure flex centering uses viewport */
+  width: 100vw !important;
+  margin: 0 !important;
+}
+
+/* scaled wrapper - transform origin top-left so scale math is predictable */
+#pageWrapper.fullpage-scaled {
+  transform-origin: 0 0;
+  /* keep smooth scaling */
+  transition: transform 160ms cubic-bezier(.2,.9,.2,1);
+  will-change: transform;
+}
+
+/* optional: prevent body/background from shifting */
+#backgroundHue {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+}
+
+/* Prevent scrollbars from showing on some browsers */
+html.fullpage-fit, body.fullpage-fit {
+  touch-action: none;          /* optional: disables touch scrolling while in fullscreen */
+  -webkit-overflow-scrolling: auto;
+}
+

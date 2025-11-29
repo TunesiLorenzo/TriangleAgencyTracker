@@ -1,0 +1,20 @@
+/* base.css */
+
+/* FONT */
+@font-face {
+  font-family: 'ITCAvantGarde';
+  src: url('../various/ITCAvantGardeGothic-T.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+/* Defaults & reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  font-family: 'ITCAvantGarde', sans-serif !important;
+}
