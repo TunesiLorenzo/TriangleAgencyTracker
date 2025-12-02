@@ -57,7 +57,7 @@ export function addChar(data = {}) {
 
   const c = document.createElement('div');
   c.className = 'char';
-
+  if (data?.dead) c.classList.add('dead');
   const removeBtn = document.createElement('button');
   removeBtn.textContent = 'X';
   removeBtn.className = 'remove-btn';
@@ -124,9 +124,15 @@ img.src = (data?.icon && data.icon !== '') ? data.icon : './images/pfp.jpg';
   const deathBtn = document.createElement('button');
   deathBtn.className = 'death-btn'; deathBtn.textContent='✖'; deathBtn.title='Toggle death state';
   const deathOverlay = document.createElement('div'); deathOverlay.className='death-overlay'; deathOverlay.textContent='SICK LEAVE';
-  deathBtn.onclick = () => c.classList.toggle('dead');
-  c.append(deathOverlay, deathBtn);
-
+  deathBtn.onclick = () => {
+  c.classList.toggle('dead');
+  playSfx(data.dead ? './audio/cash.mp3' : './audio/flatline.mp3');
+  saveSettings();
+  updateTopCharacters();
+	};
+	c.append(deathOverlay, deathBtn);
+  
+  
   charContainer.appendChild(c);
   saveSettings();
   updateTopCharacters();
@@ -178,7 +184,7 @@ export function resetChar() {
 	c.querySelector('.counter-input.demerit').value='0';
     c.classList.remove(MERIT_TINT,DEMERIT_TINT,'star','tilt');
     c.querySelectorAll('.thumb').forEach(t=>t.remove());
-	
+	c.classList.remove('dead');
     c.querySelectorAll('.stat input').forEach(input => input.value = '');
     const img = c.querySelector('img');
 	img.src = './images/pfp.jpg';

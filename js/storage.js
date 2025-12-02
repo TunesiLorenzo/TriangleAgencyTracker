@@ -14,7 +14,8 @@ export function saveSettings() {
         demerit: parseInt(c.querySelector('.triangle-down')?.textContent) || 0,
         sessionMerit: parseInt(c.querySelector('.counter-input.merit')?.value) || 0,
         sessionDemerit: parseInt(c.querySelector('.counter-input.demerit')?.value) || 0,
-        icon: c.querySelector('img')?.src || ''
+        icon: c.querySelector('img')?.src || '',
+		dead: c.classList.contains('dead') //
       };
     });
 
