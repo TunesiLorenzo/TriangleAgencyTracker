@@ -91,3 +91,23 @@
 .world-counter { display:flex; gap:5px; align-items:center; }
 .counter { background:#555; padding:5px 10px; border-radius:6px; cursor:pointer; user-select:none; }
 input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#333; color:#fff; width:120px; }
+/* Task panel */
+#taskPanel { width: 220px; padding: 8px; background: rgba(0,0,0,0.35); color: #fff; position: absolute; right: 12px; top: 60px; border-radius: 6px; font-size: 14px; }
+.task { padding:8px; margin-bottom:8px; border-radius:6px; background: rgba(255,255,255,0.02); display:flex; flex-direction:column; }
+.task.used { opacity:0.45; filter:grayscale(60%); pointer-events:none; }
+.task-header{display:flex;gap:8px;align-items:center}
+.task-icon{font-size:18px}
+.task-title{flex:1}
+.task-meta{font-size:11px;opacity:0.8;margin-top:6px}
+.task-actions{margin-top:8px;text-align:right}
+.task-exec{padding:6px 8px;border-radius:4px;background:#222;color:#fff;border:0;cursor:pointer}
+
+/* chooser overlay */
+.task-chooser{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999}
+.task-chooser.hidden{display:none}
+.task-chooser .chooser-panel{width:320px;background:#111;color:#fff;padding:12px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.6)}
+.chooser-title{font-weight:700;margin-bottom:8px}
+.chooser-list{max-height:300px;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.chooser-item{display:flex;align-items:center;gap:8px;padding:6px;border-radius:6px;background:rgba(255,255,255,0.02);border:0;color:#fff;cursor:pointer}
+.chooser-item img{width:32px;height:32px;object-fit:cover;border-radius:4px}
+.chooser-footer{margin-top:10px;text-align:right}

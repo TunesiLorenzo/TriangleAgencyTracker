@@ -126,7 +126,8 @@ img.src = (data?.icon && data.icon !== '') ? data.icon : './images/pfp.jpg';
   const deathOverlay = document.createElement('div'); deathOverlay.className='death-overlay'; deathOverlay.textContent='SICK LEAVE';
   deathBtn.onclick = () => {
   c.classList.toggle('dead');
-  playSfx(data.dead ? './audio/cash.mp3' : './audio/flatline.mp3');
+  const isNowDead = c.classList.contains('dead');
+  playSfx(isNowDead ? './audio/flatline.mp3' : ['./audio/ufo.mp3','./audio/cash.mp3'] , 'sequence');
   saveSettings();
   updateTopCharacters();
 	};

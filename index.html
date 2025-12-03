@@ -25,6 +25,8 @@
 		<h1>Welcome, agents of the <br> TRIANGLE AGENCY</h1>
 		</center>
 		
+<aside id="taskPanel" aria-label="Tasks"></aside>
+
 		<div class="top-buttons">
 		<button onclick="addChar()">Add Character</button>
 		<button onclick="resetAll()">Reset</button>
@@ -76,7 +78,8 @@ import { playSfx } from './js/soundEffects.js';
 /*-----------------FULLPAGE-------------------*/
 import { initFullpageFit } from './js/fullPage.js';
 
-/*------------ save on keystroke ------------------*/
+/*-----------------Tasks.----------------*/
+  import { initTaskPanel, resetTasks } from './js/tasks.js';
 
 
 
@@ -89,6 +92,7 @@ window.saveSettingsFile = saveSettingsFile;
 
 function resetAll(){
 	resetChar();
+	resetTasks();
 	setWorldData();
 	saveSettings();
 }
@@ -132,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		else charts.triggerdemeritMode?.();
 	  });
 
-
+initTaskPanel({ containerId: 'taskPanel' });
 	  
 	   const fullpage = initFullpageFit();
 	  // optional: expose to console for debugging
