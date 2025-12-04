@@ -1,4 +1,18 @@
 /* layout.css */
+
+html, body {
+  overflow: hidden !important;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Optional: prevent child elements from creating scroll */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   padding: 0;

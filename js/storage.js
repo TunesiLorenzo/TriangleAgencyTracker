@@ -49,7 +49,10 @@ export function saveSettings() {
         sessionMerit: parseInt(c.querySelector('.counter-input.merit')?.value) || 0,
         sessionDemerit: parseInt(c.querySelector('.counter-input.demerit')?.value) || 0,
         icon: c.querySelector('img')?.src || '',
-        dead: c.classList.contains('dead')
+        dead: c.classList.contains('dead'),
+        // SAVE back-face contents
+        primeDirective: c.dataset.primeDirective || '',
+        encouragedBehavior: c.dataset.encouragedBehavior || ''
       };
     });
 
@@ -63,17 +66,13 @@ export function saveSettings() {
     const existingWorld = existing.world && typeof existing.world === 'object' ? existing.world : {};
 
     const newWorld = {
-      // copy preserved fields first
       ...existingWorld,
-      // then overwrite the UI-driven fields
       branchName,
       witness,
       chaos
     };
 
-    // ensure chars are updated and world includes merged content
     const saveObj = { ...existing, chars, world: newWorld };
-
     localStorage.setItem('rpgSettings', JSON.stringify(saveObj));
   } catch (err) {
     console.error('saveSettings failed', err);

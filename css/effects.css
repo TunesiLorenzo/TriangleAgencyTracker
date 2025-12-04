@@ -82,6 +82,231 @@
   100% { transform: scale(1); }
 }
 
+/*FLIP LOGIC*/
+/* ---------- Card flip/structure ---------- */
+.char {
+  position: relative;
+  width: 260px;             /* adjust to your card size */
+  height: 360px;            /* adjust to your card size */
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+  transition: transform 300ms ease;
+  overflow: visible;
+}
+
+/* treat everything except .backFace as the front content */
+.char > *:not(.backFace) {
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: transform 420ms cubic-bezier(.2,.9,.3,1), opacity 320ms;
+}
+
+/* back face styling (initially hidden, rotated) */
+.char .backFace {
+  position: absolute;
+  inset: 8px;
+  margin: 0;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transform: rotateY(180deg);
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  border-radius: 10px;
+  z-index: 20;
+  transition: transform 420ms cubic-bezier(.2,.9,.3,1), opacity 320ms;
+  /* Removed explicit background so .char.merit/.demerit rules control color */
+  background: transparent;
+  /* If you want a subtle card chrome, use box-shadow only (not background color) */
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  overflow: auto;
+}
+
+.char.flipped .backFace {
+  transform: rotateY(0deg);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ensure front content becomes visually hidden but not the flip control */
+.char.flipped > *:not(.backFace):not(.flip-btn) {
+  transform: rotateY(180deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Back-face subboxes overlay ---------- */
+.back-subbox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border-radius: 8px;
+  min-height: 90px;
+  background-clip: padding-box;
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.05),
+              0 4px 16px rgba(0,0,0,0.4); /* stronger outer shadow */
+}
+
+.back-subbox::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.15); /* more visible overlay */
+  pointer-events: none;
+  z-index: 1;
+}
+/* ---------- textboxes (centered, look like normal text until focus) ---------- */
+.back-textwrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* vertical center */
+  align-items: center;     /* horizontal center */
+  z-index: 2;              /* above overlay */
+  width: 100%;
+  height: 100%;
+}
+
+.back-text {
+  width: 90%;
+  min-height: 48px;
+  max-height: 140px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  text-align: center;      /* center text horizontally */
+  line-height: 1.3;
+  resize: none;
+  cursor: text;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+/* look like normal text when not focused */
+.back-text:not(:focus) {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  cursor: pointer;
+  pointer-events: auto; /* still allow click to focus */
+}
+
+/* subtle highlight when focused */
+.back-text:focus {
+  background: rgba(255,255,255,0.05);
+  box-shadow: 0 0 4px rgba(255,255,255,0.15);
+  outline: none;
+}
+
+
+/* Keep color/tint behavior: backFace will inherit classes copied from .char */
+/* Example: .char.merit .backFace { ... } handled by your existing CSS variables */
+
+/* ---------- Flip button ---------- */
+
+.flip-btn {
+  position: absolute;
+  top: 8px;
+  right: 36px;
+  z-index: 60;             /* above backFace */
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255,255,255,0.06);
+  color: var(--ui-foreground, #ddd);
+  cursor: pointer;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  transition: transform 160ms;
+  /* ensure it doesn't get rotated with the front content */
+  transform-style: preserve-3d;
+  backface-visibility: visible;
+  -webkit-backface-visibility: visible;
+}
+.flip-btn:hover { transform: scale(1.05); }
+/* ---------- Back face subboxes (Prime / Encouraged) ---------- */
+.backFace { gap: 12px; }
+
+/* container for each action */
+.back-subbox {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+  min-height: 90px;
+}
+
+/* color variants (use your CSS vars; fallback values included) */
+.back-subbox.prime {
+  background: linear-gradient(180deg, rgba(200,40,40,0.08), rgba(200,40,40,0.03));
+  border: 1px solid rgba(200,40,40,0.12);
+}
+.back-subbox.encouraged {
+  background: linear-gradient(180deg, rgba(40,200,100,0.06), rgba(40,200,100,0.02));
+  border: 1px solid rgba(40,200,100,0.12);
+}
+
+/* the big action button at the top of each subbox */
+.back-action-btn {
+  align-self: stretch;
+  padding: 8px 10px;  /* slightly bigger padding */
+  border-radius: 6px;
+  border: none;
+  font-weight: 700;
+  font-size: 16px;      /* bigger font */
+  cursor: pointer;
+  margin-bottom: 6px;
+  background: rgba(255,255,255,0.06);
+  color: inherit;
+  transition: transform 140ms ease, box-shadow 140ms;
+}
+
+.back-action-btn:active { transform: translateY(1px) scale(0.995); }
+
+/* textarea wrapper and textarea */
+.back-textwrap { display: block; width: 100%; }
+.back-text {
+  width: 100%;
+  resize: vertical;
+  min-height: 48px;
+  max-height: 140px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.25);
+  background: rgba(0,0,0,0.45);
+  color: var(--ui-foreground, #eee);
+  font-size: 13px;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+/* small niceties */
+.char .death-overlay { z-index: 30; } /* so death overlay still sits above back if needed */
+.char .remove-btn { z-index: 40; }    /* keep remove clickable */
+
+/* preserve tilt/transform visual when top classes are applied
+   (these selectors assume you already have CSS for .tilt, .star, .merit/.demerit) */
+.char.star, .char.top-merit { /* example enhancement for star effect */ }
+.char.tilt, .char.crooked { /* example enhancement for tilt effect */ }
+
+/* responsive tweak: ensure backFace content scrolls if overflowing */
+.backFace { overflow: auto; padding-bottom: 14px; }
+
+/* focus accessibility */
+.back-action-btn:focus, .back-text:focus, .flip-btn:focus { outline: 2px solid rgba(255,255,255,0.08); outline-offset: 2px; }
 
 /* Best Worst Agent behavior*/
 /* ensure char boxes can contain absolute overlays */

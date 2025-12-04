@@ -76,7 +76,7 @@ import { noise } from './js/noise.js';
 import { playSfx } from './js/soundEffects.js';
 
 /*-----------------FULLPAGE-------------------*/
-import { initFullpageFit } from './js/fullPage.js';
+import { scaleToFit } from './js/fullPage.js';
 
 /*-----------------Tasks.----------------*/
   import { initTaskPanel, resetTasks } from './js/tasks.js';
@@ -138,22 +138,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 initTaskPanel({ containerId: 'taskPanel' });
 	  
-	   const fullpage = initFullpageFit();
-	  // optional: expose to console for debugging
-	  window._fullpageFit = fullpage;
-	  
-	  // Press "F" to manually trigger a fit once
-	  window.addEventListener('keydown', (e) => {
-		if (e.key.toLowerCase() === 'f') {
-		  // If not active, apply scaling
-		  if (!fullpage.isActive()) {
-			fullpage.applyScale();
-		  } else {
-			// If already active, remove scaling (toggle behavior)
-			fullpage.clearScale();
-		  }
-		}
-	  });
 		  saveSettings();
 });
 
