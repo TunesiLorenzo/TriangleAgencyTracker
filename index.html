@@ -15,8 +15,8 @@
 <body>
 
 <div id="backgroundHue">
-	<video id="bgVideo" autoplay muted loop playsinline></video>
 	 <!--<img id="bgOverlay" src="./images/.png" alt="Overlay">-->
+	<video id="bgVideo" autoplay muted loop playsinline></video>
 </div>
 
 <div id="pageWrapper">
@@ -27,11 +27,15 @@
 		
 <aside id="taskPanel" aria-label="Tasks"></aside>
 
-		<div class="top-buttons">
-		<button onclick="addChar()">Add Character</button>
-		<button onclick="resetAll()">Reset</button>
-		<button onclick="loadSettingsFile()">Load</button>
-		<button onclick="saveSettingsFile()">Save</button>
+		<div class="top-buttons-left">
+		<button onclick="addChar()">Hire Agent</button>
+		<button onclick="loadCharacterFile()">Recall Agent</button>
+		<button onclick="openAgentExportMenu()">Agent CV</button>
+		</div>
+		<div class="top-buttons-right">
+		<button onclick="resetAll()">Close Branch</button>
+		<button onclick="loadSettingsFile()">Recall Team</button>
+		<button onclick="saveSettingsFile()">Team CV</button>
 		</div>
 
 		<div class="characters" id="charContainer"></div>
@@ -69,7 +73,7 @@
 /*---- NEW INIT*/
 
 import { addChar, updateTopCharacters, resetChar} from './js/charSystem.js';
-import { saveSettings, loadSettings, saveSettingsFile, loadSettingsFile } from './js/storage.js';
+import { saveSettings, loadSettings, saveSettingsFile, loadSettingsFile, loadCharacterFile} from './js/storage.js';
 import { initWorld, setWorldData, updateEffects } from './js/world.js';
 import { createCharts } from './js/chart.js';
 import { noise } from './js/noise.js';
@@ -89,6 +93,7 @@ window.saveSettings = saveSettings;
 window.resetAll = resetAll;
 window.loadSettingsFile = loadSettingsFile;
 window.saveSettingsFile = saveSettingsFile;
+window.loadCharacterFile = loadCharacterFile
 
 function resetAll(){
 	resetChar();
@@ -97,6 +102,34 @@ function resetAll(){
 	saveSettings();
 }
 
+function openAgentExportMenu() {
+  const chars = [...document.querySelectorAll('.char')];
+
+  if (chars.length === 0) {
+    alert("No agents available to save.");
+    return;
+  }
+
+  const name = prompt(
+    "Which agent do you want to export?\n\n" +
+    chars.map((c, i) => `${i+1}. ${c.querySelector('.stat input')?.value || 'Unnamed Agent'}`).join("\n") +
+    "\n\nEnter number:"
+  );
+
+  if (!name) return;
+
+  const index = parseInt(name) - 1;
+
+  if (isNaN(index) || index < 0 || index >= chars.length) {
+    alert("Invalid selection.");
+    return;
+  }
+
+  // call storage.js
+  import("./storage.js").then(mod => {
+    mod.saveCharacterFile(chars[index]);
+  });
+}
 
 
 // load settings and initialize

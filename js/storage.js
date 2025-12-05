@@ -1,4 +1,6 @@
 
+import {updateTopCharacters} from './charSystem.js'
+
 export function saveSettingsFile(filename) {
   const raw = localStorage.getItem('rpgSettings') || '{}';
   const now = new Date();
@@ -128,3 +130,113 @@ export function loadSettingsFile() {
 
   input.click();
 }
+
+// -------------------------------
+// SAVE A SINGLE CHARACTER TO FILE
+// -------------------------------
+export function saveCharacterToFile(charElement, filename) {
+  try {
+    const inputs = charElement.querySelectorAll('.stat input');
+    const charObj = {
+      name: inputs[0]?.value || '',
+      anomaly: inputs[1]?.value || '',
+      reality: inputs[2]?.value || '',
+      competency: inputs[3]?.value || '',
+      merit: parseInt(charElement.querySelector('.triangle')?.textContent) || 0,
+      demerit: parseInt(charElement.querySelector('.triangle-down')?.textContent) || 0,
+      sessionMerit: parseInt(charElement.querySelector('.counter-input.merit')?.value) || 0,
+      sessionDemerit: parseInt(charElement.querySelector('.counter-input.demerit')?.value) || 0,
+      icon: charElement.querySelector('img')?.src || '',
+      tint: charElement.dataset.tint || "",
+      dead: charElement.classList.contains('dead'),
+      primeDirective: charElement.dataset.primeDirective || '',
+      encouragedBehavior: charElement.dataset.encouragedBehavior || ''
+    };
+
+    const wrapper = {
+      meta: { kind: "single-agent", version: 1, created: new Date().toISOString() },
+      char: charObj
+    };
+
+    const safeName = filename || `${(charObj.name || "agent").replace(/\s+/g, "_")}.agent.json`;
+
+    const blob = new Blob([JSON.stringify(wrapper, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = safeName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+
+    return true;
+  } catch (err) {
+    console.error("saveCharacterToFile error", err);
+    return false;
+  }
+}
+
+
+// -------------------------------
+// LOAD A SINGLE CHARACTER FILE
+// -------------------------------
+export function loadCharacterFile() {
+  const input = document.createElement('input');
+  input.type = "file";
+  input.accept = ".json,application/json";
+
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = event => {
+      try {
+        const data = JSON.parse(event.target.result);
+
+        if (!data || (data.type !== "single-agent" && !data.char)) {
+          alert("Invalid Agent file");
+          return;
+        }
+
+        const charData = data.char || data;
+
+        if (typeof window.addChar === "function") {
+          // create the new character in DOM
+          window.addChar(charData);
+
+          // persist current DOM state (this function must be available in the same module)
+          if (typeof saveSettings === "function") {
+            try {
+              saveSettings();
+            } catch (err) {
+              console.warn("saveSettings threw an error after import:", err);
+            }
+          } else {
+            // if saveSettings isn't in this module, try to call it from window (if exported there)
+            if (typeof window.saveSettings === "function") {
+              try { window.saveSettings(); } catch (err) { console.warn(err); }
+            }
+          }
+
+          // reload so your normal startup reads from storage and fully initializes
+          // (this prevents any subtle differences between runtime-added DOM and load-time initialization)
+          updateTopCharacters();
+        } else {
+          alert("addChar() not found!");
+        }
+
+      } catch (err) {
+        console.error("Invalid Agent file", err);
+        alert("Invalid Agent file");
+      }
+    };
+
+    reader.readAsText(file);
+  };
+
+  input.click();
+}
+

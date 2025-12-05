@@ -214,6 +214,21 @@ export function addChar(data = {}) {
 
   // set initial values for backFace copy of tint/top classes
   syncBack(c);
+  
+  
+  const exportBtn = document.createElement("button");
+exportBtn.className = "export-btn";
+exportBtn.type = "button";
+
+exportBtn.addEventListener("click", ev => {
+  ev.stopPropagation();
+  import("./storage.js")
+    .then(mod => mod.saveCharacterToFile(c))
+    .catch(() => alert("Failed to export agent"));
+});
+
+c.appendChild(exportBtn);
+
 
   // ensure that when triangles change elsewhere we keep back in sync (e.g., through external calls)
   // already handled by updateTint / updateTopCharacters, but ensure a final sync and save
@@ -264,7 +279,7 @@ export function updateTopCharacters() {
     syncBack(c);
   });
 }
-
+/*
 export function resetChar() {
   document.querySelectorAll('.char').forEach(c => {
     const tri = c.querySelector('.triangle');
@@ -292,4 +307,22 @@ export function resetChar() {
   });
   saveSettings();
   updateTopCharacters();
+}*/
+
+export function resetChar() {
+  // Remove all character cards entirely
+  document.querySelectorAll('.char').forEach(c => c.remove());
+
+  // After removal, save the now-empty character list
+  if (typeof saveSettings === 'function') {
+    saveSettings();
+  } else if (typeof window.saveSettings === 'function') {
+    window.saveSettings();
+  }
+
+  // Update any logic dependent on characters
+  if (typeof updateTopCharacters === 'function') {
+    updateTopCharacters();
+  }
 }
+

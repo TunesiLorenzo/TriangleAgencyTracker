@@ -91,7 +91,7 @@ body::before {
   padding:10px;
   position:relative;
 }
-.top-buttons {
+.top-buttons-right {
   position:absolute;
   top:10px;
   right:10px;
@@ -99,7 +99,24 @@ body::before {
   gap:10px;
   opacity:0.6;
 }
-.top-buttons button {
+.top-buttons-right button {
+  padding:5px 10px;
+  border-radius:6px;
+  background:#222;
+  border:none;
+  color:#fff;
+  cursor:pointer;
+}
+
+.top-buttons-left {
+  position:absolute;
+  top:10px;
+  left:10px;
+  display:flex;
+  gap:10px;
+  opacity:0.6;
+}
+.top-buttons-left button {
   padding:5px 10px;
   border-radius:6px;
   background:#222;
