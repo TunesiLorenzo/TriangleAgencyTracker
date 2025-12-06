@@ -52,6 +52,7 @@ export function updateEffects() {
   animateCRT(crtLine, document.querySelectorAll('.char'), chaosVal, parseFloat(crtLine.style.bottom) || 1);
   noise.setChaos(chaosVal / 30);
   bgController.setWitnessCount(witness);
+  updateBackgroundVideo();
 }
 
 // optional getters/setters for external code
@@ -65,3 +66,45 @@ function setBackground(src) {
   bg.style.backgroundImage = `url('${src}')`;
 }
 
+// world.js
+// Returns a video filename (relative path) based on chaos level (number)
+export function getBackgroundVideo() {
+	const world = getWorld();
+	const chaos = world.chaos;
+	// Example thresholds — tweak paths & thresholds as needed
+	// chaos: 0..100 (or whatever your scale is)
+	if (chaos >= 80) return './images/bck_chaos_high.mp4';
+	if (chaos >= 50) return './images/bck_chaos_mid.mp4';
+	if (chaos >= 2) return './images/bck_strong.mp4';
+	return './images/bck_calm.mp4';
+	
+}
+
+let currentVideo = 1; // 1 = bgVideo1 visible, 2 = bgVideo2 visible
+let currentSrc = '';  // track currently displayed video
+
+export function updateBackgroundVideo() {
+  const newSrc = getBackgroundVideo();
+  if (newSrc === currentSrc) return; // no change
+  currentSrc = newSrc;
+
+  const v1 = document.getElementById('bgVideo1');
+  const v2 = document.getElementById('bgVideo2');
+
+  const current = currentVideo === 1 ? v1 : v2;
+  const next = currentVideo === 1 ? v2 : v1;
+
+  next.src = newSrc;
+  next.currentTime = 0;
+  next.style.opacity = 0;
+  next.play();
+
+  // Fade animation
+  next.style.transition = "opacity 5s";
+  current.style.transition = "opacity 5s";
+  next.style.opacity = 1;
+  current.style.opacity = 0;
+
+  currentVideo = currentVideo === 1 ? 2 : 1;
+  setTimeout(() => current.pause(), 1000); // pause old video after fade
+}

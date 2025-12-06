@@ -16,7 +16,8 @@
 
 <div id="backgroundHue">
 	 <!--<img id="bgOverlay" src="./images/.png" alt="Overlay">-->
-	<video id="bgVideo" autoplay muted loop playsinline></video>
+	<video id="bgVideo1" autoplay muted loop playsinline></video>
+	<video id="bgVideo2" autoplay muted loop playsinline style="position:absolute;top:0;left:0;width:100%;opacity:0;"></video>
 </div>
 
 <div id="pageWrapper">
@@ -74,7 +75,7 @@
 
 import { addChar, updateTopCharacters, resetChar} from './js/charSystem.js';
 import { saveSettings, loadSettings, saveSettingsFile, loadSettingsFile, loadCharacterFile} from './js/storage.js';
-import { initWorld, setWorldData, updateEffects } from './js/world.js';
+import { initWorld, setWorldData, updateEffects, updateBackgroundVideo } from './js/world.js';
 import { createCharts } from './js/chart.js';
 import { noise } from './js/noise.js';
 import { playSfx } from './js/soundEffects.js';
@@ -130,15 +131,26 @@ function openAgentExportMenu() {
     mod.saveCharacterFile(chars[index]);
   });
 }
-
+/*
+setInterval(() => {
+  updateBackgroundVideo();
+}, 5000); // check every second
+*/
 
 // load settings and initialize
 document.addEventListener('DOMContentLoaded', () => {
 	
-	const bgVideo = document.getElementById("bgVideo");
-	bgVideo.src = "./images/bck_calm.mp4"; // set path here
+	const bgVideo1 = document.getElementById("bgVideo1");
+	bgVideo1.src = "./images/bck_calm.mp4"; // set path here
+	bgVideo1.play();
+	
+	/*	bgVideo.addEventListener('ended', () => {
+	console.log('Video ended!')
+	bgVideo.src = getBackgroundVideo(); 
 	bgVideo.play();
-
+	})*/
+	
+	
   // Init world controls
 	initWorld();
   // Load saved settings and create chars
@@ -173,6 +185,8 @@ initTaskPanel({ containerId: 'taskPanel' });
 	  
 		  saveSettings();
 });
+
+
 
 
 </script>
