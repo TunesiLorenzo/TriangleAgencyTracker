@@ -30,7 +30,7 @@
   flex-wrap: wrap;
   gap: 10px;
   justify-content: center;
-  margin-bottom: 50px;
+  margin-bottom: 0px;
   transform: scale(0.7);       /* default scale */
   transform-origin: top center; /* scale from top-middle */
   transition: transform 0.3s ease; /* smooth scaling */

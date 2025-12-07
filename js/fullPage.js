@@ -3,8 +3,8 @@ export function scaleToFit() {
   if (!container) return;
 
   // original size of your layout (design-time dimensions)
-  const designWidth = window.screen.width;  
-  const designHeight = window.screen.height;
+  const designWidth = window.innerWidth;  
+  const designHeight = window.innerHeight;
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
