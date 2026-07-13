@@ -13,6 +13,36 @@
   overflow:visible;
 }
 
+.graph-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #fff;
+  opacity: 0.75;
+}
+
+/* Restrained alarm pulse while Mission Risk is at the CRITICAL threshold */
+.graph-box.risk-critical {
+  animation: fx-risk-alarm 1.6s ease-in-out infinite;
+}
+@keyframes fx-risk-alarm {
+  0%, 100% {
+    box-shadow:
+      0 18px 36px rgba(0,0,0,0.85),
+      0 8px 14px rgba(0,0,0,0.6),
+      inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  50% {
+    box-shadow:
+      0 0 24px rgba(255,40,40,0.65),
+      0 8px 14px rgba(0,0,0,0.6),
+      inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+}
+
 /* actual canvas styling */
 .graph-box canvas,
 canvas {
@@ -55,10 +85,16 @@ canvas {
 @media (orientation: portrait) {
   .graph-box {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: clamp(4px, 0.6vw, 8px);
     overflow: hidden;
+  }
+
+  .graph-title {
+    font-size: 10px;
+    margin-bottom: 4px;
   }
 
   .graph-box canvas {

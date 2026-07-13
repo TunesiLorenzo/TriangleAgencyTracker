@@ -119,6 +119,41 @@
 .char.merit { background-color: var(--merit-tint); }
 .char.demerit { background-color: var(--demerit-tint); }
 
+/* dashboard indicators: net score badge + compact activity meter */
+.char .net-indicator {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+}
+.char .net-indicator.top-net {
+  color: var(--gold-border);
+  text-shadow: 0 0 6px rgba(255,215,0,0.6);
+}
+
+.char .activity-meter {
+  width: 80%;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+  margin-top: 4px;
+  background: rgba(255,255,255,0.06);
+}
+.char .activity-fill { height: 100%; }
+.char .activity-fill.merit { background: var(--competency-color); }
+.char .activity-fill.demerit { background: var(--anomaly-color); }
+
+.char .warning-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  font-size: 16px;
+  pointer-events: none;
+  z-index: 31;
+}
+
 /* small world section */
 .world-section {
   display:flex; flex-wrap:wrap; justify-content:center; align-items:flex-start; gap:20px; margin-top:20px;

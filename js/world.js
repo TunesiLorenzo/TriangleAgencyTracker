@@ -21,6 +21,7 @@ export function initWorld() {
     witnessElement.textContent = witness;
     bgController.setWitnessCount(witness, true);
     saveSettings();
+    document.dispatchEvent(new CustomEvent('world-stat-changed', { detail: { type: 'witness', value: witness } }));
   });
   witnessElement.addEventListener('contextmenu', event => {
     event.preventDefault();
@@ -28,6 +29,7 @@ export function initWorld() {
     witnessElement.textContent = witness;
     bgController.setWitnessCount(witness);
     saveSettings();
+    document.dispatchEvent(new CustomEvent('world-stat-changed', { detail: { type: 'witness', value: witness } }));
   });
 
   chaosElement.addEventListener('click', () => {
@@ -35,6 +37,7 @@ export function initWorld() {
     chaosElement.textContent = chaos;
     updateEffects();
     saveSettings();
+    document.dispatchEvent(new CustomEvent('world-stat-changed', { detail: { type: 'chaos', value: chaos } }));
   });
   chaosElement.addEventListener('contextmenu', event => {
     event.preventDefault();
@@ -42,6 +45,7 @@ export function initWorld() {
     chaosElement.textContent = chaos;
     updateEffects();
     saveSettings();
+    document.dispatchEvent(new CustomEvent('world-stat-changed', { detail: { type: 'chaos', value: chaos } }));
   });
 
   noise.setDensity(0.5);

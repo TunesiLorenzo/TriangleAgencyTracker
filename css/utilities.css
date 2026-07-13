@@ -1,5 +1,5 @@
 h1 {
-  margin: 0 0 clamp(56px, 8vw, 96px);
+  margin: clamp(40px, 6vw, 56px) 0 clamp(56px, 8vw, 96px);
   text-align: center;
 }
 

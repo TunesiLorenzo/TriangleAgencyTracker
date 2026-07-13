@@ -135,6 +135,18 @@ export function addChar(data = {}) {
   const trackerRow = document.createElement('div'); trackerRow.className = 'tracker-row';
   trackerRow.append(merit, meritCounter, demerit, demeritCounter);
 
+  // dashboard indicators: net score + compact merit/demerit activity meter
+  const netIndicator = document.createElement('div');
+  netIndicator.className = 'net-indicator';
+  netIndicator.textContent = '▬ 0';
+
+  const activityMeter = document.createElement('div');
+  activityMeter.className = 'activity-meter';
+  activityMeter.setAttribute('aria-hidden', 'true');
+  const meritFill = document.createElement('div'); meritFill.className = 'activity-fill merit';
+  const demeritFill = document.createElement('div'); demeritFill.className = 'activity-fill demerit';
+  activityMeter.append(meritFill, demeritFill);
+
   // death UI
   const deathBtn = document.createElement('button');
   deathBtn.className = 'death-btn'; deathBtn.textContent='✖'; deathBtn.title='Toggle death state';
@@ -210,7 +222,7 @@ export function addChar(data = {}) {
 
   // append everything to the char
   // structure: char contains controls and content; backFace sits along-side front content and is shown/hidden via CSS using .flipped
-  c.append(removeBtn, flipBtn, img, ...statDivs, trackerRow, deathOverlay, deathBtn, backFace);
+  c.append(removeBtn, flipBtn, img, ...statDivs, trackerRow, activityMeter, netIndicator, deathOverlay, deathBtn, backFace);
 
   // set initial values for backFace copy of tint/top classes
   syncBack(c);
@@ -233,45 +245,86 @@ export function addChar(data = {}) {
 }
 
 /**
- * updateTopCharacters - find top single merit/demerit and apply visual overlays.
+ * getAgentStats - read merit/demerit/net for every agent card and flag the
+ * unique top-merit, top-demerit and best-net-score agents (ties highlight no one,
+ * matching the original single-winner behavior). Shared by updateTopCharacters()
+ * and the dashboard panels so both use the exact same "who's winning" logic.
  */
-export function updateTopCharacters() {
+export function getAgentStats() {
   const chars = [...document.querySelectorAll('.char')];
-  let maxMerit = -1, maxDemerit = -1, meritCount = 0, demeritCount = 0;
-
-  chars.forEach(c => {
-    const m = parseInt(c.querySelector('.triangle')?.textContent) || 0;
-    const d = parseInt(c.querySelector('.triangle-down')?.textContent) || 0;
-    if (m > maxMerit) { maxMerit = m; meritCount = 1; } else if (m === maxMerit) meritCount++;
-    if (d > maxDemerit) { maxDemerit = d; demeritCount = 1; } else if (d === maxDemerit) demeritCount++;
+  const stats = chars.map(el => {
+    const merit = parseInt(el.querySelector('.triangle')?.textContent) || 0;
+    const demerit = parseInt(el.querySelector('.triangle-down')?.textContent) || 0;
+    const name = el.querySelector('.stat input')?.value || '';
+    return { el, name, merit, demerit, net: merit - demerit, dead: el.classList.contains('dead') };
   });
 
+  let maxMerit = -1, maxDemerit = -1, maxNet = -Infinity;
+  let meritCount = 0, demeritCount = 0, netCount = 0;
+  stats.forEach(s => {
+    if (s.merit > maxMerit) { maxMerit = s.merit; meritCount = 1; } else if (s.merit === maxMerit) meritCount++;
+    if (s.demerit > maxDemerit) { maxDemerit = s.demerit; demeritCount = 1; } else if (s.demerit === maxDemerit) demeritCount++;
+    if (s.net > maxNet) { maxNet = s.net; netCount = 1; } else if (s.net === maxNet) netCount++;
+  });
+
+  stats.forEach(s => {
+    s.isTopMerit = s.merit === maxMerit && meritCount === 1 && maxMerit > 0;
+    s.isTopDemerit = s.demerit === maxDemerit && demeritCount === 1 && maxDemerit > 0;
+    s.isTopNet = s.net === maxNet && netCount === 1 && stats.length > 1;
+  });
+
+  return stats;
+}
+
+/**
+ * updateTopCharacters - find top single merit/demerit/net and apply visual overlays.
+ */
+export function updateTopCharacters() {
+  const stats = getAgentStats();
+
   // clear
-  chars.forEach(c => {
-    c.classList.remove('star','tilt','crooked','top-merit','top-demerit');
-    c.querySelectorAll('.thumb').forEach(t => t.remove());
-    c.querySelectorAll('.shine-overlay, .broken-overlay, .vignette-overlay').forEach(e => e.remove());
+  stats.forEach(({ el }) => {
+    el.classList.remove('star','tilt','crooked','top-merit','top-demerit');
+    el.querySelectorAll('.thumb').forEach(t => t.remove());
+    el.querySelectorAll('.shine-overlay, .broken-overlay, .vignette-overlay, .warning-badge').forEach(e => e.remove());
   });
 
   // apply
-  chars.forEach(c => {
-    const m = parseInt(c.querySelector('.triangle')?.textContent) || 0;
-    const d = parseInt(c.querySelector('.triangle-down')?.textContent) || 0;
+  stats.forEach(s => {
+    const { el, merit, demerit, net, isTopMerit, isTopDemerit, isTopNet } = s;
 
-    if (m === maxMerit && meritCount === 1 && maxMerit > 0) {
-      c.classList.add('star','top-merit');
-      const thumb = document.createElement('div'); thumb.className='thumb'; thumb.textContent='👍'; c.appendChild(thumb);
-      if (!c.querySelector('.shine-overlay')) { const s=document.createElement('div'); s.className='shine-overlay'; s.setAttribute('aria-hidden','true'); c.appendChild(s); }
+    if (isTopMerit) {
+      el.classList.add('star','top-merit');
+      const thumb = document.createElement('div'); thumb.className='thumb'; thumb.textContent='👑'; el.appendChild(thumb);
+      if (!el.querySelector('.shine-overlay')) { const sh=document.createElement('div'); sh.className='shine-overlay'; sh.setAttribute('aria-hidden','true'); el.appendChild(sh); }
     }
 
-    if (d === maxDemerit && demeritCount === 1 && maxDemerit > 0) {
-      c.classList.add('tilt','top-demerit','crooked');
-      if (!c.querySelector('.vignette-overlay')){ const v=document.createElement('div'); v.className='vignette-overlay'; v.setAttribute('aria-hidden','true'); c.appendChild(v); }
+    if (isTopDemerit) {
+      el.classList.add('tilt','top-demerit','crooked');
+      if (!el.querySelector('.vignette-overlay')){ const v=document.createElement('div'); v.className='vignette-overlay'; v.setAttribute('aria-hidden','true'); el.appendChild(v); }
+      const warn = document.createElement('div'); warn.className='warning-badge'; warn.textContent='⚠️'; warn.setAttribute('aria-hidden','true'); el.appendChild(warn);
     }
 
-    updateTint(c);
-    syncBack(c);
+    const netEl = el.querySelector('.net-indicator');
+    if (netEl) {
+      const symbol = net > 0 ? '▲' : net < 0 ? '▼' : '▬';
+      netEl.textContent = `${symbol} ${net > 0 ? '+' : ''}${net}`;
+      netEl.classList.toggle('top-net', !!isTopNet);
+    }
+
+    const meritFill = el.querySelector('.activity-fill.merit');
+    const demeritFill = el.querySelector('.activity-fill.demerit');
+    if (meritFill && demeritFill) {
+      const total = merit + demerit || 1;
+      meritFill.style.width = `${(merit / total) * 100}%`;
+      demeritFill.style.width = `${(demerit / total) * 100}%`;
+    }
+
+    updateTint(el);
+    syncBack(el);
   });
+
+  document.dispatchEvent(new CustomEvent('dashboard-refresh'));
 }
 export function resetChar() {
   document.querySelectorAll('.char').forEach(c => c.remove());

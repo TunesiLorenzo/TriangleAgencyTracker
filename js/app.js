@@ -1,5 +1,5 @@
 import { addChar, resetChar, updateTopCharacters } from './charSystem.js';
-import { createCharts } from './chart.js';
+import { initDashboard, resetDashboard } from './dashboard.js';
 import {
   loadCharacterFile,
   loadSettings,
@@ -15,6 +15,7 @@ function resetAll() {
   resetChar();
   resetTasks();
   setWorldData();
+  resetDashboard();
   saveSettings();
 }
 
@@ -65,19 +66,7 @@ function init() {
   updateTopCharacters();
   updateEffects();
   initTaskPanel({ containerId: 'taskPanel' });
-
-  const charts = createCharts({
-    lineCanvas: 'lineGraph',
-    histCanvas: 'histGraph',
-    pieCanvas: 'pieGraph',
-    intervalMs: 200
-  });
-  charts.start();
-
-  document.addEventListener('triangle-action', event => {
-    if (event.detail.type === 'merit') charts.triggermeritMode();
-    else charts.triggerdemeritMode();
-  });
+  initDashboard();
 
   saveSettings();
 }

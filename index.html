@@ -42,19 +42,29 @@
         <div class="world">
           <div class="sphere-icon">&#127760;</div>
           <label>LOCAL BRANCH: <input type="text" id="branchName"></label>
-          <div class="world-counter">&#128065;&#65039; WITNESSES: <span class="counter" id="witnessCounter">0</span></div>
+          <div class="world-counter">&#128065;&#65039; WITNESSES: <span class="counter" id="witnessCounter">0</span><span class="witness-flash" id="witnessFlash" aria-hidden="true">&#128065;&#65039;</span></div>
           <div class="world-counter">&#127744; CHAOS: <span class="counter" id="chaosCounter">0</span></div>
         </div>
 
-        <div class="graph-box"><canvas id="lineGraph" width="300" height="150"></canvas></div>
-        <div class="graph-box"><canvas id="histGraph" width="300" height="150"></canvas></div>
-        <div class="graph-box"><canvas id="pieGraph" width="200" height="200"></canvas></div>
+        <div class="graph-box" data-panel="mission-timeline" aria-label="Mission Timeline">
+          <h3 class="graph-title">Mission Timeline</h3>
+          <canvas id="lineGraph" width="300" height="150"></canvas>
+        </div>
+        <div class="graph-box" data-panel="agent-performance" aria-label="Agent Performance">
+          <h3 class="graph-title">Agent Performance</h3>
+          <canvas id="histGraph" width="300" height="150"></canvas>
+        </div>
+        <div class="graph-box" data-panel="mission-risk" aria-label="Mission Risk">
+          <h3 class="graph-title">Mission Risk</h3>
+          <canvas id="pieGraph" width="200" height="200"></canvas>
+        </div>
       </section>
     </div>
   </main>
 
   <div id="scanlineOverlay" aria-hidden="true"></div>
   <div id="crtScanline" aria-hidden="true"></div>
+  <div id="chaosPulseOverlay" aria-hidden="true"></div>
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
