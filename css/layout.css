@@ -163,6 +163,16 @@ body {
   .top-buttons-left,
   .top-buttons-right {
     gap: 4px;
+    max-width: 46vw;
+    flex-wrap: wrap;
+  }
+
+  .top-buttons-left {
+    justify-content: flex-start;
+  }
+
+  .top-buttons-right {
+    justify-content: flex-end;
   }
 
   .top-buttons-left button,
