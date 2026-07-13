@@ -51,3 +51,21 @@ canvas {
 }
 .graph-box:hover::before{ opacity:1; transform: rotate(-4deg) translateY(-2px); }
 .graph-box:hover::after{ opacity:1; filter: blur(6px); }
+
+@media (orientation: portrait) {
+  .graph-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(4px, 0.6vw, 8px);
+    overflow: hidden;
+  }
+
+  .graph-box canvas {
+    width: 100%;
+    height: auto;
+    max-height: clamp(110px, 14vh, 190px);
+    margin: 0;
+    object-fit: contain;
+  }
+}

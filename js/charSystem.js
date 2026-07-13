@@ -1,7 +1,7 @@
 // charSystem.js
 // Responsibilities: create & mutate character DOM, triangles, top-character logic, reset
 
-import { saveSettings } from './storage.js';
+import { saveCharacterToFile, saveSettings } from './storage.js';
 import { playSfx } from './soundEffects.js';
 
 export function createTriangle(isMerit) {
@@ -65,7 +65,7 @@ export function addChar(data = {}) {
   const charContainer = document.getElementById('charContainer');
   if(!charContainer) throw new Error('charContainer element not found');
 
-  const MAX_CHARS = 41;
+  const MAX_CHARS = 5;
   const currentCount = charContainer.querySelectorAll('.char').length;
   if (currentCount >= MAX_CHARS) return;
 
@@ -102,7 +102,7 @@ export function addChar(data = {}) {
     'anomaly':    root.getPropertyValue('--anomaly-color').trim()
   };
 
-  const statDivs = stats.map((s,i) => {
+  const statDivs = stats.map(s => {
     const div = document.createElement('div'); div.className = 'stat';
     const label = document.createElement('span'); label.className = 'label'; label.textContent = s.toUpperCase();
     const value = document.createElement('input'); value.className = 'value'; value.value = data?.[s] || ''; value.style.width = '80px';
@@ -216,26 +216,20 @@ export function addChar(data = {}) {
   syncBack(c);
   
   
-  const exportBtn = document.createElement("button");
-exportBtn.className = "export-btn";
-exportBtn.type = "button";
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'export-btn';
+  exportBtn.type = 'button';
+  exportBtn.title = 'Export agent';
+  exportBtn.addEventListener('click', event => {
+    event.stopPropagation();
+    if (!saveCharacterToFile(c)) alert('Failed to export agent');
+  });
+  c.appendChild(exportBtn);
 
-exportBtn.addEventListener("click", ev => {
-  ev.stopPropagation();
-  import("./storage.js")
-    .then(mod => mod.saveCharacterToFile(c))
-    .catch(() => alert("Failed to export agent"));
-});
-
-c.appendChild(exportBtn);
-
-
-  // ensure that when triangles change elsewhere we keep back in sync (e.g., through external calls)
-  // already handled by updateTint / updateTopCharacters, but ensure a final sync and save
+  // Persistence reads cards from the document, so append before saving.
+  charContainer.appendChild(c);
   saveSettings();
   updateTopCharacters();
-
-  charContainer.appendChild(c);
 }
 
 /**
@@ -279,50 +273,9 @@ export function updateTopCharacters() {
     syncBack(c);
   });
 }
-/*
 export function resetChar() {
-  document.querySelectorAll('.char').forEach(c => {
-    const tri = c.querySelector('.triangle');
-    const dtri = c.querySelector('.triangle-down');
-    if (tri) tri.textContent='0';
-    if (dtri) dtri.textContent='0';
-    const mc = c.querySelector('.counter-input.merit'); if (mc) mc.value='0';
-    const dc = c.querySelector('.counter-input.demerit'); if (dc) dc.value='0';
-    c.classList.remove(MERIT_TINT,DEMERIT_TINT,'star','tilt');
-    c.querySelectorAll('.thumb').forEach(t=>t.remove());
-    c.classList.remove('dead');
-    c.querySelectorAll('.stat input').forEach(input => input.value = '');
-    const img = c.querySelector('img');
-    if (img) img.src = './images/pfp.jpg';
-    // clear back textboxes and dataset
-    const prime = c.querySelector('.back-text.primeDirective');
-    const encouraged = c.querySelector('.back-text.encouragedBehavior');
-    if (prime) { prime.value = ''; }
-    if (encouraged) { encouraged.value = ''; }
-    delete c.dataset.primeDirective;
-    delete c.dataset.encouragedBehavior;
-    // remove flipped state
-    c.classList.remove('flipped');
-    syncBack(c);
-  });
+  document.querySelectorAll('.char').forEach(c => c.remove());
   saveSettings();
   updateTopCharacters();
-}*/
-
-export function resetChar() {
-  // Remove all character cards entirely
-  document.querySelectorAll('.char').forEach(c => c.remove());
-
-  // After removal, save the now-empty character list
-  if (typeof saveSettings === 'function') {
-    saveSettings();
-  } else if (typeof window.saveSettings === 'function') {
-    window.saveSettings();
-  }
-
-  // Update any logic dependent on characters
-  if (typeof updateTopCharacters === 'function') {
-    updateTopCharacters();
-  }
 }
 

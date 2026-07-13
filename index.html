@@ -1,194 +1,60 @@
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Triangle Agency</title>
-
-<link rel="stylesheet" href="./css/variables.css">
-<link rel="stylesheet" href="./css/base.css">
-<link rel="stylesheet" href="./css/layout.css">
-<link rel="stylesheet" href="./css/components.css">
-<link rel="stylesheet" href="./css/effects.css">
-<link rel="stylesheet" href="./css/graphs.css">
-<link rel="stylesheet" href="./css/utilities.css">
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Triangle Agency</title>
+  <link rel="stylesheet" href="./css/variables.css">
+  <link rel="stylesheet" href="./css/base.css">
+  <link rel="stylesheet" href="./css/layout.css">
+  <link rel="stylesheet" href="./css/components.css">
+  <link rel="stylesheet" href="./css/effects.css">
+  <link rel="stylesheet" href="./css/graphs.css">
+  <link rel="stylesheet" href="./css/utilities.css">
 </head>
 <body>
+  <div id="backgroundHue" aria-hidden="true">
+    <video id="bgVideo1" src="./images/bck_calm.mp4" autoplay muted loop playsinline></video>
+    <video id="bgVideo2" class="secondary-background" autoplay muted loop playsinline></video>
+  </div>
 
-<div id="backgroundHue">
-	 <!--<img id="bgOverlay" src="./images/.png" alt="Overlay">-->
-	<video id="bgVideo1" autoplay muted loop playsinline></video>
-	<video id="bgVideo2" autoplay muted loop playsinline style="position:absolute;top:0;left:0;width:100%;opacity:0;"></video>
-</div>
+  <main id="pageWrapper">
+    <div class="container">
+      <h1>Welcome, agents of the <br> TRIANGLE AGENCY</h1>
 
-<div id="pageWrapper">
-	<div class="container">
-		<center>
-		<h1>Welcome, agents of the <br> TRIANGLE AGENCY</h1>
-		</center>
-		
-<aside id="taskPanel" aria-label="Tasks"></aside>
+      <nav class="top-buttons-left" aria-label="Agent controls">
+        <button id="addAgentButton" type="button">Hire Agent</button>
+        <button id="loadAgentButton" type="button">Recall Agent</button>
+        <button id="exportAgentButton" type="button">Agent CV</button>
+      </nav>
+      <nav class="top-buttons-right" aria-label="Team controls">
+        <button id="resetButton" type="button">Close Branch</button>
+        <button id="loadTeamButton" type="button">Recall Team</button>
+        <button id="exportTeamButton" type="button">Team CV</button>
+      </nav>
 
-		<div class="top-buttons-left">
-		<button onclick="addChar()">Hire Agent</button>
-		<button onclick="loadCharacterFile()">Recall Agent</button>
-		<button onclick="openAgentExportMenu()">Agent CV</button>
-		</div>
-		<div class="top-buttons-right">
-		<button onclick="resetAll()">Close Branch</button>
-		<button onclick="loadSettingsFile()">Recall Team</button>
-		<button onclick="saveSettingsFile()">Team CV</button>
-		</div>
+      <div class="workspace">
+        <aside id="taskPanel" aria-label="Tasks"></aside>
+        <section class="characters" id="charContainer" aria-label="Agents"></section>
+      </div>
 
-		<div class="characters" id="charContainer"></div>
+      <section class="world-section" aria-label="Branch status">
+        <div class="world">
+          <div class="sphere-icon">&#127760;</div>
+          <label>LOCAL BRANCH: <input type="text" id="branchName"></label>
+          <div class="world-counter">&#128065;&#65039; WITNESSES: <span class="counter" id="witnessCounter">0</span></div>
+          <div class="world-counter">&#127744; CHAOS: <span class="counter" id="chaosCounter">0</span></div>
+        </div>
 
-		<div class="world-section">
+        <div class="graph-box"><canvas id="lineGraph" width="300" height="150"></canvas></div>
+        <div class="graph-box"><canvas id="histGraph" width="300" height="150"></canvas></div>
+        <div class="graph-box"><canvas id="pieGraph" width="200" height="200"></canvas></div>
+      </section>
+    </div>
+  </main>
 
-			<div class="world">
-				<div class="sphere-icon">🌐</div>
-				<label>LOCAL BRANCH: <input type="text" id="branchName"></label>
-				<div class="world-counter">👁️ WITNESSES: <span class="counter" id="witnessCounter">0</span></div>
-				<div class="world-counter">🌀 CHAOS: <span class="counter" id="chaosCounter">0</span></div>
-			
-			</div>
-			
-			<div class="graph-box">
-				<canvas id="lineGraph" width="300" height="150"></canvas>
-			</div>
-			
-			<div class="graph-box">
-				<canvas id="histGraph" width="300" height="150"></canvas>
-			</div>
-			
-			<div class="graph-box">
-				<canvas id="pieGraph" width="200" height="200"></canvas>
-			</div>
-		</div>
-	</div>
-</div>
-
-<div id="scanlineOverlay"></div>
-
-<div id="crtScanline"></div>
-
-<script type="module">
-/*---- NEW INIT*/
-
-import { addChar, updateTopCharacters, resetChar} from './js/charSystem.js';
-import { saveSettings, loadSettings, saveSettingsFile, loadSettingsFile, loadCharacterFile} from './js/storage.js';
-import { initWorld, setWorldData, updateEffects, updateBackgroundVideo } from './js/world.js';
-import { createCharts } from './js/chart.js';
-import { noise } from './js/noise.js';
-import { playSfx } from './js/soundEffects.js';
-
-/*-----------------FULLPAGE-------------------*/
-import { scaleToFit } from './js/fullPage.js';
-
-/*-----------------Tasks.----------------*/
-  import { initTaskPanel, resetTasks } from './js/tasks.js';
-
-
-
-// expose addChar globally if you used window.addChar previously
-window.addChar = addChar;
-window.saveSettings = saveSettings;
-window.resetAll = resetAll;
-window.loadSettingsFile = loadSettingsFile;
-window.saveSettingsFile = saveSettingsFile;
-window.loadCharacterFile = loadCharacterFile
-
-function resetAll(){
-	resetChar();
-	resetTasks();
-	setWorldData();
-	saveSettings();
-}
-
-function openAgentExportMenu() {
-  const chars = [...document.querySelectorAll('.char')];
-
-  if (chars.length === 0) {
-    alert("No agents available to save.");
-    return;
-  }
-
-  const name = prompt(
-    "Which agent do you want to export?\n\n" +
-    chars.map((c, i) => `${i+1}. ${c.querySelector('.stat input')?.value || 'Unnamed Agent'}`).join("\n") +
-    "\n\nEnter number:"
-  );
-
-  if (!name) return;
-
-  const index = parseInt(name) - 1;
-
-  if (isNaN(index) || index < 0 || index >= chars.length) {
-    alert("Invalid selection.");
-    return;
-  }
-
-  // call storage.js
-  import("./storage.js").then(mod => {
-    mod.saveCharacterFile(chars[index]);
-  });
-}
-/*
-setInterval(() => {
-  updateBackgroundVideo();
-}, 5000); // check every second
-*/
-
-// load settings and initialize
-document.addEventListener('DOMContentLoaded', () => {
-	
-	const bgVideo1 = document.getElementById("bgVideo1");
-	bgVideo1.src = "./images/bck_calm.mp4"; // set path here
-	bgVideo1.play();
-	
-	/*	bgVideo.addEventListener('ended', () => {
-	console.log('Video ended!')
-	bgVideo.src = getBackgroundVideo(); 
-	bgVideo.play();
-	})*/
-	
-	
-  // Init world controls
-	initWorld();
-  // Load saved settings and create chars
-		  const saved = loadSettings();
-		  if (saved?.chars && saved.chars.length) {
-			saved.chars.forEach(c => addChar(c));
-			if (saved.world) setWorldData(saved.world);
-		  } 
-		  updateTopCharacters();
-		  updateEffects();
-		  // Save on keystroke
-		  document.getElementById('branchName')?.addEventListener('input', () => saveSettings());
-		  document.querySelectorAll('.stat input').forEach(input => {
-		  input.addEventListener('input', () => saveSettings());
-		});
-  // Setup charts
-		   const charts = createCharts({
-			lineCanvas: 'lineGraph',
-			histCanvas: 'histGraph',
-			pieCanvas: 'pieGraph',
-			intervalMs: 200
-		   });
-		   charts.start();
-
-  // Wire triangle-action event to charts
-	  document.addEventListener('triangle-action', (e) => {
-		if (e.detail.type === 'merit') charts.triggermeritMode?.();
-		else charts.triggerdemeritMode?.();
-	  });
-
-initTaskPanel({ containerId: 'taskPanel' });
-	  
-		  saveSettings();
-});
-
-
-
-
-</script>
+  <div id="scanlineOverlay" aria-hidden="true"></div>
+  <div id="crtScanline" aria-hidden="true"></div>
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>

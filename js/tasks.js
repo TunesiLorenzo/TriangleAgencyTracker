@@ -1,6 +1,4 @@
-// tasks.js
-import { loadSettings } from './storage.js';
-import { saveSettings } from './storage.js';
+import { loadSettings, saveSettings } from './storage.js';
 import { playSfx } from './soundEffects.js';
 import { animateTriangle, updateTint, updateTopCharacters } from './charSystem.js';
 
@@ -48,7 +46,6 @@ export function initTaskPanel(opts = {}) {
       amount,
       used: false,
       mode: (mode === 'once' ? 'once' : 'infinite'),
-      icon: type === 'merit' ? '👍' : '👎'
     };
     container._tasks.push(taskObj);
     saveTasksArray(container._tasks);
@@ -67,7 +64,7 @@ export function initTaskPanel(opts = {}) {
       const chars = [...document.querySelectorAll('.char')];
       const target = chars[charIndex];
       if (!target) return;
-      executeTaskOnChar(task, target, container);
+      executeTaskOnChar(task, target);
     });
   });
 
@@ -92,7 +89,7 @@ function renderTaskCard(t) {
   delBtn.className = 'task-del';
   delBtn.title = 'Delete task';
   delBtn.type = 'button';
-  delBtn.textContent = '✖';
+  delBtn.textContent = '×';
 
   // deletion handler (stop propagation so clicking X doesn't open chooser)
   delBtn.addEventListener('click', (ev) => {
@@ -159,7 +156,13 @@ function openChooser(chooser, task, cb) {
       const img = c.querySelector('img')?.src || '';
       const btn = document.createElement('button');
       btn.className = 'chooser-item';
-      btn.innerHTML = `<img src="${img}" alt="" aria-hidden="true"><span>${escapeHtml(name)}</span>`;
+      const portrait = document.createElement('img');
+      portrait.src = img;
+      portrait.alt = '';
+      portrait.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.textContent = name;
+      btn.append(portrait, label);
       btn.addEventListener('click', () => { cb(i); closeChooser(chooser); });
       list.appendChild(btn);
     });
@@ -167,14 +170,13 @@ function openChooser(chooser, task, cb) {
   chooser.classList.remove('hidden');
   setTimeout(() => {
     const first = chooser.querySelector('.chooser-item');
-    if (first) first.focus();
-    chooser.focus();
+    first?.focus();
   }, 0);
 }
 function closeChooser(chooser) { chooser.classList.add('hidden'); }
 
 // ---------- execution ----------
-function executeTaskOnChar(task, charEl, panelEl) {
+function executeTaskOnChar(task, charEl) {
   const times = Math.max(1, Number(task.amount || 1));
   const isMerit = task.type === 'merit';
   const triangle = isMerit ? charEl.querySelector('.triangle') : charEl.querySelector('.triangle-down');
@@ -209,9 +211,6 @@ function executeTaskOnChar(task, charEl, panelEl) {
 
   document.dispatchEvent(new CustomEvent('task-executed', { detail: { task, charEl } }));
 }
-
-// ---------- helpers ----------
-function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 // ---------- convenience export for external usage ----------
 export function addTask(taskObj) {
