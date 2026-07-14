@@ -18,7 +18,7 @@ export function createTriangle(isMerit) {
     t.textContent = n + 1;
     animateTriangle(t);
     applyEffects();
-    playSfx(isMerit ? 'audio/merit.mp3' : 'audio/demerit.mp3');
+    playSfx(isMerit ? 'audio/merit_new.mp3' : 'audio/demerit_new.mp3');
     document.dispatchEvent(new CustomEvent('triangle-action', { detail: { type: isMerit ? 'merit' : 'demerit', element: t } }));
   });
 
@@ -189,7 +189,7 @@ export function addChar(data = {}) {
       updateTint(c);
       saveSettings();
       updateTopCharacters();
-      playSfx(triggersMerit ? 'audio/merit.mp3' : 'audio/demerit.mp3');
+      playSfx(triggersMerit ? 'audio/merit_new.mp3' : 'audio/demerit_new.mp3');
       document.dispatchEvent(new CustomEvent('triangle-action', { detail: { type: triggersMerit ? 'merit' : 'demerit', element: target, source: key } }));
     });
 

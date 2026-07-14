@@ -187,7 +187,7 @@ function executeTaskOnChar(task, charEl) {
     const n = parseInt(triangle.textContent) || 0;
     triangle.textContent = n + 1;
     animateTriangle(triangle);
-    playSfx(isMerit ? 'audio/merit.mp3' : 'audio/demerit.mp3');
+    playSfx(isMerit ? 'audio/merit_new.mp3' : 'audio/demerit_new.mp3');
     updateTint(charEl);
     i++;
     if (i < times) setTimeout(step, 120);
