@@ -12,6 +12,12 @@
   --competency-color: #ff3b30;  /* muted red */
   --reality-color:   #ffd60a;   /* warm yellow / gold */
   --anomaly-color:   #0a84ff;   /* soft blue */
+  --witness-color:   #bf5af2;   /* purple */
+
+  /* Anomaly outcomes */
+  --captured-color: var(--competency-color); /* red */
+  --killed-color:   var(--reality-color);    /* yellow */
+  --escaped-color:  var(--anomaly-color);    /* blue */
 
   /* OPTIONAL: dedicated graph vars */
   --graph-1: var(--competency-color);

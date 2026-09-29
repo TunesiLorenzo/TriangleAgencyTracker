@@ -24,22 +24,58 @@
   opacity: 0.75;
 }
 
-/* Restrained alarm pulse while Mission Risk is at the CRITICAL threshold */
-.graph-box.risk-critical {
-  animation: fx-risk-alarm 1.6s ease-in-out infinite;
+/* Risk glow begins at UNSTABLE and intensifies at every new level. */
+.graph-box[data-risk-level="unstable"] {
+  --risk-glow-color: rgba(255, 92, 64, 0.3);
+  --risk-glow-size: 13px;
+  --risk-glow-soft: 6px;
+  --risk-glow-inset: 4px;
+  --risk-pulse-speed: 2.2s;
+  animation: fx-risk-alarm var(--risk-pulse-speed) ease-in-out infinite;
 }
+
+.graph-box[data-risk-level="compromised"] {
+  --risk-glow-color: rgba(255, 48, 40, 0.55);
+  --risk-glow-size: 22px;
+  --risk-glow-soft: 10px;
+  --risk-glow-inset: 7px;
+  --risk-pulse-speed: 1.7s;
+  animation: fx-risk-alarm var(--risk-pulse-speed) ease-in-out infinite;
+}
+
+.graph-box[data-risk-level="critical"] {
+  --risk-glow-color: rgba(255, 8, 8, 0.85);
+  --risk-glow-size: 34px;
+  --risk-glow-soft: 16px;
+  --risk-glow-inset: 11px;
+  --risk-pulse-speed: 1.15s;
+  animation: fx-risk-alarm var(--risk-pulse-speed) ease-in-out infinite;
+}
+
+.graph-box[data-risk-level="catastrophic"] {
+  --risk-glow-color: rgba(255, 0, 0, 1);
+  --risk-glow-size: 48px;
+  --risk-glow-soft: 23px;
+  --risk-glow-inset: 16px;
+  --risk-pulse-speed: 0.75s;
+  animation: fx-risk-alarm var(--risk-pulse-speed) ease-in-out infinite;
+}
+
 @keyframes fx-risk-alarm {
   0%, 100% {
     box-shadow:
       0 18px 36px rgba(0,0,0,0.85),
       0 8px 14px rgba(0,0,0,0.6),
-      inset 0 1px 0 rgba(255,255,255,0.02);
+      0 0 var(--risk-glow-soft) var(--risk-glow-color),
+      inset 0 1px 0 rgba(255,255,255,0.02),
+      inset 0 0 var(--risk-glow-inset) var(--risk-glow-color);
   }
   50% {
     box-shadow:
-      0 0 24px rgba(255,40,40,0.65),
+      0 0 var(--risk-glow-size) var(--risk-glow-color),
       0 8px 14px rgba(0,0,0,0.6),
-      inset 0 1px 0 rgba(255,255,255,0.02);
+      inset 0 1px 0 rgba(255,255,255,0.02),
+      inset 0 0 var(--risk-glow-soft) var(--risk-glow-color);
   }
 }
 
@@ -104,4 +140,22 @@ canvas {
     margin: 0;
     object-fit: contain;
   }
+}
+
+/* Canvases are drawn at devicePixelRatio resolution by dashboard.js; --canvas-w
+   holds the logical width so the element keeps its original on-screen size. */
+.graph-box canvas {
+  width: var(--canvas-w, auto);
+  height: auto;
+}
+@media (orientation: portrait) {
+  .graph-box canvas { width: 100%; }
+}
+
+/* Risk level changed: one bright ring pulse (overrides the looping alarm briefly) */
+.graph-box.fx-risk-shift { animation: fx-risk-shift 650ms ease-out; }
+@keyframes fx-risk-shift {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,80,60,0.9); }
+  30%  { transform: scale(1.04); box-shadow: 0 0 0 10px rgba(255,80,60,0.35); }
+  100% { transform: scale(1); box-shadow: 0 0 0 22px rgba(255,80,60,0); }
 }

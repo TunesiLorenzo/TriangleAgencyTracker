@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#140808">
+  <title>Tracker Settings</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='settings.css') }}">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <span class="eyebrow">TRIANGLE AGENCY</span>
+        <h1>Tracker Settings</h1>
+      </div>
+      <div class="header-right">
+        <span id="saveStatus" class="status" data-state="idle">Loading…</span>
+        <a class="viewer-link" href="/" target="_blank" rel="noopener">Open viewer &rarr;</a>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Settings sections">
+      <button class="tab" type="button" role="tab" data-tab="sounds">Sounds</button>
+      <button class="tab" type="button" role="tab" data-tab="competencies">Competencies</button>
+      <button class="tab" type="button" role="tab" data-tab="effects">Effects</button>
+    </nav>
+
+    <p class="live-note">Changes save automatically and apply to every open viewer within a couple of seconds.</p>
+
+    <section class="tab-panel" data-tab-panel="sounds">
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">OUTPUT</span><h2>Master volume</h2></div>
+        </div>
+        <div id="masterVolume"></div>
+        <p class="hint">Each viewer screen also has its own mute button in the top bar.</p>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">TRACKER EVENTS</span><h2>Event sounds</h2></div>
+        </div>
+        <p class="hint">Pick a built-in sound or a file from the library. "Then" plays a second sound right after.</p>
+        <div id="eventSlots" class="slot-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">AUDIO FOLDER</span><h2>Sound library</h2></div>
+          <label class="button upload-button">Upload sounds<input id="uploadInput" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm" multiple hidden></label>
+        </div>
+        <p class="hint">Files in the tracker's <code>audio/</code> folder. Uploads go to <code>audio/uploads/</code>; you can also drop files here.</p>
+        <div id="library" class="library"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-tab-panel="competencies">
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">AGENT CARDS</span><h2>Prime Directive &amp; Encouraged Behavior</h2></div>
+          <label class="button upload-button">Upload to Competencies<input id="competencyUpload" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm" multiple hidden></label>
+        </div>
+        <p class="hint">Played by the buttons on the back of each agent card, based on the agent's Competency.
+          "Default" uses <code>audio/Competencies/&lt;Competency&gt;_Bad</code> for the Prime Directive and
+          <code>&lt;Competency&gt;_Good</code> for Encouraged Behavior (e.g. <code>PR_Bad.wav</code>), or the Demerit / Merit sound if there is no such file.
+          You can also pick any file below.</p>
+        <div id="competencySlots" class="competency-list"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-tab-panel="effects">
+      <div id="effectGroups"></div>
+    </section>
+
+    <footer>
+      <button id="resetAll" class="secondary danger" type="button">Reset all settings to defaults</button>
+    </footer>
+  </main>
+  <script type="module" src="{{ url_for('static', filename='settings.js') }}"></script>
+</body>
+</html>

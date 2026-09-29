@@ -4,9 +4,10 @@
 // under world.timeline (same store the rest of the app uses).
 
 import { getAgentStats } from './charSystem.js';
-import { loadSettings } from './storage.js';
+import { loadSettings, updateSettings } from './storage.js';
 
 const MAX_TIMELINE = 150;
+const MAX_VISIBLE_TIMELINE = 40;
 const MAX_WITNESSES = 20; // matches witnesseffects.js's maxWitnesses
 const MAX_CHAOS = 16;     // matches effects.js's chaosToIntensity scale
 
@@ -14,23 +15,32 @@ const rootStyles = getComputedStyle(document.documentElement);
 const COLOR_MERIT = rootStyles.getPropertyValue('--competency-color').trim() || '#ff3b30';
 const COLOR_DEMERIT = rootStyles.getPropertyValue('--anomaly-color').trim() || '#0a84ff';
 const COLOR_CHAOS = rootStyles.getPropertyValue('--reality-color').trim() || '#ffd60a';
+const COLOR_WITNESS = rootStyles.getPropertyValue('--witness-color').trim() || '#bf5af2';
 const COLOR_GOLD = rootStyles.getPropertyValue('--gold-border').trim() || 'gold';
 
-const STORAGE_KEY = 'rpgSettings';
 let timeline = [];
+let lastRiskLevel = null;
 let lastChaosBucket = 0;
 const els = {};
 
 /* ---------- timeline persistence (world.timeline in localStorage) ---------- */
 function persistTimeline() {
-  try {
-    const saved = loadSettings() || {};
-    saved.world = (saved.world && typeof saved.world === 'object') ? saved.world : {};
-    saved.world.timeline = timeline;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
-  } catch (error) {
-    console.error('Failed to persist timeline', error);
-  }
+  updateSettings(settings => { settings.world.timeline = timeline; });
+}
+
+/* ---------- crisp canvases on HiDPI screens ----------
+   The width/height attributes in index.html are the logical drawing size.
+   The backing store is scaled by devicePixelRatio and the context transformed,
+   so all drawing code keeps working in logical units. */
+function setupCanvas(canvas) {
+  const logical = { w: canvas.width, h: canvas.height };
+  const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  canvas.style.setProperty('--canvas-w', `${logical.w}px`);
+  canvas.width = Math.round(logical.w * dpr);
+  canvas.height = Math.round(logical.h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, ...logical };
 }
 
 function currentTotals() {
@@ -40,6 +50,16 @@ function currentTotals() {
   const witness = Number(document.getElementById('witnessCounter')?.textContent || 0);
   const chaos = Number(document.getElementById('chaosCounter')?.textContent || 0);
   return { merit, demerit, witness, chaos };
+}
+
+function numericValue(point, key) {
+  const value = Number(point?.[key]);
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function fittedAxisMax(value) {
+  if (!Number.isFinite(value) || value <= 1) return 1;
+  return Math.ceil(value);
 }
 
 function pushEvent({ label, isTask = false, witnessMarker = false } = {}) {
@@ -55,10 +75,13 @@ function flash(el, className) {
   el.classList.remove(className);
   void el.offsetWidth;
   el.classList.add(className);
-  el.addEventListener('animationend', function handler() {
+  // Ignore animationend events bubbling up from children (e.g. the triangle pop),
+  // which previously cut the card flash short.
+  el.addEventListener('animationend', function handler(event) {
+    if (event.target !== el) return;
     el.classList.remove(className);
     el.removeEventListener('animationend', handler);
-  }, { once: true });
+  });
 }
 
 /* ---------- risk ---------- */
@@ -67,20 +90,22 @@ function computeRisk() {
   const chaos = Number(document.getElementById('chaosCounter')?.textContent || 0);
   const witnessRatio = Math.min(1, Math.max(0, witness / MAX_WITNESSES));
   const chaosRatio = Math.min(1, Math.max(0, chaos / MAX_CHAOS));
-  const score = (witnessRatio + chaosRatio) / 2;
+  // The mission level is based on the combined threat, while the two rings keep
+  // showing Witnesses and Chaos independently.
+  const score = witness + chaos;
 
   let level = 'CONTROLLED';
-  if (score >= 0.75) level = 'CRITICAL';
-  else if (score >= 0.5) level = 'COMPROMISED';
-  else if (score >= 0.25) level = 'UNSTABLE';
+  if (score >= 18) level = 'CATASTROPHIC';
+  else if (score >= 11) level = 'CRITICAL';
+  else if (score >= 6) level = 'COMPROMISED';
+  else if (score >= 2) level = 'UNSTABLE';
 
   return { witnessRatio, chaosRatio, score, level, witness, chaos };
 }
 
 /* ---------- Agent Performance (was: histogram) ---------- */
 function renderAgentPerformance() {
-  const ctx = els.histCtx, canvas = els.hist;
-  const w = canvas.width, h = canvas.height;
+  const { ctx, w, h } = els.hist;
   ctx.clearRect(0, 0, w, h);
 
   const stats = getAgentStats();
@@ -93,13 +118,19 @@ function renderAgentPerformance() {
   }
 
   const rows = 5;
-  const rowH = h / rows;
+  const headerH = 14;
+  const rowH = (h - headerH) / rows;
   const midX = w / 2;
   const maxVal = Math.max(1, ...stats.map(s => Math.max(s.merit, s.demerit)));
   const barMax = midX - 46; // leave room for name + net text
 
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`DEMERIT  ${maxVal}  ←  0  →  ${maxVal}  MERIT`, midX, 9);
+
   stats.forEach((s, i) => {
-    const y0 = i * rowH;
+    const y0 = headerH + i * rowH;
     const cy = y0 + rowH / 2;
 
     if (s.isTopMerit || s.isTopDemerit) {
@@ -140,8 +171,7 @@ function renderAgentPerformance() {
 
 /* ---------- Mission Timeline (was: line graph) ---------- */
 function renderTimeline() {
-  const ctx = els.lineCtx, canvas = els.line;
-  const w = canvas.width, h = canvas.height;
+  const { ctx, w, h } = els.line;
   ctx.clearRect(0, 0, w, h);
 
   if (timeline.length < 2) {
@@ -152,43 +182,93 @@ function renderTimeline() {
     return;
   }
 
-  const n = timeline.length;
-  const maxMerit = Math.max(1, ...timeline.map(p => p.merit));
-  const maxDemerit = Math.max(1, ...timeline.map(p => p.demerit));
-  const maxChaos = Math.max(1, ...timeline.map(p => p.chaos));
-  const pad = 6;
-  const xAt = i => (i / (n - 1)) * (w - pad * 2) + pad;
+  const series = [
+    { key: 'merit', label: 'Merit', color: COLOR_MERIT },
+    { key: 'demerit', label: 'Demerit', color: COLOR_DEMERIT },
+    { key: 'chaos', label: 'Chaos', color: COLOR_CHAOS },
+    { key: 'witness', label: 'Witness', color: COLOR_WITNESS }
+  ];
+  // Limit the visible history so an old spike does not keep the Y axis enlarged
+  // for the entire mission. The complete timeline remains persisted.
+  const points = timeline.slice(-MAX_VISIBLE_TIMELINE);
+  const n = points.length;
+  const firstEventIndex = timeline.length - n;
+  const largestValue = Math.max(1, ...points.flatMap(point =>
+    series.map(({ key }) => numericValue(point, key))
+  ));
+  const axisMax = fittedAxisMax(largestValue);
+  const plot = { left: 28, right: w - 7, top: 25, bottom: h - 18 };
+  const xAt = i => plot.left + (i / (n - 1)) * (plot.right - plot.left);
+  const yAt = value => plot.bottom - (value / axisMax) * (plot.bottom - plot.top);
 
-  function drawSeries(key, max, color) {
+  // A single shared numeric axis keeps equal values at equal heights for every
+  // color. Previously, each series used its own maximum and distorted the data.
+  ctx.font = '9px sans-serif';
+  ctx.lineWidth = 1;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const value = (axisMax * i) / 4;
+    const y = yAt(value);
+    ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.10)';
     ctx.beginPath();
-    timeline.forEach((p, i) => {
+    ctx.moveTo(plot.left, y);
+    ctx.lineTo(plot.right, y);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    const tickLabel = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+    ctx.fillText(tickLabel, plot.left - 4, y);
+  }
+
+  // Use steps rather than diagonal interpolation: one series changes exactly at
+  // its event while the other series remain at their previous values.
+  function drawSeries({ key, color }) {
+    ctx.beginPath();
+    let previousY = yAt(numericValue(points[0], key));
+    ctx.moveTo(xAt(0), previousY);
+    for (let i = 1; i < n; i++) {
       const x = xAt(i);
-      const y = h - pad - (p[key] / max) * (h - pad * 2);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
+      const y = yAt(numericValue(points[i], key));
+      ctx.lineTo(x, previousY);
+      ctx.lineTo(x, y);
+      previousY = y;
+    }
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
     ctx.stroke();
   }
 
-  drawSeries('merit', maxMerit, COLOR_MERIT);
-  drawSeries('demerit', maxDemerit, COLOR_DEMERIT);
-  drawSeries('chaos', maxChaos, COLOR_CHAOS);
+  series.forEach(drawSeries);
 
-  // witness eye markers + compact labels for major (task) events, skipping
-  // labels that would land too close together to stay readable
+  // Legend includes the current value, so color mapping and axes are explicit.
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '9px sans-serif';
+  const legendSlot = (plot.right - plot.left) / series.length;
+  series.forEach(({ key, label, color }, index) => {
+    const legendX = plot.left + index * legendSlot;
+    ctx.fillStyle = color;
+    ctx.fillRect(legendX, 7, 8, 3);
+    ctx.textAlign = 'left';
+    ctx.fillText(`${label} ${numericValue(points[n - 1], key)}`, legendX + 11, 12);
+  });
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.textAlign = 'left';
+  ctx.fillText(firstEventIndex === 0 ? 'START' : `EVENT ${firstEventIndex}`, plot.left, h - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(`EVENT ${timeline.length - 1}`, plot.right, h - 4);
+
+  // Compact labels for major (task) events, skipping labels that would land
+  // too close together to stay readable. Witnesses are rendered as a series.
   let lastLabelX = -Infinity;
   ctx.font = '10px sans-serif';
-  timeline.forEach((p, i) => {
+  points.forEach((p, i) => {
     const x = xAt(i);
-    if (p.witnessMarker) {
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.textAlign = 'center';
-      ctx.fillText('\u{1F441}', x, 12);
-    } else if (p.isTask && x - lastLabelX > 26) {
+    if (p.isTask && x - lastLabelX > 26) {
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
       ctx.textAlign = 'center';
-      ctx.fillText(p.label.slice(0, 6), x, h - 2);
+      ctx.fillText(p.label.slice(0, 6), x, plot.bottom - 3);
       lastLabelX = x;
     }
   });
@@ -196,8 +276,7 @@ function renderTimeline() {
 
 /* ---------- Mission Risk (was: pie chart) ---------- */
 function renderRisk() {
-  const ctx = els.pieCtx, canvas = els.pie;
-  const w = canvas.width, h = canvas.height;
+  const { ctx, w, h } = els.pie;
   ctx.clearRect(0, 0, w, h);
 
   const risk = computeRisk();
@@ -224,8 +303,8 @@ function renderRisk() {
     }
   }
 
-  ring(outerR - ringW / 2, risk.chaosRatio, COLOR_MERIT);    // outer ring = chaos
-  ring(innerR - ringW / 2, risk.witnessRatio, COLOR_CHAOS);  // inner ring = witnesses
+  ring(outerR - ringW / 2, risk.chaosRatio, COLOR_CHAOS);      // outer ring = chaos
+  ring(innerR - ringW / 2, risk.witnessRatio, COLOR_WITNESS);  // inner ring = witnesses
 
   let fontSize = 15;
   ctx.font = `bold ${fontSize}px sans-serif`;
@@ -233,26 +312,40 @@ function renderRisk() {
     fontSize -= 1;
     ctx.font = `bold ${fontSize}px sans-serif`;
   }
-  ctx.fillStyle = risk.level === 'CRITICAL' ? '#ff4d4d' : '#fff';
+  const levelColors = {
+    CONTROLLED: '#fff',
+    UNSTABLE: '#ff9f70',
+    COMPROMISED: '#ff5a4f',
+    CRITICAL: '#ff2020',
+    CATASTROPHIC: '#ff0000'
+  };
+  ctx.fillStyle = levelColors[risk.level];
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(risk.level, cx, cy);
   ctx.textBaseline = 'alphabetic';
 
-  els.pieBox?.classList.toggle('risk-critical', risk.level === 'CRITICAL');
+  if (els.pieBox) {
+    els.pieBox.dataset.riskLevel = risk.level.toLowerCase();
+    if (lastRiskLevel && lastRiskLevel !== risk.level) flash(els.pieBox, 'fx-risk-shift');
+  }
+  if (lastRiskLevel !== risk.level) {
+    document.dispatchEvent(new CustomEvent('risk-changed', { detail: { level: risk.level.toLowerCase() } }));
+  }
+  lastRiskLevel = risk.level;
 }
 
 /* ---------- wiring ---------- */
 export function initDashboard() {
-  els.line = document.getElementById('lineGraph');
-  els.hist = document.getElementById('histGraph');
-  els.pie = document.getElementById('pieGraph');
-  if (!els.line || !els.hist || !els.pie) return;
+  const line = document.getElementById('lineGraph');
+  const hist = document.getElementById('histGraph');
+  const pie = document.getElementById('pieGraph');
+  if (!line || !hist || !pie) return;
 
-  els.lineCtx = els.line.getContext('2d');
-  els.histCtx = els.hist.getContext('2d');
-  els.pieCtx = els.pie.getContext('2d');
-  els.pieBox = els.pie.closest('.graph-box');
+  els.line = setupCanvas(line);
+  els.hist = setupCanvas(hist);
+  els.pie = setupCanvas(pie);
+  els.pieBox = pie.closest('.graph-box');
   els.witnessFlash = document.getElementById('witnessFlash');
   els.chaosPulse = document.getElementById('chaosPulseOverlay');
 

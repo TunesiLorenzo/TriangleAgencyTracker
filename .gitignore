@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+.venv/
+tracker_config.json
+*.json.tmp

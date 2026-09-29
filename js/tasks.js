@@ -1,11 +1,16 @@
-import { loadSettings, saveSettings } from './storage.js';
-import { playSfx } from './soundEffects.js';
-import { animateTriangle, updateTint, updateTopCharacters } from './charSystem.js';
+import { loadSettings, saveSettings, updateSettings } from './storage.js';
+import { playEvent } from './soundEffects.js';
+import { animateTriangle, chooseAgent, updateTint, updateTopCharacters } from './charSystem.js';
+import { openModal, toast } from './ui.js';
+
+const MAX_TASK_AMOUNT = 20;
 
 // ---------- persistence helpers ----------
-function readSaved() { return loadSettings() || { chars: [], world: { branchName:'', witness:0, chaos:0 } }; }
-function writeSaved(obj) { try { localStorage.setItem('rpgSettings', JSON.stringify(obj)); } catch(e){ console.error(e); } }
-function saveTasksArray(tasks){ const s = readSaved(); s.world = s.world || {}; s.world.tasks = tasks; writeSaved(s); }
+function saveTasksArray(tasks) {
+  updateSettings(settings => { settings.world.tasks = tasks; });
+}
+
+function getPanel() { return document.getElementById('taskPanel'); }
 
 // ---------- init panel ----------
 export function initTaskPanel(opts = {}) {
@@ -16,66 +21,119 @@ export function initTaskPanel(opts = {}) {
 
   // Add "Add Task" button (kept as first child)
   const addBtn = document.createElement('button');
+  addBtn.type = 'button';
   addBtn.textContent = '+ Add Task';
   addBtn.className = 'add-task-btn';
   container.appendChild(addBtn);
 
   // load tasks
-  const saved = readSaved();
-  const tasks = (saved?.world?.tasks && Array.isArray(saved.world.tasks)) ? saved.world.tasks : [];
+  const saved = loadSettings();
+  const tasks = Array.isArray(saved?.world?.tasks) ? saved.world.tasks : [];
   container._tasks = tasks;
-
-  // render existing tasks
   tasks.forEach(t => container.appendChild(renderTaskCard(t)));
 
-  // create chooser (single reused element)
-  const chooser = createChooser();
-  document.body.appendChild(chooser);
+  addBtn.addEventListener('click', () => openTaskForm(taskObj => addTask(taskObj)));
 
-  // add task flow
-  addBtn.addEventListener('click', () => {
-    const title = prompt('Task title:'); if (!title) return;
-    const type = prompt('Type: merit or demerit', 'merit').toLowerCase();
-    if (type !== 'merit' && type !== 'demerit') return alert('Type must be merit or demerit');
-    const amount = parseInt(prompt('Amount (number of triangles to apply)', '1')) || 1;
-    const mode = prompt('Mode: once or infinite', 'infinite').toLowerCase();
-    const taskObj = {
-      id: 'task-' + Date.now(),
-      title,
-      type,
-      amount,
-      used: false,
-      mode: (mode === 'once' ? 'once' : 'infinite'),
-    };
-    container._tasks.push(taskObj);
-    saveTasksArray(container._tasks);
-    container.appendChild(renderTaskCard(taskObj));
-  });
-
-  // delegate clicks: open chooser for that task (but deletion handled on button)
-  container.addEventListener('click', ev => {
+  // delegate clicks: pick an agent for that task (deletion handled on its own button)
+  container.addEventListener('click', async ev => {
     const card = ev.target.closest('.task');
-    if (!card) return;
-    // if the click was on the delete button it would have been handled by its own listener
+    if (!card || card.classList.contains('running')) return;
     const task = container._tasks.find(t => t.id === card.dataset.id);
     if (!task) return;
-    if (task.mode === 'once' && task.used) return; // inactive
-    openChooser(chooser, task, (charIndex) => {
-      const chars = [...document.querySelectorAll('.char')];
-      const target = chars[charIndex];
-      if (!target) return;
-      executeTaskOnChar(task, target);
-    });
+    if (task.mode === 'once' && task.used) {
+      toast('That task has already been used.', { kind: 'warn' });
+      return;
+    }
+    const target = await chooseAgent(`Apply "${task.title}" to…`);
+    if (target) executeTaskOnChar(task, target, card);
   });
 
   return container;
 }
 
-// ---------- Render card (now creates elements so delete button can have its own listener) ----------
+// ---------- new task form ----------
+function openTaskForm(onCreate) {
+  const form = document.createElement('form');
+  form.className = 'task-form';
+  form.noValidate = true;
+  form.innerHTML = `
+    <label class="field">
+      <span class="field-label">Title</span>
+      <input name="title" type="text" maxlength="40" placeholder="e.g. Contained the anomaly" autocomplete="off" autofocus>
+    </label>
+    <div class="field">
+      <span class="field-label">Effect</span>
+      <div class="segmented">
+        <label class="seg-merit"><input type="radio" name="type" value="merit" checked><span>&#9650; Merit</span></label>
+        <label class="seg-demerit"><input type="radio" name="type" value="demerit"><span>&#9660; Demerit</span></label>
+      </div>
+    </div>
+    <label class="field">
+      <span class="field-label">Amount</span>
+      <input name="amount" type="number" min="1" max="${MAX_TASK_AMOUNT}" value="1">
+    </label>
+    <div class="field">
+      <span class="field-label">Uses</span>
+      <div class="segmented">
+        <label><input type="radio" name="mode" value="infinite" checked><span>Repeatable</span></label>
+        <label><input type="radio" name="mode" value="once"><span>Once</span></label>
+      </div>
+    </div>
+    <button type="submit" hidden></button>`;
+
+  const titleInput = form.elements.title;
+  titleInput.addEventListener('input', () => titleInput.classList.remove('invalid'));
+
+  openModal({
+    title: 'New Task',
+    content: form,
+    className: 'task-modal',
+    actions: [
+      { label: 'Cancel' },
+      {
+        label: 'Create Task',
+        variant: 'primary',
+        submit: true,
+        onClick: () => {
+          const data = new FormData(form);
+          const title = String(data.get('title') || '').trim();
+          if (!title) {
+            titleInput.classList.remove('invalid');
+            void titleInput.offsetWidth;
+            titleInput.classList.add('invalid');
+            titleInput.focus();
+            return false;
+          }
+          const amount = Math.min(MAX_TASK_AMOUNT, Math.max(1, Number.parseInt(data.get('amount'), 10) || 1));
+          onCreate({
+            id: 'task-' + Date.now(),
+            title,
+            type: data.get('type') === 'demerit' ? 'demerit' : 'merit',
+            amount,
+            used: false,
+            mode: data.get('mode') === 'once' ? 'once' : 'infinite'
+          });
+          return true;
+        }
+      }
+    ]
+  });
+}
+
+// ---------- Render card ----------
 function renderTaskCard(t) {
   const card = document.createElement('div');
-  card.className = 'task';
+  card.className = `task task-${t.type === 'demerit' ? 'demerit' : 'merit'}`;
   card.dataset.id = t.id;
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+  card.title = 'Click to apply to an agent';
+  card.addEventListener('keydown', ev => {
+    if (ev.target === card && (ev.key === 'Enter' || ev.key === ' ')) {
+      ev.preventDefault();
+      card.click();
+    }
+  });
 
   const titleSpan = document.createElement('span');
   titleSpan.className = 'task-title';
@@ -83,7 +141,7 @@ function renderTaskCard(t) {
 
   const metaSpan = document.createElement('span');
   metaSpan.className = 'task-meta';
-  metaSpan.textContent = `+${t.amount} ${t.type === 'merit' ? 'merit' : 'demerit'}`;
+  metaSpan.textContent = `${t.type === 'merit' ? '▲' : '▼'} +${t.amount} ${t.type === 'merit' ? 'merit' : 'demerit'} · ${t.mode === 'once' ? 'once' : '∞'}`;
 
   const delBtn = document.createElement('button');
   delBtn.className = 'task-del';
@@ -91,35 +149,36 @@ function renderTaskCard(t) {
   delBtn.type = 'button';
   delBtn.textContent = '×';
 
-  // deletion handler (stop propagation so clicking X doesn't open chooser)
-  delBtn.addEventListener('click', (ev) => {
+  // deletion handler (stop propagation so clicking X doesn't open the chooser)
+  delBtn.addEventListener('click', ev => {
     ev.stopPropagation();
     deleteTaskById(t.id);
   });
 
   card.append(titleSpan, metaSpan, delBtn);
 
-  if (t.mode === 'once' && t.used) {
-    card.classList.add('used');
-  }
+  if (t.mode === 'once' && t.used) card.classList.add('used');
   return card;
 }
 
 // ---------- delete task ----------
 export function deleteTaskById(id) {
-  const panel = document.getElementById('taskPanel');
+  const panel = getPanel();
   if (!panel || !panel._tasks) return;
   panel._tasks = panel._tasks.filter(t => t.id !== id);
-  // remove DOM node
-  const card = panel.querySelector(`.task[data-id="${id}"]`);
-  if (card) card.remove();
-  // persist
   saveTasksArray(panel._tasks);
+
+  const card = panel.querySelector(`.task[data-id="${id}"]`);
+  if (!card) return;
+  card.classList.add('leaving');
+  const detach = () => card.remove();
+  card.addEventListener('animationend', detach, { once: true });
+  setTimeout(detach, 400);
 }
 
 // ---------- reset tasks ----------
 export function resetTasks() {
-  const panel = document.getElementById('taskPanel');
+  const panel = getPanel();
   if (!panel) return;
   // keep the add button (first child) if present, remove others
   const addBtn = panel.querySelector('.add-task-btn');
@@ -129,95 +188,59 @@ export function resetTasks() {
   saveTasksArray([]);
 }
 
-// ---------- chooser UI ----------
-function createChooser() {
-  const wrap = document.createElement('div');
-  wrap.className = 'task-chooser hidden';
-  wrap.innerHTML = `
-    <div class="chooser-panel" role="dialog" aria-modal="true" aria-label="Choose character">
-      <div class="chooser-title">Choose character</div>
-      <div class="chooser-list"></div>
-      <div class="chooser-footer"><button class="chooser-cancel">Cancel</button></div>
-    </div>`;
-  wrap.querySelector('.chooser-cancel').addEventListener('click', () => closeChooser(wrap));
-  wrap.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeChooser(wrap); });
-  return wrap;
-}
-
-function openChooser(chooser, task, cb) {
-  const list = chooser.querySelector('.chooser-list');
-  list.innerHTML = '';
-  const chars = [...document.querySelectorAll('.char')];
-  if (!chars.length) {
-    list.innerHTML = '<div class="chooser-empty">No characters available</div>';
-  } else {
-    chars.forEach((c, i) => {
-      const name = c.querySelector('.stat input')?.value || `Char ${i+1}`;
-      const img = c.querySelector('img')?.src || '';
-      const btn = document.createElement('button');
-      btn.className = 'chooser-item';
-      const portrait = document.createElement('img');
-      portrait.src = img;
-      portrait.alt = '';
-      portrait.setAttribute('aria-hidden', 'true');
-      const label = document.createElement('span');
-      label.textContent = name;
-      btn.append(portrait, label);
-      btn.addEventListener('click', () => { cb(i); closeChooser(chooser); });
-      list.appendChild(btn);
-    });
-  }
-  chooser.classList.remove('hidden');
-  setTimeout(() => {
-    const first = chooser.querySelector('.chooser-item');
-    first?.focus();
-  }, 0);
-}
-function closeChooser(chooser) { chooser.classList.add('hidden'); }
-
 // ---------- execution ----------
-function executeTaskOnChar(task, charEl) {
+function executeTaskOnChar(task, charEl, card) {
   const times = Math.max(1, Number(task.amount || 1));
   const isMerit = task.type === 'merit';
   const triangle = isMerit ? charEl.querySelector('.triangle') : charEl.querySelector('.triangle-down');
   if (!triangle) return;
+
+  card?.classList.add('running');
 
   let i = 0;
   const step = () => {
     const n = parseInt(triangle.textContent) || 0;
     triangle.textContent = n + 1;
     animateTriangle(triangle);
-    playSfx(isMerit ? 'audio/merit_new.mp3' : 'audio/demerit_new.mp3');
+    playEvent(isMerit ? 'merit' : 'demerit');
     updateTint(charEl);
     i++;
-    if (i < times) setTimeout(step, 120);
-    else {
-      saveSettings();
-      updateTopCharacters();
+    if (i < times) {
+      setTimeout(step, 120);
+      return;
+    }
 
-      if (task.mode === 'once') {
-        task.used = true;
-        const panel = document.getElementById('taskPanel');
-        if (panel) {
-          panel._tasks = panel._tasks.map(t => (t.id === task.id ? task : t));
-          const card = panel.querySelector(`.task[data-id="${task.id}"]`);
-          if (card) card.classList.add('used');
-          saveTasksArray(panel._tasks);
-        }
+    saveSettings();
+    updateTopCharacters();
+    card?.classList.remove('running');
+
+    // Sample the graph only after every point in a multi-point task has been
+    // applied; sampling before completion left the timeline one or more points behind.
+    document.dispatchEvent(new CustomEvent('task-executed', { detail: { task, charEl } }));
+
+    if (task.mode === 'once') {
+      task.used = true;
+      const panel = getPanel();
+      if (panel) {
+        panel._tasks = panel._tasks.map(t => (t.id === task.id ? task : t));
+        panel.querySelector(`.task[data-id="${task.id}"]`)?.classList.add('used');
+        saveTasksArray(panel._tasks);
       }
     }
   };
   step();
-
-  document.dispatchEvent(new CustomEvent('task-executed', { detail: { task, charEl } }));
 }
 
-// ---------- convenience export for external usage ----------
+// ---------- add task (used by the form, also exported for external usage) ----------
 export function addTask(taskObj) {
-  const panel = document.getElementById('taskPanel');
+  const panel = getPanel();
   if (!panel) return;
   panel._tasks = panel._tasks || [];
   panel._tasks.push(taskObj);
   saveTasksArray(panel._tasks);
-  panel.appendChild(renderTaskCard(taskObj));
+  const card = renderTaskCard(taskObj);
+  card.classList.add('entering');
+  card.addEventListener('animationend', () => card.classList.remove('entering'), { once: true });
+  panel.appendChild(card);
+  card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }

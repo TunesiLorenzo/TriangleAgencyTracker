@@ -1,44 +1,74 @@
-export function backgroundhue(layer, options = {}) {
-    let targetHue = 0;
-    let currentHue = 0;
-    let rafId = null;
-    const maxWitnesses = 20;
+// witnesseffects.js
+// Witness-driven background tint. The hue rotates red -> magenta -> violet -> blue
+// (0deg down to -120deg) so it never passes through yellow/green, eases with a
+// time-based curve (same speed at any refresh rate), and a new witness gives a
+// short brightness pulse plus a small overshoot instead of a hard color jump.
 
-    const smoothing = options.smoothing ?? 0.01;       // normal easing
-    const rapidSmoothing = options.rapidSmoothing ?? 0.3; // optional faster return
+export function backgroundhue(layer) {
+  // Tuned from /settings (config.effects.witnessHue) via configure().
+  let maxWitnesses = 20;
+  let maxShift = 120;      // degrees; -120 turns red into blue
+  let settleTau = 0.35;    // s; about a third of the settle time
+  let overshoot = 14;      // degrees past the target on a new witness
+  let pulseEnabled = true;
+  let lastCount = 0;
 
-    function updateTarget(count) {
-        const c = Math.max(0, Math.min(maxWitnesses, count));
-        targetHue = (c / maxWitnesses) * 240; // 0=red, 240=blue
+  let targetHue = 0;
+  let currentHue = 0;
+  let rafId = null;
+  let lastTime = 0;
+
+  const hueFor = count => -(Math.max(0, Math.min(maxWitnesses, count)) / maxWitnesses) * maxShift;
+
+  function apply() {
+    layer.style.filter = Math.abs(currentHue) < 0.05 ? '' : `hue-rotate(${currentHue.toFixed(2)}deg)`;
+  }
+
+  function step(now) {
+    const dt = Math.min(0.1, (now - (lastTime || now)) / 1000);
+    lastTime = now;
+    currentHue += (targetHue - currentHue) * (1 - Math.exp(-dt / settleTau));
+    if (Math.abs(targetHue - currentHue) < 0.5) { // sub-degree tail is invisible
+      currentHue = targetHue;
+      apply();
+      rafId = null;
+      lastTime = 0;
+      return;
     }
+    apply();
+    rafId = requestAnimationFrame(step);
+  }
 
-    function rapidShift(isIncrease) {
-        currentHue = isIncrease ? 240 : 360;
-        layer.style.filter = `hue-rotate(${currentHue}deg)`;
-        // start normal easing back toward targetHue
-        if(!rafId) rafId = requestAnimationFrame(step);
-    }
+  function pulse() {
+    if (!pulseEnabled) return;
+    layer.classList.remove('witness-pulse');
+    void layer.offsetWidth;
+    layer.classList.add('witness-pulse');
+  }
 
-    function step() {
-        const diff = targetHue - currentHue;
-        if(Math.abs(diff) < 0.5) {
-            currentHue = targetHue;
-            layer.style.filter = `hue-rotate(${currentHue}deg)`;
-            rafId = null;
-            return;
+  return {
+    configure(options) {
+      maxWitnesses = Math.max(1, Number(options.maxWitnesses) || 20);
+      maxShift = Number(options.maxShift) || 0;
+      settleTau = Math.max(0.02, (Number(options.settleSeconds) || 1) / 3);
+      overshoot = Number(options.overshoot) || 0;
+      pulseEnabled = !!options.pulse;
+      targetHue = hueFor(lastCount);
+      if (!rafId) rafId = requestAnimationFrame(step);
+    },
+    setWitnessCount(count, isRapid = false) {
+      lastCount = count;
+      const previous = targetHue;
+      targetHue = hueFor(count);
+      if (isRapid) {
+        // Past the hue cap the color can't move further, but the pulse still fires.
+        if (targetHue !== previous) {
+          currentHue = targetHue + Math.sign(targetHue - previous) * overshoot;
+          apply();
         }
-        // use normal smoothing
-        currentHue += diff * smoothing;
-        layer.style.filter = `hue-rotate(${currentHue}deg)`;
-        rafId = requestAnimationFrame(step);
+        pulse();
+      }
+      if (!rafId) rafId = requestAnimationFrame(step);
     }
-
-    return {
-        setWitnessCount(count, isRapid=false) {
-            const increasing = count > ((targetHue / 240) * maxWitnesses);
-            updateTarget(count);
-            if(isRapid) rapidShift(increasing);
-            else if(!rafId) rafId = requestAnimationFrame(step);
-        }
-    };
+  };
 }

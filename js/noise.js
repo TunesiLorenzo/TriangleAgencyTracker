@@ -18,14 +18,19 @@ export const noise = (function() {
 
   let running = false;
   let rafId = null;
+  // Reused low-resolution buffer; allocating a canvas per frame churned the GC.
+  const temp = document.createElement('canvas');
+  const tempCtx = temp.getContext('2d');
 
   // --- Default settings ---
   const state = {
     intensity: 0.05,      // visual opacity
     density: 0.12,        // probability for a pixel to be noisy
     frequency: 0.05,      // small buffer scale (0.01..0.5)
-    color: null           // optional RGBA tint
+    color: null,          // optional RGBA tint
+    fps: 12               // grain redraw rate; film grain reads better (and costs far less) below 60fps
   };
+  let lastDraw = 0;
 
   // --- Initialize canvas ---
   function resizeCanvas() {
@@ -61,10 +66,9 @@ export const noise = (function() {
       }
     }
 
-    const temp = document.createElement('canvas');
-    temp.width = w;
-    temp.height = h;
-    temp.getContext('2d').putImageData(img, 0, 0);
+    if (temp.width !== w) temp.width = w;
+    if (temp.height !== h) temp.height = h;
+    tempCtx.putImageData(img, 0, 0);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(temp, 0, 0, canvas.width, canvas.height);
@@ -79,9 +83,17 @@ export const noise = (function() {
     canvas.style.opacity = state.intensity;
   }
 
-  function loop() {
+  function loop(now = performance.now()) {
     if (!running) return;
-    drawNoise();
+    // Invisible at zero intensity: skip the full-screen redraw entirely.
+    if (state.intensity <= 0) {
+      canvas.style.opacity = 0;
+    } else if (now - lastDraw >= 1000 / state.fps - 4) { // slack so 60Hz frames hit the target rate
+      lastDraw = now;
+      drawNoise();
+    } else {
+      canvas.style.opacity = state.intensity;
+    }
     rafId = requestAnimationFrame(loop);
   }
 
@@ -103,6 +115,7 @@ export const noise = (function() {
     setDensity(v) { state.density = Math.max(0, Math.min(1, Number(v) || 0)); },
     setFrequency(v) { state.frequency = Math.max(0.01, Math.min(0.5, Number(v) || 0.05)); },
     setColor(rgba) { state.color = rgba || null; },
+    setFps(v) { state.fps = Math.max(1, Math.min(60, Number(v) || 12)); },
     setContainerPosition(pos) { canvas.style.position = pos || 'fixed'; },
     isRunning() { return running; },
 

@@ -358,7 +358,6 @@
 
 /* Best Worst Agent behavior*/
 /* ensure char boxes can contain absolute overlays */
-<style>
 
 /* star/thumb visuals retained from before; we add shine */
 .thumb {
@@ -490,4 +489,141 @@
 }
 
 
-</style>
+
+/* ---------- Card lifecycle ---------- */
+.char.entering {
+  animation: card-in 480ms cubic-bezier(.2,.9,.3,1.15) backwards;
+}
+@keyframes card-in {
+  0%   { opacity: 0; transform: translateY(24px) scale(0.92); filter: blur(4px) brightness(2); }
+  60%  { opacity: 1; filter: blur(0) brightness(1.2); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+
+.char.leaving {
+  pointer-events: none;
+  animation: card-out 340ms ease-in forwards;
+}
+@keyframes card-out {
+  0%   { opacity: 1; transform: none; filter: none; }
+  40%  { opacity: 0.8; transform: scaleY(0.96) skewX(-3deg); filter: brightness(1.8) hue-rotate(40deg); }
+  100% { opacity: 0; transform: scale(0.85) translateY(10px); filter: blur(4px); }
+}
+
+/* Triangle decrement: quick shrink (mirror of the increment pop) */
+.triangle.animate-down, .triangle-down.animate-down { animation: pop-down 0.35s ease-out; }
+@keyframes pop-down {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(0.75); filter: brightness(0.7); }
+  100% { transform: scale(1); filter: none; }
+}
+
+/* Portrait replaced */
+.char img.portrait-swap { animation: portrait-swap 420ms cubic-bezier(.2,.9,.3,1.2); }
+@keyframes portrait-swap {
+  0%   { transform: scale(0.6) rotate(-8deg); opacity: 0.2; filter: brightness(2); }
+  100% { transform: none; opacity: 1; filter: none; }
+}
+
+/* World counters (witness / chaos) */
+.counter.bump-up { animation: counter-bump-up 380ms cubic-bezier(.2,.9,.3,1.4); }
+.counter.bump-down { animation: counter-bump-down 300ms ease-out; }
+@keyframes counter-bump-up {
+  0%   { transform: scale(1); box-shadow: 0 0 0 rgba(255,255,255,0); }
+  35%  { transform: scale(1.3); box-shadow: 0 0 16px rgba(255,255,255,0.45); }
+  100% { transform: scale(1); box-shadow: 0 0 0 rgba(255,255,255,0); }
+}
+@keyframes counter-bump-down {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.82); opacity: 0.6; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ---------- Reduced motion: keep feedback, drop the movement ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .char.entering, .char.leaving, .char.fx-demerit,
+  .triangle.animate, .triangle-down.animate,
+  .triangle.animate-down, .triangle-down.animate-down,
+  .char img.portrait-swap, .counter.bump-up, .counter.bump-down,
+  .modal-backdrop, .modal-panel, .toast, .chooser-item,
+  .task.entering, .task.leaving, .shine-overlay {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ---------- Atmosphere (driven by js/effects.js via --chaos-level 0..1) ---------- */
+
+/* Readability vignette: sits between the background video and the page content,
+   darkening the edges and slightly dimming the center as chaos rises. */
+#chaosVignette {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse 75% 70% at 50% 45%, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.92) 100%);
+}
+
+/* Panels blur whatever is behind them in proportion to chaos, so tinted cards
+   stay readable over a busy background. */
+.char, .world, .graph-box, #taskPanel {
+  backdrop-filter: blur(var(--panel-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--panel-blur, 0px));
+}
+
+/* New witness: short brightness/saturation punch on the background video.
+   Applied to the videos so it composes with the hue-rotate on #backgroundHue. */
+#backgroundHue.witness-pulse video { animation: witness-pulse 750ms ease-out; }
+@keyframes witness-pulse {
+  0%   { filter: none; transform: scale(1); }
+  12%  { filter: brightness(1.55) saturate(1.7) contrast(1.15); transform: scale(1.025); }
+  100% { filter: none; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #backgroundHue.witness-pulse video { animation-duration: 1ms; }
+}
+
+/* ---------- Critical glitch (Mission Risk at/above the level set in /settings) ---------- */
+/* Red/blue colour fringes: offset tinted silhouettes of the whole page. */
+#pageWrapper.glitching {
+  filter:
+    drop-shadow(var(--rgb-split, 4px) 0 0 rgba(255, 20, 60, 0.7))
+    drop-shadow(calc(var(--rgb-split, 4px) * -1) 0 0 rgba(0, 170, 255, 0.7));
+}
+
+/* Title tear: two colour-shifted copies sliced into horizontal strips. */
+h1.tearable { position: relative; }
+h1 .tear-layer {
+  position: absolute;
+  inset: 0;
+  padding: inherit;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+h1 .tear-red { color: #ff1e46; }
+h1 .tear-blue { color: #1eb4ff; }
+h1.title-tear .tear-layer { opacity: 0.9; }
+h1.title-tear .tear-red { animation: tear-red 240ms steps(1) infinite; }
+h1.title-tear .tear-blue { animation: tear-blue 240ms steps(1) infinite; }
+h1.title-tear { animation: title-jolt 240ms steps(1) infinite; }
+@keyframes tear-red {
+  0%   { clip-path: inset(8% 0 62% 0);  transform: translateX(-9px); }
+  25%  { clip-path: inset(58% 0 12% 0); transform: translateX(7px); }
+  50%  { clip-path: inset(30% 0 44% 0); transform: translateX(-4px); }
+  75%  { clip-path: inset(0 0 82% 0);   transform: translateX(11px); }
+}
+@keyframes tear-blue {
+  0%   { clip-path: inset(40% 0 30% 0); transform: translateX(8px); }
+  25%  { clip-path: inset(10% 0 70% 0); transform: translateX(-10px); }
+  50%  { clip-path: inset(70% 0 4% 0);  transform: translateX(5px); }
+  75%  { clip-path: inset(22% 0 55% 0); transform: translateX(-6px); }
+}
+@keyframes title-jolt {
+  0%   { transform: translateX(0); }
+  25%  { transform: translateX(-2px) skewX(-4deg); }
+  50%  { transform: translateX(3px); }
+  75%  { transform: translateX(-1px) skewX(3deg); }
+}

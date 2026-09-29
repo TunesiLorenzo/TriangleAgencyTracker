@@ -1,12 +1,105 @@
-const STORAGE_KEY = 'rpgSettings';
+import { toast } from './ui.js';
 
-function getCharacterData(character) {
-  const inputs = character.querySelectorAll('.stat input');
+const STORAGE_KEY = 'rpgSettings';
+const HANDLE_DB_NAME = 'triangleAgencyTracker';
+const HANDLE_STORE_NAME = 'fileHandles';
+const TEAM_FILE_HANDLE_KEY = 'teamSaveFile';
+let pendingSave = 0;
+let pendingFileSave = 0;
+let automaticFileHandle = null;
+let automaticFileReady = false;
+let automaticFileButton = null;
+let fileSaveAnnounced = false;
+let fileWriteChain = Promise.resolve();
+
+function isEditableElement(element) {
+  return element instanceof HTMLInputElement
+    || element instanceof HTMLTextAreaElement
+    || element instanceof HTMLSelectElement
+    || element?.isContentEditable;
+}
+
+function setAutomaticFileStatus(status, title = '') {
+  if (!automaticFileButton) return;
+  automaticFileButton.textContent = status;
+  automaticFileButton.title = title;
+}
+
+function openHandleDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(HANDLE_DB_NAME, 1);
+    request.addEventListener('upgradeneeded', () => {
+      if (!request.result.objectStoreNames.contains(HANDLE_STORE_NAME)) {
+        request.result.createObjectStore(HANDLE_STORE_NAME);
+      }
+    });
+    request.addEventListener('success', () => resolve(request.result));
+    request.addEventListener('error', () => reject(request.error));
+  });
+}
+
+async function readStoredFileHandle() {
+  const database = await openHandleDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(HANDLE_STORE_NAME, 'readonly');
+    const request = transaction.objectStore(HANDLE_STORE_NAME).get(TEAM_FILE_HANDLE_KEY);
+    request.addEventListener('success', () => resolve(request.result || null));
+    request.addEventListener('error', () => reject(request.error));
+    transaction.addEventListener('complete', () => database.close());
+  });
+}
+
+async function storeFileHandle(handle) {
+  const database = await openHandleDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(HANDLE_STORE_NAME, 'readwrite');
+    transaction.objectStore(HANDLE_STORE_NAME).put(handle, TEAM_FILE_HANDLE_KEY);
+    transaction.addEventListener('complete', () => {
+      database.close();
+      resolve();
+    });
+    transaction.addEventListener('error', () => reject(transaction.error));
+  });
+}
+
+async function writeSettingsToAutomaticFile() {
+  if (!automaticFileReady || !automaticFileHandle) return false;
+
+  try {
+    const writable = await automaticFileHandle.createWritable();
+    const formattedSettings = JSON.stringify(loadSettings() || {}, null, 2);
+    await writable.write(formattedSettings);
+    await writable.close();
+    setAutomaticFileStatus('File Save: On', `Automatically saving to ${automaticFileHandle.name}`);
+    if (!fileSaveAnnounced) toast(`Auto-saving to ${automaticFileHandle.name}`);
+    fileSaveAnnounced = true;
+    return true;
+  } catch (error) {
+    automaticFileReady = false;
+    fileSaveAnnounced = false;
+    setAutomaticFileStatus('Reconnect Save File', 'Click to restore permission to the automatic save file.');
+    toast('Lost access to the save file. Click "Reconnect Save File".', { kind: 'warn', duration: 6000 });
+    console.error('Failed to automatically save the team file', error);
+    return false;
+  }
+}
+
+function queueAutomaticFileSave(delay = 300) {
+  if (!automaticFileReady) return;
+  window.clearTimeout(pendingFileSave);
+  pendingFileSave = window.setTimeout(() => {
+    pendingFileSave = 0;
+    fileWriteChain = fileWriteChain.then(writeSettingsToAutomaticFile);
+  }, delay);
+}
+
+export function getCharacterData(character) {
+  const stat = key => character.querySelector(`[data-stat="${key}"]`)?.value || '';
   return {
-    name: inputs[0]?.value || '',
-    anomaly: inputs[1]?.value || '',
-    reality: inputs[2]?.value || '',
-    competency: inputs[3]?.value || '',
+    name: stat('name'),
+    anomaly: stat('anomaly'),
+    reality: stat('reality'),
+    competency: stat('competency'),
     merit: Number.parseInt(character.querySelector('.triangle')?.textContent, 10) || 0,
     demerit: Number.parseInt(character.querySelector('.triangle-down')?.textContent, 10) || 0,
     sessionMerit: Number.parseInt(character.querySelector('.counter-input.merit')?.value, 10) || 0,
@@ -44,7 +137,7 @@ function chooseJsonFile(onData, invalidMessage) {
         onData(JSON.parse(reader.result));
       } catch (error) {
         console.error(invalidMessage, error);
-        alert(invalidMessage);
+        toast(invalidMessage, { kind: 'error' });
       }
     });
     reader.readAsText(file);
@@ -62,20 +155,161 @@ export function loadSettings() {
   }
 }
 
-export function saveSettings() {
+let lastSaveErrorToast = 0;
+
+function reportSaveError(error) {
+  console.error('Failed to save settings', error);
+  // Throttle so a burst of failing saves shows one message, not dozens.
+  if (Date.now() - lastSaveErrorToast < 5000) return;
+  lastSaveErrorToast = Date.now();
+  const quotaFull = error?.name === 'QuotaExceededError' || error?.code === 22;
+  toast(
+    quotaFull
+      ? 'Browser storage is full. Changes are NOT being saved. Use smaller portraits or export a Team CV.'
+      : 'Changes could not be saved. Export a Team CV to keep a backup.',
+    { kind: 'error', duration: 7000 }
+  );
+}
+
+/**
+ * updateSettings - the single read-modify-write path for the saved state.
+ * Every module that persists data goes through here so the automatic save
+ * file stays in sync and storage errors are reported consistently.
+ */
+export function updateSettings(mutate) {
   try {
-    const chars = [...document.querySelectorAll('.char')].map(getCharacterData);
-    const previous = loadSettings() || {};
-    const previousWorld = previous.world && typeof previous.world === 'object' ? previous.world : {};
-    const world = {
-      ...previousWorld,
-      branchName: document.getElementById('branchName')?.value ?? '',
-      witness: Number(document.getElementById('witnessCounter')?.textContent || 0),
-      chaos: Number(document.getElementById('chaosCounter')?.textContent || 0)
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...previous, chars, world }));
+    const settings = loadSettings() || {};
+    if (!settings.world || typeof settings.world !== 'object') settings.world = {};
+    mutate(settings);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    queueAutomaticFileSave();
+    return true;
   } catch (error) {
-    console.error('Failed to save settings', error);
+    reportSaveError(error);
+    return false;
+  }
+}
+
+// Save-file key -> counter element id for every world counter.
+const WORLD_COUNTER_IDS = {
+  witness: 'witnessCounter',
+  chaos: 'chaosCounter',
+  globalWitness: 'globalWitnessCounter',
+  captured: 'capturedCounter',
+  killed: 'killedCounter',
+  escaped: 'escapedCounter'
+};
+
+function readWorldCounters() {
+  return Object.fromEntries(Object.entries(WORLD_COUNTER_IDS).map(([key, id]) =>
+    [key, Number(document.getElementById(id)?.textContent || 0)]
+  ));
+}
+
+export function saveSettings() {
+  return updateSettings(settings => {
+    settings.chars = [...document.querySelectorAll('.char:not(.leaving)')].map(getCharacterData);
+    Object.assign(settings.world, {
+      branchName: document.getElementById('branchName')?.value ?? '',
+      ...readWorldCounters()
+    });
+  });
+}
+
+/**
+ * Install a single persistence safety net for the whole tracker.
+ *
+ * Individual controls still save immediately where needed. This delegated
+ * listener also covers controls added in the future, while the lifecycle
+ * handlers flush the latest DOM state before the page is left.
+ */
+export function initLocalStorage() {
+  const queueSave = event => {
+    if (!isEditableElement(event.target)) return;
+    window.clearTimeout(pendingSave);
+    pendingSave = window.setTimeout(() => {
+      pendingSave = 0;
+      saveSettings();
+    }, 150);
+  };
+
+  document.addEventListener('input', queueSave);
+  document.addEventListener('change', queueSave);
+
+  const flushSave = () => {
+    window.clearTimeout(pendingSave);
+    pendingSave = 0;
+    saveSettings();
+  };
+
+  window.addEventListener('pagehide', flushSave);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushSave();
+  });
+}
+
+/** Restore a previously approved team file without prompting the user. */
+export async function initAutomaticFileSave(button) {
+  automaticFileButton = button;
+
+  if (!('showSaveFilePicker' in window) || !('indexedDB' in window)) {
+    setAutomaticFileStatus('File Save Unsupported', 'Use Team CV to download a manual backup in this browser.');
+    if (automaticFileButton) automaticFileButton.disabled = true;
+    return false;
+  }
+
+  try {
+    automaticFileHandle = await readStoredFileHandle();
+    if (!automaticFileHandle) {
+      setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
+      return false;
+    }
+
+    automaticFileReady = (await automaticFileHandle.queryPermission({ mode: 'readwrite' })) === 'granted';
+    if (automaticFileReady) {
+      setAutomaticFileStatus('File Save: On', `Automatically saving to ${automaticFileHandle.name}`);
+      queueAutomaticFileSave(0);
+    } else {
+      setAutomaticFileStatus('Reconnect Save File', 'Click to restore permission to the automatic save file.');
+    }
+    return automaticFileReady;
+  } catch (error) {
+    console.error('Failed to restore the automatic save file', error);
+    setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
+    return false;
+  }
+}
+
+/** Ask the user for a file once, then keep that file synchronized. */
+export async function connectAutomaticSaveFile() {
+  if (!('showSaveFilePicker' in window)) return false;
+
+  try {
+    if (automaticFileHandle) {
+      const permission = await automaticFileHandle.requestPermission({ mode: 'readwrite' });
+      automaticFileReady = permission === 'granted';
+    }
+
+    if (!automaticFileReady) {
+      automaticFileHandle = await window.showSaveFilePicker({
+        suggestedName: 'triangle-agency-team.json',
+        types: [{
+          description: 'Triangle Agency team data',
+          accept: { 'application/json': ['.json'] }
+        }]
+      });
+      automaticFileReady = true;
+    }
+
+    await storeFileHandle(automaticFileHandle);
+    await writeSettingsToAutomaticFile();
+    return automaticFileReady;
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      console.error('Failed to connect the automatic save file', error);
+      toast('The automatic save file could not be connected. Your browser-local data is still safe.', { kind: 'error', duration: 6000 });
+    }
+    return false;
   }
 }
 
