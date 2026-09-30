@@ -3,25 +3,48 @@
 
 import { getCharacterData, saveCharacterToFile, saveSettings } from './storage.js';
 import { playEvent } from './soundEffects.js';
-import { COMPETENCIES } from './config.js';
+import { COMPETENCIES, REALITIES } from './config.js';
+import { ANOMALIES } from './anomalyData.js';
+import { normalizeAnomalyState } from './anomalyState.js';
+import { TRACK_LENGTH } from './lifeWorkTrack.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 import { COMPETENCY_INFO, competencyText, isGeneratedText } from './competencies.js';
 
 export const MAX_CHARS = 5;
+export const MAX_CONNECTION = 9;    // a relationship at the top of its track is in the agent's Network
+export const MAX_REALITY_DOSE = 5;  // the X at the end of the Dose di Realtà track: time for a new Reality
 const PORTRAIT_SIZE = 256;          // px, longest side after downscaling
 const MAX_INLINE_ICON = 150_000;    // data-URL length above which saved portraits are shrunk
+
+// Stats picked from a fixed list; everything else is free text.
+const STAT_CHOICES = { anomaly: ANOMALIES, reality: REALITIES, competency: COMPETENCIES };
 
 /** Live agent cards (excludes cards playing their removal animation). */
 export function getCharElements() {
   return [...document.querySelectorAll('.char:not(.leaving)')];
 }
 
+/** Coerce a saved (or brand new) relationship into the shape stored on an agent. */
+export function normalizeRelationship(data) {
+  const r = data && typeof data === 'object' ? data : {};
+  const connection = Number.parseInt(r.connection, 10) || 0;
+  return {
+    name: String(r.name ?? ''),
+    picture: typeof r.picture === 'string' ? r.picture : '',
+    description: String(r.description ?? ''),
+    playedBy: String(r.playedBy ?? ''),
+    connection: Math.min(MAX_CONNECTION, Math.max(0, connection)),
+    bonus: String(r.bonus ?? ''),
+    bonusActive: r.bonusActive === true
+  };
+}
+
 /** Downscale an image source to a small data URL so saves stay within storage quota. */
-function downscaleImage(src) {
+function downscaleImage(src, size = PORTRAIT_SIZE) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
-      const scale = Math.min(1, PORTRAIT_SIZE / Math.max(image.naturalWidth, image.naturalHeight));
+      const scale = Math.min(1, size / Math.max(image.naturalWidth, image.naturalHeight));
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
       canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -42,14 +65,49 @@ function readImageFile(file) {
   });
 }
 
+/** Read a picked or dropped image as a downscaled data URL; null (after telling the user) on failure. */
+export async function loadImageFile(file, size = PORTRAIT_SIZE) {
+  if (!file) return null;
+  if (!file.type?.startsWith('image')) {
+    toast('That file is not an image.', { kind: 'warn' });
+    return null;
+  }
+  try {
+    return await downscaleImage(await readImageFile(file), size);
+  } catch (error) {
+    console.error('Failed to load image', error);
+    toast('Could not read that image.', { kind: 'error' });
+    return null;
+  }
+}
+
+/** Let an element take an image file by click (file picker) or drag-and-drop. */
+export function bindImagePicker(el, onFile) {
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drop-target'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drop-target'));
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    el.classList.remove('drop-target');
+    onFile(e.dataTransfer.files[0]);
+  });
+  el.addEventListener('click', () => {
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = 'image/*';
+    picker.addEventListener('change', () => onFile(picker.files?.[0]));
+    picker.click();
+  });
+}
+
 /**
- * Competency dropdown. A value saved before the dropdown existed (free text)
- * that doesn't match a known competency is kept as an extra option.
+ * Dropdown over a fixed list (Competency, Reality). A value saved before the
+ * dropdown existed (free text) that doesn't match a known choice is kept as an
+ * extra option.
  */
-function createCompetencySelect(saved = '') {
+export function createChoiceSelect(choices, saved = '') {
   const select = document.createElement('select');
-  const known = COMPETENCIES.find(name => name.toLowerCase() === String(saved).trim().toLowerCase());
-  const options = ['', ...COMPETENCIES];
+  const known = choices.find(name => name.toLowerCase() === String(saved).trim().toLowerCase());
+  const options = ['', ...choices];
   if (saved && !known) options.push(saved);
   options.forEach(name => {
     const option = document.createElement('option');
@@ -98,7 +156,7 @@ export function getCompetency(card) {
 }
 
 /** Add a one-shot animation class and clean it up when the animation finishes. */
-function animateOnce(el, className, onDone) {
+export function animateOnce(el, className, onDone) {
   el.classList.remove(className);
   void el.offsetWidth;
   el.classList.add(className);
@@ -195,6 +253,16 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   const c = document.createElement('div');
   c.className = 'char';
   if (data?.dead) c.classList.add('dead');
+  // Relationships and the Dose di Realtà have no controls on the card itself; the Relationships view edits them.
+  c._relationships = Array.isArray(data?.relationships) ? data.relationships.map(normalizeRelationship) : [];
+  c._anomalyState = normalizeAnomalyState(data?.anomalyState);
+  c._realityDose = Math.min(MAX_REALITY_DOSE, Math.max(0, Number.parseInt(data?.realityDose, 10) || 0));
+  // The Competenza track is edited on the Agency tab.
+  c._competencyProgress = Math.min(TRACK_LENGTH, Math.max(0, Number.parseInt(data?.competencyProgress, 10) || 0));
+  // Agency items name their owner and holder by this id, so it survives renames, exports and undo.
+  // A second copy of an agent already on the branch gets its own.
+  const takenIds = new Set(getCharElements().map(card => card._id));
+  c._id = data?.id && !takenIds.has(String(data.id)) ? String(data.id) : crypto.randomUUID();
 
   // remove button
   const removeBtn = document.createElement('button');
@@ -208,34 +276,12 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   img.src = (data?.icon && data.icon !== '') ? data.icon : './images/pfp.jpg';
   img.alt = '';
   img.title = 'Click or drop an image to change portrait';
-  const setPortrait = async file => {
-    if (!file) return;
-    if (!file.type?.startsWith('image')) {
-      toast('That file is not an image.', { kind: 'warn' });
-      return;
-    }
-    try {
-      img.src = await downscaleImage(await readImageFile(file));
-      animateOnce(img, 'portrait-swap');
-      saveSettings();
-    } catch (error) {
-      console.error('Failed to load portrait', error);
-      toast('Could not read that image.', { kind: 'error' });
-    }
-  };
-  img.addEventListener('dragover', e => { e.preventDefault(); img.classList.add('drop-target'); });
-  img.addEventListener('dragleave', () => img.classList.remove('drop-target'));
-  img.addEventListener('drop', e => {
-    e.preventDefault();
-    img.classList.remove('drop-target');
-    setPortrait(e.dataTransfer.files[0]);
-  });
-  img.addEventListener('click', () => {
-    const picker = document.createElement('input');
-    picker.type = 'file';
-    picker.accept = 'image/*';
-    picker.addEventListener('change', () => setPortrait(picker.files?.[0]));
-    picker.click();
+  bindImagePicker(img, async file => {
+    const src = await loadImageFile(file);
+    if (!src) return;
+    img.src = src;
+    animateOnce(img, 'portrait-swap');
+    saveSettings();
   });
 
   // Portraits saved before downscaling existed can be several MB; shrink them once.
@@ -246,7 +292,8 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   }
 
   // stats
-  const stats = ['name','anomaly','reality','competency'];
+  // 'name' must stay first: getAgentStats() and chooseAgent() read the first stat input as the name.
+  const stats = ['name','player','anomaly','reality','competency'];
   const root = getComputedStyle(document.documentElement);
   const colorVars = {
     'competency': root.getPropertyValue('--competency-color').trim(),
@@ -257,12 +304,13 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   const statDivs = stats.map(s => {
     const div = document.createElement('div'); div.className = 'stat';
     const label = document.createElement('span'); label.className = 'label'; label.textContent = s.toUpperCase();
-    const value = s === 'competency' ? createCompetencySelect(data?.[s]) : document.createElement('input');
+    const choices = STAT_CHOICES[s];
+    const value = choices ? createChoiceSelect(choices, data?.[s]) : document.createElement('input');
     value.className = 'value';
     value.dataset.stat = s;
-    if (s !== 'competency') value.value = data?.[s] || '';
+    if (!choices) value.value = data?.[s] || '';
     value.style.width = '80px';
-    value.addEventListener(s === 'competency' ? 'change' : 'input', () => saveSettings());
+    value.addEventListener(choices ? 'change' : 'input', () => saveSettings());
     if (colorVars[s]) {
       label.style.color = colorVars[s];
       value.style.color = colorVars[s];

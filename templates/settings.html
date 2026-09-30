@@ -22,6 +22,7 @@
 
     <nav class="tabs" role="tablist" aria-label="Settings sections">
       <button class="tab" type="button" role="tab" data-tab="sounds">Sounds</button>
+      <button class="tab" type="button" role="tab" data-tab="buttons">Buttons</button>
       <button class="tab" type="button" role="tab" data-tab="competencies">Competencies</button>
       <button class="tab" type="button" role="tab" data-tab="effects">Effects</button>
     </nav>
@@ -39,6 +40,16 @@
 
       <div class="card">
         <div class="section-heading">
+          <div><span class="eyebrow">SPEAKERS</span><h2>Keep-alive drone</h2></div>
+        </div>
+        <p class="hint">Amplifiers and Bluetooth speakers with auto-standby switch off when it goes quiet and cut the start of the next sound.
+          From the first click on the viewer, a very quiet low drone plays continuously to keep them awake, and the first sound waits half a second while the speaker wakes up.
+          Muting a viewer stops the drone too. Raise the drone volume if your speaker still falls asleep; lower it if you can hear a hum.</p>
+        <div id="keepAlive" class="fields"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
           <div><span class="eyebrow">TRACKER EVENTS</span><h2>Event sounds</h2></div>
         </div>
         <p class="hint">Pick a built-in sound or a file from the library. "Then" plays a second sound right after.</p>
@@ -52,6 +63,27 @@
         </div>
         <p class="hint">Files in the tracker's <code>audio/</code> folder. Uploads go to <code>audio/uploads/</code>; you can also drop files here.</p>
         <div id="library" class="library"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-tab-panel="buttons">
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">VIEWER BUTTONS</span><h2>Button volume</h2></div>
+        </div>
+        <div id="buttonVolume"></div>
+        <p class="hint">Applies to every button sound, on top of each button's own volume and the master volume.</p>
+      </div>
+
+      <nav id="buttonGroupTabs" class="subtabs" role="tablist" aria-label="Button sounds by tab"></nav>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">BUTTON SOUNDS</span><h2 id="buttonGroupTitle"></h2></div>
+          <button id="resetButtonGroup" type="button" class="secondary small">Reset</button>
+        </div>
+        <p id="buttonGroupHint" class="hint"></p>
+        <div id="buttonSlots" class="slot-list"></div>
       </div>
     </section>
 

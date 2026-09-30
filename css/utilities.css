@@ -1,5 +1,6 @@
 h1 {
-  margin: clamp(40px, 6vw, 56px) 0 clamp(56px, 8vw, 96px);
+  /* the view tabs below the title supply the rest of the gap */
+  margin: clamp(40px, 6vw, 56px) 0 clamp(20px, 3vw, 40px);
   text-align: center;
 }
 
@@ -10,6 +11,8 @@ h1 {
 @media (orientation: portrait) {
   h1 {
     width: 100%;
+    /* clear the two wrapped rows of top buttons */
+    margin-top: clamp(72px, 9.5vw, 96px);
     margin-bottom: clamp(8px, 1.4vh, 20px);
     padding-inline: clamp(100px, 19vw, 210px);
     font-size: clamp(32px, 6vw, 64px);

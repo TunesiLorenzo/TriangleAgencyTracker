@@ -51,6 +51,11 @@ body {
 }
 
 
+/* The branch panel, the graphs and Next Mission belong to the Agents tab (app.js sets data-view). */
+body:not([data-view="agentsTab"]) .world-section,
+body:not([data-view="agentsTab"]) .mission-controls { display: none; }
+
+
 /* small layout helpers */
 .container {
   display:flex;
@@ -136,7 +141,8 @@ body {
 
   .container {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    /* title, view tabs, active view, branch status, mission controls */
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
     align-items: stretch;
     padding: clamp(8px, 1.2vw, 18px);
     overflow: hidden;
@@ -151,10 +157,26 @@ body {
     overflow: hidden;
   }
 
+  /* each group keeps to its half of the top edge and wraps instead of running into the other */
   .top-buttons-left,
   .top-buttons-right {
     position: absolute;
     width: auto;
+    max-width: calc(50% - 16px);
+    flex-wrap: wrap;
+    gap: 5px;
+    z-index: 5;
+  }
+
+  .top-buttons-left { justify-content: flex-start; }
+  .top-buttons-right { justify-content: flex-end; }
+
+  .top-buttons-left button,
+  .top-buttons-right button,
+  .top-buttons-right .nav-link {
+    padding: 5px 9px;
+    font-size: 12px;
+    white-space: nowrap;
   }
 }
 
@@ -162,20 +184,11 @@ body {
   .top-buttons-left,
   .top-buttons-right {
     gap: 4px;
-    max-width: 46vw;
-    flex-wrap: wrap;
-  }
-
-  .top-buttons-left {
-    justify-content: flex-start;
-  }
-
-  .top-buttons-right {
-    justify-content: flex-end;
   }
 
   .top-buttons-left button,
-  .top-buttons-right button {
+  .top-buttons-right button,
+  .top-buttons-right .nav-link {
     padding: 4px 6px;
     font-size: 10px;
   }

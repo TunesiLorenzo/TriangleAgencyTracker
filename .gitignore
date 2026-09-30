@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 tracker_config.json
 *.json.tmp
+Materiale/
+cases/

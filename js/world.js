@@ -97,6 +97,16 @@ export function updateEffects() {
   updateBackgroundVideo();
 }
 
+export function finishMissionWorld(outcome) {
+  const data = Object.fromEntries(Object.entries(counters).map(([key, counter]) => [key, counter.value]));
+  data.branchName = document.getElementById('branchName').value;
+  data.globalWitness += data.witness;
+  data.witness = 0;
+  data.chaos = 0;
+  data[outcome] += 1;
+  setWorldData(data);
+}
+
 function getBackgroundVideo() {
   return counters.chaos.value >= video.strongAtChaos ? './images/bck_strong.mp4' : './images/bck_calm.mp4';
 }

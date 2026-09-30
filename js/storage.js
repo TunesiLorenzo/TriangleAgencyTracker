@@ -1,4 +1,5 @@
 import { toast } from './ui.js';
+import { normalizeAnomalyState } from './anomalyState.js';
 
 const STORAGE_KEY = 'rpgSettings';
 const HANDLE_DB_NAME = 'triangleAgencyTracker';
@@ -11,6 +12,9 @@ let automaticFileReady = false;
 let automaticFileButton = null;
 let fileSaveAnnounced = false;
 let fileWriteChain = Promise.resolve();
+// Set once a loaded team file is in storage and the page is reloading, so the save that runs
+// when the page is left can't overwrite that file with the agents still on screen.
+let savesSuspended = false;
 
 function isEditableElement(element) {
   return element instanceof HTMLInputElement
@@ -62,19 +66,39 @@ async function storeFileHandle(handle) {
   });
 }
 
+async function deleteStoredFileHandle() {
+  const database = await openHandleDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(HANDLE_STORE_NAME, 'readwrite');
+    transaction.objectStore(HANDLE_STORE_NAME).delete(TEAM_FILE_HANDLE_KEY);
+    transaction.addEventListener('complete', () => {
+      database.close();
+      resolve();
+    });
+    transaction.addEventListener('error', () => reject(transaction.error));
+  });
+}
+
+function showAutomaticFileOn(handle) {
+  setAutomaticFileStatus('File Save: On', `Automatically saving to ${handle.name}. Click to unlink it.`);
+}
+
 async function writeSettingsToAutomaticFile() {
-  if (!automaticFileReady || !automaticFileHandle) return false;
+  const handle = automaticFileHandle;
+  if (!automaticFileReady || !handle) return false;
 
   try {
-    const writable = await automaticFileHandle.createWritable();
+    const writable = await handle.createWritable();
     const formattedSettings = JSON.stringify(loadSettings() || {}, null, 2);
     await writable.write(formattedSettings);
     await writable.close();
-    setAutomaticFileStatus('File Save: On', `Automatically saving to ${automaticFileHandle.name}`);
-    if (!fileSaveAnnounced) toast(`Auto-saving to ${automaticFileHandle.name}`);
+    if (handle !== automaticFileHandle) return true;   // unlinked while this write was running
+    showAutomaticFileOn(handle);
+    if (!fileSaveAnnounced) toast(`Auto-saving to ${handle.name}`);
     fileSaveAnnounced = true;
     return true;
   } catch (error) {
+    if (handle !== automaticFileHandle) return false;
     automaticFileReady = false;
     fileSaveAnnounced = false;
     setAutomaticFileStatus('Reconnect Save File', 'Click to restore permission to the automatic save file.');
@@ -96,7 +120,9 @@ function queueAutomaticFileSave(delay = 300) {
 export function getCharacterData(character) {
   const stat = key => character.querySelector(`[data-stat="${key}"]`)?.value || '';
   return {
+    id: character._id,
     name: stat('name'),
+    player: stat('player'),
     anomaly: stat('anomaly'),
     reality: stat('reality'),
     competency: stat('competency'),
@@ -104,10 +130,16 @@ export function getCharacterData(character) {
     demerit: Number.parseInt(character.querySelector('.triangle-down')?.textContent, 10) || 0,
     sessionMerit: Number.parseInt(character.querySelector('.counter-input.merit')?.value, 10) || 0,
     sessionDemerit: Number.parseInt(character.querySelector('.counter-input.demerit')?.value, 10) || 0,
-    icon: character.querySelector('img')?.src || '',
+    // The attribute, not .src: .src is absolute, which ties the default portrait to this server's port.
+    icon: character.querySelector('img')?.getAttribute('src') || '',
     dead: character.classList.contains('dead'),
     primeDirective: character.dataset.primeDirective || '',
-    encouragedBehavior: character.dataset.encouragedBehavior || ''
+    encouragedBehavior: character.dataset.encouragedBehavior || '',
+    realityDose: character._realityDose || 0,
+    competencyProgress: character._competencyProgress || 0,
+    anomalyState: normalizeAnomalyState(character._anomalyState),
+    // Copies, so a snapshot (undo, export) isn't changed by later edits.
+    relationships: (character._relationships || []).map(relationship => ({ ...relationship }))
   };
 }
 
@@ -177,6 +209,7 @@ function reportSaveError(error) {
  * file stays in sync and storage errors are reported consistently.
  */
 export function updateSettings(mutate) {
+  if (savesSuspended) return false;
   try {
     const settings = loadSettings() || {};
     if (!settings.world || typeof settings.world !== 'object') settings.world = {};
@@ -267,7 +300,7 @@ export async function initAutomaticFileSave(button) {
 
     automaticFileReady = (await automaticFileHandle.queryPermission({ mode: 'readwrite' })) === 'granted';
     if (automaticFileReady) {
-      setAutomaticFileStatus('File Save: On', `Automatically saving to ${automaticFileHandle.name}`);
+      showAutomaticFileOn(automaticFileHandle);
       queueAutomaticFileSave(0);
     } else {
       setAutomaticFileStatus('Reconnect Save File', 'Click to restore permission to the automatic save file.');
@@ -280,9 +313,46 @@ export async function initAutomaticFileSave(button) {
   }
 }
 
-/** Ask the user for a file once, then keep that file synchronized. */
+/** Stop keeping the connected file updated. The data saved in this browser is untouched. */
+async function unlinkAutomaticSaveFile() {
+  const handle = automaticFileHandle;
+  window.clearTimeout(pendingFileSave);
+  pendingFileSave = 0;
+  automaticFileHandle = null;
+  automaticFileReady = false;
+  fileSaveAnnounced = false;
+  setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
+
+  try {
+    await deleteStoredFileHandle();
+  } catch (error) {
+    console.error('Failed to forget the automatic save file', error);
+  }
+
+  toast(`Stopped auto-saving to ${handle.name}. Your data is still saved in this browser.`, {
+    duration: 6000,
+    action: {
+      label: 'Undo',
+      onClick: () => {
+        if (automaticFileHandle) return;   // another file was connected in the meantime
+        automaticFileHandle = handle;
+        connectAutomaticSaveFile();
+      }
+    }
+  });
+}
+
+/**
+ * The save-file button: connects a file (asking once, then keeping it synchronized),
+ * restores permission to a remembered one, or, while saving, unlinks it.
+ */
 export async function connectAutomaticSaveFile() {
   if (!('showSaveFilePicker' in window)) return false;
+
+  if (automaticFileReady) {
+    await unlinkAutomaticSaveFile();
+    return false;
+  }
 
   try {
     if (automaticFileHandle) {
@@ -337,6 +407,7 @@ export function loadSettingsFile() {
   chooseJsonFile(data => {
     if (!data || typeof data !== 'object') throw new Error('Invalid settings file');
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    savesSuspended = true;
     location.reload();
   }, 'Failed to load settings file: invalid JSON or structure.');
 }

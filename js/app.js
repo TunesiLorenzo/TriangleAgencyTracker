@@ -13,14 +13,63 @@ import {
 } from './storage.js';
 import { initTaskPanel, resetTasks } from './tasks.js';
 import { isServerAvailable, startConfigSync } from './config.js';
-import { isMuted, setMuted } from './soundEffects.js';
-import { confirmDialog, toast } from './ui.js';
-import { initWorld, setWorldData, updateEffects } from './world.js';
+import { initRelationships, renderRelationships } from './relationships.js';
+import { initAnomalies, renderAnomalies } from './anomalies.js';
+import { initAgency, renderAgency, resetItems } from './agency.js';
+import { initPreviousCases, renderPreviousCases } from './previousCases.js';
+import { initButtonSounds, initKeepAlive, isMuted, setMuted } from './soundEffects.js';
+import { confirmDialog, openModal, toast } from './ui.js';
+import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
+
+const VIEW_KEY = 'ta-view';
+
+let missionDialogOpen = false;
+
+function nextMission() {
+  if (missionDialogOpen) return;
+  missionDialogOpen = true;
+  let completed = false;
+  const content = document.createElement('p');
+  content.className = 'modal-message';
+  content.textContent = 'Come si conclude l’anomalia? Scegli un esito per aggiungere testimoni, meriti e demeriti ai totali globali e azzerare i valori della missione e il caos.';
+  openModal({
+    title: 'Fine missione',
+    content,
+    className: 'mission-modal',
+    closeLabel: 'Annulla',
+    actions: [
+      ...[['Catturata', 'captured'], ['Liberata', 'escaped'], ['Uccisa', 'killed']].map(([label, outcome]) => ({
+        label,
+        variant: outcome,
+        onClick: () => {
+          // Ignore additional clicks while the dialog plays its closing animation.
+          if (completed) return;
+          completed = true;
+          resetTasks();
+          getCharElements().forEach(character => {
+            // Triangles track this mission; adjacent inputs hold global totals.
+            [['.triangle', '.merit'], ['.triangle-down', '.demerit']].forEach(([missionSelector, totalSelector]) => {
+              const mission = character.querySelector(missionSelector);
+              const total = character.querySelector(`.counter-input${totalSelector}`);
+              total.value = (Number.parseInt(total.value, 10) || 0) + (Number.parseInt(mission.textContent, 10) || 0);
+              mission.textContent = 0;
+            });
+          });
+          finishMissionWorld(outcome);
+          updateTopCharacters();
+          resetDashboard();
+          if (saveSettings()) toast(`Next mission ready. Anomalia: ${label}.`);
+        }
+      }))
+    ],
+    onClose: () => { missionDialogOpen = false; }
+  });
+}
 
 async function resetAll() {
   const confirmed = await confirmDialog({
     title: 'Close Branch?',
-    message: 'This removes every agent, task, witness, chaos point and the mission timeline. Export a Team CV first if you want a backup.',
+    message: 'This removes every agent, task, witness, chaos point and the mission timeline, and puts the Agency items back to the standard kit. Export a Team CV first if you want a backup.',
     confirmLabel: 'Close Branch',
     danger: true
   });
@@ -28,6 +77,7 @@ async function resetAll() {
 
   resetChar();
   resetTasks();
+  resetItems();
   setWorldData();
   resetDashboard();
   saveSettings();
@@ -44,6 +94,7 @@ async function exportCharacter() {
 }
 
 function bindControls() {
+  document.getElementById('nextMissionButton').addEventListener('click', nextMission);
   document.getElementById('addAgentButton').addEventListener('click', () => addChar());
   document.getElementById('loadAgentButton').addEventListener('click', () => loadCharacterFile(addChar));
   document.getElementById('exportAgentButton').addEventListener('click', exportCharacter);
@@ -62,7 +113,54 @@ function bindControls() {
   showMute();
 }
 
+/** Main view tabs; the choice is remembered on this device. */
+function initViewTabs() {
+  const tabs = [...document.querySelectorAll('.view-tabs [role="tab"]')];
+  const select = (tab, { focus = false } = {}) => {
+    // Clicking Relationships while it is already open goes back from an agent's page to the overview.
+    const reselected = tab.getAttribute('aria-selected') === 'true';
+    tabs.forEach(t => {
+      const selected = t === tab;
+      t.setAttribute('aria-selected', String(selected));
+      t.tabIndex = selected ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !selected;
+    });
+    // The branch panel, the graphs and Next Mission only show on the Agents tab (layout.css).
+    document.body.dataset.view = tab.id;
+    if (focus) tab.focus();
+    if (tab.id === 'relationshipsTab') renderRelationships({ overview: reselected });
+    if (tab.id === 'anomalyTab') renderAnomalies();
+    if (tab.id === 'agencyTab') renderAgency();
+    if (tab.id === 'previousCasesTab') renderPreviousCases();
+    try { localStorage.setItem(VIEW_KEY, tab.id); } catch { /* storage unavailable */ }
+  };
+
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => select(tab));
+    tab.addEventListener('keydown', event => {
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+      if (!step) return;
+      event.preventDefault();
+      select(tabs[(i + step + tabs.length) % tabs.length], { focus: true });
+    });
+  });
+
+  let saved = null;
+  try { saved = localStorage.getItem(VIEW_KEY); } catch { /* storage unavailable */ }
+  select(tabs.find(tab => tab.id === saved) || tabs[0]);
+}
+
 async function init() {
+  // Before the awaits, so a remembered tab is shown without first flashing the other one.
+  initRelationships();
+  initAnomalies();
+  initAgency();
+  initPreviousCases();
+  initViewTabs();
+  // Also before the awaits: a click while settings load should still wake the amp and click.
+  initKeepAlive();
+  initButtonSounds();
+
   // Sound and effect settings from /settings; defaults when served without the Flask app.
   await startConfigSync();
   if (!isServerAvailable()) document.getElementById('settingsLink').hidden = true;

@@ -11,6 +11,9 @@
 
 export const COMPETENCIES = ['PR', 'R&D', 'Caffetteria', 'CDA', 'Stagisti', 'Smaltimento', 'Reception', 'Centralino', 'Clown'];
 
+// Italian edition names (Materiale/Realtà_lista.pdf).
+export const REALITIES = ['Custode', 'Stacanovista', 'Fuggitivo', 'Star', 'Squattrinato', 'Tabula Rasa', 'Romanticone', 'Pilastro', 'Creatura'];
+
 export const RISK_LEVELS = ['controlled', 'unstable', 'compromised', 'critical', 'catastrophic'];
 
 const slot = (source, volume = 1, next = '') => ({ source, volume, next });
@@ -30,13 +33,135 @@ export const SOUND_EVENTS = [
   { key: 'glitch', label: 'Critical glitch', hint: 'Screen-tear burst at high risk' }
 ];
 
+// Every button in the viewer, grouped like the Buttons submenus on /settings: the controls
+// shared by every tab, dialogs, then one group per main tab. A click plays the first entry
+// whose selector matches the button; `fallback` entries (each tab's "Other buttons") are
+// tried after all the others, so buttons added later still make a sound.
+export const BUTTON_GROUPS = [
+  {
+    key: 'general', label: 'General', hint: 'The top bar, the main tabs, the branch panel and Next Mission, shown on every tab.',
+    buttons: [
+      { key: 'viewTab', label: 'Main tabs', selector: '.view-tab', sound: 'synth:switch' },
+      { key: 'hireAgent', label: 'Hire Agent', selector: '#addAgentButton', sound: 'synth:stamp' },
+      { key: 'recall', label: 'Recall Agent / Recall Team', selector: '#loadAgentButton, #loadTeamButton', sound: 'synth:drawer' },
+      { key: 'exportCv', label: 'Agent CV / Team CV', selector: '#exportAgentButton, #exportTeamButton', sound: 'synth:typewriter' },
+      { key: 'closeBranch', label: 'Close Branch', selector: '#resetButton', sound: 'synth:close' },
+      { key: 'saveFile', label: 'Connect Save File', selector: '#autoSaveFileButton', sound: 'synth:click' },
+      { key: 'mute', label: 'Sound on / off', selector: '#muteButton', sound: 'synth:click' },
+      { key: 'settings', label: 'Settings', selector: '#settingsLink', sound: 'synth:click' },
+      { key: 'restartTimeline', label: 'Restart timeline', hint: 'On the Mission Timeline graph', selector: '#restartTimelineButton', sound: 'synth:close' },
+      { key: 'nextMission', label: 'Next Mission', selector: '#nextMissionButton', sound: 'synth:open' },
+      { key: 'captured', label: 'Mission end: Catturata', selector: '.mission-modal .modal-btn-captured', sound: 'synth:lock', volume: 0.9 },
+      { key: 'killed', label: 'Mission end: Uccisa', selector: '.mission-modal .modal-btn-killed', sound: 'synth:thud', volume: 0.9 },
+      { key: 'escaped', label: 'Mission end: Liberata', selector: '.mission-modal .modal-btn-escaped', sound: 'synth:alarm', volume: 0.7 },
+      // No selector: the last resort for a button no other entry matches.
+      { key: 'other', label: 'Any other button', sound: 'synth:click', fallback: true }
+    ]
+  },
+  {
+    key: 'dialogs', label: 'Dialogs', hint: 'Pop-up windows opened from any tab, and Undo on notifications.',
+    buttons: [
+      { key: 'confirm', label: 'Confirm / Save', hint: 'The highlighted button of a dialog', selector: '.modal-panel .modal-btn-primary', sound: 'synth:confirm' },
+      { key: 'danger', label: 'Delete / Close Branch', hint: 'Red confirm buttons', selector: '.modal-panel .modal-btn-danger', sound: 'synth:trash' },
+      { key: 'chooseAgent', label: 'Pick an agent', hint: 'Agent picker, e.g. when applying a task', selector: '.modal-panel .chooser-item', sound: 'synth:tap' },
+      { key: 'dismiss', label: 'Cancel / Close', hint: 'And any other dialog button', selector: '.modal-panel .modal-close, .modal-panel .modal-btn', sound: 'synth:cancel' },
+      { key: 'undo', label: 'Undo', selector: '.toast-action', sound: 'synth:close' }
+    ]
+  },
+  {
+    key: 'agents', label: 'Agents', hint: 'Sick leave, Prime Directive and Encouraged Behavior keep their Event / Competency sounds.',
+    buttons: [
+      { key: 'addTask', label: '+ Add Task', selector: '#taskPanel .add-task-btn', sound: 'synth:pop' },
+      { key: 'applyTask', label: 'Task', hint: 'Opens the agent picker', selector: '#taskPanel .task', sound: 'synth:tap' },
+      { key: 'deleteTask', label: 'Delete task', selector: '#taskPanel .task-del', sound: 'synth:trash' },
+      { key: 'flipCard', label: 'Flip agent card', selector: '.char .flip-btn', sound: 'synth:paper' },
+      { key: 'exportAgent', label: 'Export agent (on the card)', selector: '.char .export-btn', sound: 'synth:typewriter' },
+      { key: 'removeAgent', label: 'Remove agent', selector: '.char .remove-btn', sound: 'synth:trash' },
+      { key: 'other', label: 'Other buttons', selector: '#agentsView *', sound: 'synth:click', fallback: true }
+    ]
+  },
+  {
+    key: 'relationships', label: 'Relationships', hint: '',
+    buttons: [
+      { key: 'openAgent', label: 'Open an agent', hint: 'A column of the overview', selector: '.rel-summary', sound: 'synth:open' },
+      { key: 'switchAgent', label: 'Switch agent', selector: '.rel-switch', sound: 'synth:switch' },
+      { key: 'back', label: 'Back', selector: '.rel-back', sound: 'synth:close' },
+      { key: 'track', label: 'Relationship track', selector: '.rel-track', sound: 'synth:step' },
+      { key: 'dose', label: 'Dose di Realtà track', selector: '#relationshipsView .dose-track', sound: 'synth:step' },
+      { key: 'bonusActive', label: 'Bonus Active box', selector: '.rel-active input', sound: 'synth:switch' },
+      { key: 'picture', label: 'Relationship picture', selector: '.rel-picture', sound: 'synth:click' },
+      { key: 'add', label: '+ Add Relationship', selector: '#relationshipsView .rel-add', sound: 'synth:pop' },
+      { key: 'openRelationship', label: 'Open a relationship', selector: '.rel-tile', sound: 'synth:paper' },
+      { key: 'remove', label: 'Remove relationship', selector: '.rel-remove, .rel-remove-page', sound: 'synth:trash' },
+      { key: 'other', label: 'Other buttons', selector: '#relationshipsView *', sound: 'synth:click', fallback: true }
+    ]
+  },
+  {
+    key: 'anomaly', label: 'Anomaly', hint: '',
+    buttons: [
+      { key: 'trackBox', label: 'Tracciato Anomalia box', selector: '.anomaly-square', sound: 'synth:typewriter' },
+      { key: 'answerBox', label: 'Answer box', selector: '.answer-square', sound: 'synth:typewriter' },
+      { key: 'ability', label: 'Open / close an ability', selector: '.anomaly-ability-open, .anomaly-ability-nav button', sound: 'synth:paper' },
+      { key: 'used', label: 'Usata?', selector: '.anomaly-used', sound: 'synth:stamp' },
+      { key: 'rules', label: 'Come usare il tracciato', selector: '#anomalyView summary', sound: 'synth:paper' },
+      { key: 'add', label: '+ Aggiungi abilità', selector: '#anomalyView .rel-add', sound: 'synth:pop' },
+      { key: 'edit', label: 'Modifica (own ability)', selector: '.anomaly-custom-controls .modal-btn:first-child', sound: 'synth:click' },
+      { key: 'remove', label: 'Rimuovi (own ability)', selector: '.anomaly-custom-controls .modal-btn:last-child', sound: 'synth:trash' },
+      { key: 'other', label: 'Other buttons', selector: '#anomalyView *', sound: 'synth:click', fallback: true }
+    ]
+  },
+  {
+    key: 'agency', label: 'Agency', hint: '',
+    buttons: [
+      { key: 'openAgent', label: 'Open an agent', hint: 'A tile of the overview', selector: '.agency-summary', sound: 'synth:open' },
+      { key: 'switch', label: 'Switch agent / item', selector: '.agency-switch', sound: 'synth:switch' },
+      { key: 'back', label: 'Back', selector: '.agency-back', sound: 'synth:close' },
+      { key: 'trackBox', label: 'Tracciato Competenza box', selector: '.competency-square', sound: 'synth:typewriter' },
+      { key: 'rules', label: 'Come usare il tracciato', selector: '#agencyView .agency-rules summary', sound: 'synth:paper' },
+      { key: 'itemList', label: 'Open / close the item list', selector: '.agency-items > summary', sound: 'synth:drawer' },
+      { key: 'openItem', label: 'Open an item', selector: '.agency-item-tile', sound: 'synth:paper' },
+      { key: 'itemIcon', label: 'Item icon choice', selector: '.agency-icon-choice', sound: 'synth:tap' },
+      { key: 'add', label: '+ Aggiungi oggetto', selector: '.agency-add', sound: 'synth:pop' },
+      { key: 'remove', label: 'Rimuovi oggetto', selector: '.agency-remove-item', sound: 'synth:trash' },
+      { key: 'promo', label: 'Promo banner controls', hint: 'Arrows, dots and pause', selector: '.promo button', sound: 'synth:tap' },
+      { key: 'other', label: 'Other buttons', selector: '#agencyView *', sound: 'synth:click', fallback: true }
+    ]
+  },
+  {
+    key: 'previousCases', label: 'Previous Cases', hint: 'Delete case, Open original and File case are Dialog buttons.',
+    buttons: [
+      { key: 'openVault', label: 'Open archive security gates', selector: '.cases-vault-trigger', sound: 'synth:alarm', volume: 0.8 },
+      { key: 'openCase', label: 'Open a case envelope', selector: '.case-envelope', sound: 'synth:paper' },
+      { key: 'fileCase', label: '+ File a new case', selector: '.cases-add', sound: 'synth:drawer' },
+      { key: 'other', label: 'Other buttons', selector: '#previousCasesView *', sound: 'synth:click', fallback: true }
+    ]
+  }
+];
+
+// These already play an Event or Competency sound, so they get no button sound on top.
+export const EVENT_SOUND_BUTTONS = '.death-btn, .back-action-btn';
+
 function competencyDefaults() {
   return Object.fromEntries(COMPETENCIES.map(name => [name, { prime: slot(''), encouraged: slot('') }]));
+}
+
+function buttonDefaults() {
+  return Object.fromEntries(BUTTON_GROUPS.map(group => [
+    group.key,
+    Object.fromEntries(group.buttons.map(button => [button.key, slot(button.sound, button.volume ?? 1)]))
+  ]));
 }
 
 export const DEFAULT_CONFIG = {
   sounds: {
     masterVolume: 0.8,
+    buttonVolume: 0.6,     // on top of each button's own volume, so clicks sit under the event sounds
+    // A near-silent tone that keeps auto-standby AUX/Bluetooth amplifiers awake (from MTG_Table).
+    keepAlive: {
+      enabled: true,
+      frequency: 120,      // Hz; inside what small speakers reproduce, so the amp's standby circuit sees it
+      level: 0.008         // gain
+    },
     events: {
       merit: slot('file:merit_new.mp3'),
       demerit: slot('file:demerit_new.mp3'),
@@ -51,7 +176,8 @@ export const DEFAULT_CONFIG = {
       counterDown: slot('synth:tick', 0.5),
       glitch: slot('synth:glitch', 0.35)
     },
-    competencies: competencyDefaults()
+    competencies: competencyDefaults(),
+    buttons: buttonDefaults()
   },
   effects: {
     atmosphere: {

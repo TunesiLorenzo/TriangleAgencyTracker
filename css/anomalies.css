@@ -1,0 +1,223 @@
+#anomalyTab[aria-selected="true"] { box-shadow: inset 0 -2px 0 var(--anomaly-color); }
+.anomaly-view[hidden], .anomaly-ability-body[hidden] { display: none; }
+.anomaly-view {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 8px 20px;
+  font-size: 16px;
+}
+/* same layout and type scale as the Agency tab, in the Anomalia blue */
+.anomaly-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 290px));
+  justify-content: center;
+  align-items: stretch;
+  gap: 16px;
+}
+.anomaly-summary,
+.anomaly-profile,
+.anomaly-abilities {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border-top: 3px solid var(--anomaly-color);
+  border-radius: 12px;
+  background: linear-gradient(145deg, #2f2f2f, #1c1c1c);
+  box-shadow: 0 16px 30px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.03);
+  color: #fff;
+}
+.anomaly-summary {
+  border-right: none;
+  border-bottom: none;
+  border-left: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.anomaly-summary:hover { transform: translateY(-3px); box-shadow: 0 22px 40px rgba(0,0,0,.8), 0 0 0 1px rgba(10,132,255,.4); }
+.anomaly-summary:focus-visible { outline: 2px solid rgba(255,255,255,.8); outline-offset: 3px; }
+.anomaly-summary.dead, .anomaly-profile.dead { opacity: 0.8; }
+.anomaly-abilities h3, .anomaly-abilities h4 { margin: 0 0 10px; }
+
+/* portrait + name + player · Anomalia */
+.anomaly-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.anomaly-identity img { flex: none; width: 48px; height: 48px; border-radius: 33%; object-fit: cover; background: #444; }
+.dead .anomaly-identity img { filter: grayscale(1); opacity: 0.6; }
+.anomaly-identity-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.anomaly-name { font-size: 20px; letter-spacing: 1px; text-transform: uppercase; overflow-wrap: anywhere; }
+.anomaly-subtitle { color: #87beff; font-size: 14px; }
+.anomaly-subtitle:empty { display: none; }
+
+.anomaly-summary-track { display: flex; flex-direction: column; gap: 7px; }
+.anomaly-summary-track-label { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.65; }
+.anomaly-summary-progress { font-size: 14px; }
+.anomaly-summary-squares { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 2px; }
+.anomaly-summary-square {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 1px solid #667bad;
+  border-radius: 2px;
+  background: #303a54;
+  color: #d1e1ff;
+  font-size: 7px;
+  font-weight: 700;
+}
+.anomaly-summary-square.reached { background: var(--anomaly-color); color: #fff; }
+.anomaly-summary-counts { font-size: 15px; opacity: .7; }
+.anomaly-open { align-self: flex-end; margin-top: auto; color: #87beff; font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+
+.anomaly-detail { display: flex; flex-direction: column; gap: 16px; width: 100%; animation: anomaly-page-in 260ms ease-out both; }
+.anomaly-detail-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.anomaly-back, .anomaly-switch {
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+.anomaly-back { border-color: rgba(255,255,255,.2); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+.anomaly-switcher { display: flex; flex-wrap: wrap; gap: 6px; }
+.anomaly-switch { opacity: .7; }
+.anomaly-switch:hover, .anomaly-back:hover { background: rgba(255,255,255,.12); opacity: 1; }
+.anomaly-switch[aria-current="true"] { border-color: var(--anomaly-color); background: rgba(10,132,255,.22); font-weight: 700; opacity: 1; }
+.anomaly-detail-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: start; gap: 16px; }
+.anomaly-abilities { width: 100%; }
+.anomaly-abilities-title { font-size: 18px; }
+.anomaly-track-section h3 { margin: 0 0 6px; font-size: 18px; }
+.anomaly-progress { display: block; font-size: 15px; margin-bottom: 8px; }
+.anomaly-track { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 4px; }
+.anomaly-square {
+  aspect-ratio: 1;
+  padding: 0;
+  min-width: 0;
+  border: 1px solid #667bad;
+  border-radius: 4px;
+  background: #303a54;
+  color: #d1e1ff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.anomaly-square[aria-pressed="true"], .answer-square[aria-pressed="true"] { background: var(--anomaly-color); color: white; }
+.anomaly-view button:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+.anomaly-hint, .anomaly-rules { font-size: 15px; line-height: 1.55; color: #ddd; }
+.anomaly-rules { margin-top: 12px; }
+.anomaly-rules summary { cursor: pointer; }
+
+/* closed abilities: a grid of tiles; opening one shows it alone */
+.anomaly-ability-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 10px; }
+.anomaly-ability-grid > .rel-add { min-height: 70px; }
+.anomaly-ability-tile {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #465063;
+  border-radius: 10px;
+  background: rgba(0,0,0,.35);
+}
+.anomaly-ability-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.anomaly-ability-open .anomaly-open { padding-top: 0; }
+.anomaly-ability-name { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+.anomaly-ability-tile:hover { border-color: var(--anomaly-color); }
+.anomaly-ability-page { padding: clamp(16px, 3vw, 28px); }
+@keyframes anomaly-page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .anomaly-detail { animation: none; } }
+.anomaly-ability-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.anomaly-abilities .anomaly-ability-title { flex: 1; min-width: 0; margin: 0; font-size: 26px; overflow-wrap: anywhere; }
+.anomaly-used {
+  flex: none;
+  align-self: center;
+  min-width: 88px;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 2px solid #7088ac;
+  border-radius: 8px;
+  background: #27344a;
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.anomaly-used::before { content: '□ '; }
+.anomaly-used[aria-pressed="true"] { background: #075fb9; border-color: #9acaFF; }
+.anomaly-used[aria-pressed="true"]::before { content: '✓ '; }
+.anomaly-effects { white-space: pre-line; font-size: 18px; line-height: 1.6; margin: 0 0 16px; }
+.anomaly-question { padding: 16px; border-radius: 8px; background: #263954; color: #d9e9ff; font-size: 18px; line-height: 1.5; }
+.anomaly-question h4 { font-size: 17px; }
+.anomaly-answer + .anomaly-answer { margin-top: 16px; }
+.anomaly-answer-text { margin: 0 0 7px; }
+.anomaly-answer-controls { display: flex; align-items: center; gap: 6px; }
+.answer-square { width: 34px; height: 34px; padding: 0; border: 1px solid #9bbdea; border-radius: 4px; background: #1a2639; font-size: 18px; cursor: pointer; }
+.answer-square[aria-pressed="true"]::after { content: '✓'; color: white; }
+.answer-reference { margin-left: 3px; }
+.anomaly-source { display: inline-block; margin: 14px 0; color: #a7cdff; font-size: 14px; }
+.anomaly-custom-controls { display: flex; gap: 8px; margin: 12px 0; }
+.anomaly-edit-modal { position: relative; width: min(520px, 100%); }
+.anomaly-edit-modal .modal-title { padding-right: 28px; }
+.anomaly-abilities .rel-add { color: #a7cdff; border-color: #567fa9; }
+@media (max-width: 1000px) {
+  .anomaly-detail-content { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Portrait (the 768 x 1360 table screen): one column, larger type all round. */
+@media (orientation: portrait) {
+  .anomaly-view {
+    min-height: 0;
+    height: 100%;
+    overflow-y: auto;
+    align-content: start;
+    padding: 2px 2px 14px;
+    font-size: clamp(16px, 2.4vw, 20px);
+  }
+  .anomaly-overview { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+  .anomaly-name { font-size: clamp(19px, 3vw, 24px); }
+  .anomaly-subtitle { font-size: clamp(14px, 2.2vw, 17px); }
+  .anomaly-summary-track-label { font-size: clamp(12px, 1.9vw, 15px); }
+  .anomaly-summary-progress, .anomaly-summary-counts { font-size: clamp(15px, 2.3vw, 18px); }
+  .anomaly-summary-square { font-size: clamp(7px, 1.2vw, 10px); }
+  .anomaly-open { font-size: clamp(13px, 2vw, 16px); }
+
+  .anomaly-view .anomaly-back, .anomaly-view .anomaly-switch { padding: 11px 18px; font-size: clamp(15px, 2.3vw, 18px); }
+  .anomaly-detail-content { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .anomaly-track-section h3, .anomaly-abilities-title { font-size: clamp(18px, 2.9vw, 24px); }
+  .anomaly-progress, .anomaly-hint, .anomaly-rules { font-size: clamp(15px, 2.3vw, 18px); }
+  .anomaly-square { font-size: clamp(10px, 1.9vw, 15px); }
+  .anomaly-ability-grid { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+  .anomaly-ability-name { font-size: clamp(17px, 2.7vw, 22px); }
+  .anomaly-used { min-width: 100px; min-height: 54px; font-size: clamp(15px, 2.3vw, 18px); }
+  .anomaly-view .anomaly-ability-title { font-size: clamp(26px, 4.2vw, 34px); }
+  .anomaly-effects { font-size: clamp(19px, 2.9vw, 24px); }
+  .anomaly-question { padding: clamp(14px, 2.2vw, 20px); font-size: clamp(19px, 2.9vw, 24px); }
+  .anomaly-question h4 { font-size: clamp(19px, 3vw, 24px); }
+  .answer-square { width: 50px; height: 50px; flex-shrink: 0; font-size: 24px; }
+  .answer-reference { font-size: clamp(18px, 2.8vw, 22px); }
+  .anomaly-source { font-size: clamp(15px, 2.3vw, 18px); }
+  .anomaly-abilities .rel-add { min-height: 70px; font-size: clamp(14px, 2.1vw, 17px); }
+}

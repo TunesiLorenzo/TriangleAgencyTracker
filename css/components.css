@@ -184,29 +184,27 @@ input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#
 
 @media (orientation: portrait) {
   .characters {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    grid-template-rows: repeat(2, minmax(0, 1fr));
-    grid-auto-rows: minmax(0, 1fr);
-    align-items: stretch;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    align-items: start;
     column-gap: clamp(10px, 1.5vw, 18px);
-    row-gap: clamp(20px, 2.4vh, 36px);
+    row-gap: clamp(12px, 1.6vh, 24px);
     height: 100%;
     padding: 2px 6px 12px;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .char {
-    grid-column: span 2;
-    max-width: 280px;
-    min-height: 0;
-    height: 100%;
+    grid-column: auto;
+    max-width: none;
+    min-height: max-content;
+    height: auto;
+    align-self: start;
     padding: clamp(6px, 0.7vw, 10px);
     font-size: clamp(10px, 1.15vw, 14px);
-    justify-content: center;
-  }
-
-  .char:nth-child(4) {
-    grid-column: 2 / span 2;
+    justify-content: flex-start;
   }
 
   .char img {
@@ -237,35 +235,67 @@ input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#
     width: clamp(28px, 3.2vw, 40px);
   }
 
+  /* Tasks: one horizontal strip; "+ Add Task" stays pinned at its left edge. */
   #taskPanel {
     position: static;
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    align-content: flex-start;
-    gap: clamp(6px, 1vw, 10px);
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 6px;
     width: 100%;
-    max-height: clamp(64px, 16vh, 140px);
+    max-height: none;
     min-height: 0;
-    overflow-y: auto;
+    padding: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
   }
 
   #taskPanel .add-task-btn {
+    position: sticky;
+    left: 0;
+    z-index: 2;
     flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    padding: 6px 14px;
+    /* opaque, and reaching over the strip's left padding, so tasks scroll out of sight under it */
+    background: #161616;
+    box-shadow: -6px 0 0 #161616, 6px 0 10px rgba(0,0,0,0.6);
+    white-space: nowrap;
   }
 
   #taskPanel .task {
-    flex: 0 1 clamp(140px, 18vw, 220px);
+    flex: 0 0 clamp(140px, 21vw, 200px);
+    justify-content: center;
+    min-width: 0;
     margin-bottom: 0;
+    padding: 5px 24px 5px 8px;
   }
 
+  #taskPanel .task-title {
+    flex: none;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #taskPanel .task-meta { margin-top: 2px; white-space: nowrap; }
+
+  /* Bottom dashboard: the branch as one compact bar, then the three graphs side by side,
+     so the agent cards above get most of the height. */
   .world-section {
     display: grid;
-    grid-template-columns: minmax(180px, 0.9fr) repeat(2, minmax(0, 1.15fr)) minmax(150px, 0.8fr);
+    grid-template-areas:
+      "branch branch branch"
+      "timeline performance risk";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.62fr);
+    grid-template-rows: auto auto;
     align-items: stretch;
-    gap: clamp(8px, 1.2vw, 16px);
+    gap: 6px;
     width: 100%;
-    margin-top: clamp(10px, 1.5vh, 20px);
+    margin-top: 8px;
   }
 
   .world,
@@ -274,15 +304,84 @@ input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#
     min-height: 0;
   }
 
+  .world { grid-area: branch; }
+  .graph-box[data-panel="mission-timeline"] { grid-area: timeline; }
+  .graph-box[data-panel="agent-performance"] { grid-area: performance; }
+  .graph-box[data-panel="mission-risk"] { grid-area: risk; }
+
   .world {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: clamp(4px, 0.8vh, 10px);
-    padding: clamp(6px, 0.8vw, 12px);
-    font-size: clamp(10px, 1.1vw, 14px);
+    align-items: center;
+    gap: 6px 16px;
+    padding: 8px 12px;
+    font-size: 12px;
   }
 
+  .world .sphere-icon { display: none; }
+  .world-counter .counter { padding: 3px 9px; }
+
   .world input[type=text] {
-    width: clamp(80px, 10vw, 120px);
+    width: clamp(90px, 14vw, 140px);
+  }
+
+  .world .anomaly-tracker {
+    flex-direction: row;
+    width: auto;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .world .anomaly-counters {
+    grid-template-columns: repeat(3, auto);
+    width: auto;
+  }
+
+  .world .anomaly-stat {
+    flex-direction: row;
+    gap: 5px;
+    padding: 3px 7px;
+  }
+}
+
+/* Up to 3 agents fill one row of cards, which leaves room below: the dashboard
+   goes 2x2 with larger graphs. A 4th agent needs the second row back. */
+@media (orientation: portrait) {
+  body:not(:has(#charContainer > :nth-child(4 of .char))) .world-section {
+    grid-template-areas:
+      "branch risk"
+      "timeline performance";
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body:not(:has(#charContainer > :nth-child(4 of .char))) .world {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 10px;
+    font-size: 14px;
+  }
+
+  body:not(:has(#charContainer > :nth-child(4 of .char))) .world .anomaly-tracker {
+    flex-direction: column;
+    width: 100%;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+
+  body:not(:has(#charContainer > :nth-child(4 of .char))) .world .anomaly-counters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  body:not(:has(#charContainer > :nth-child(4 of .char))) .world .anomaly-stat {
+    flex-direction: column;
+    padding: 5px 4px 4px;
+  }
+
+  body:not(:has(#charContainer > :nth-child(4 of .char))) #pieGraph {
+    width: min(100%, 17vh, 300px);
   }
 }
 
@@ -300,27 +399,21 @@ input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#
 
 @media (max-width: 760px) and (orientation: portrait) {
   .characters {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    grid-template-rows: repeat(3, minmax(0, 1fr));
-    row-gap: 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    row-gap: 10px;
   }
 
   .char {
-    grid-column: span 2;
+    grid-column: auto;
     font-size: clamp(9px, 1.8vw, 12px);
   }
 
-  .char:nth-child(4) {
-    grid-column: span 2;
-  }
-
-  .char:nth-child(5) {
-    grid-column: 2 / span 2;
-  }
-
   .world-section {
-    grid-template-columns: minmax(120px, 0.9fr) repeat(2, minmax(0, 1.15fr)) minmax(100px, 0.8fr);
-    gap: 5px;
+    grid-template-columns: minmax(0, 1.25fr) minmax(190px, 1fr);
+    width: 100%;
+    gap: 4px;
   }
 }
 

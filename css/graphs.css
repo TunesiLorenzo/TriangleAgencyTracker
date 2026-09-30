@@ -25,6 +25,24 @@
 }
 
 /* Risk glow begins at UNSTABLE and intensifies at every new level. */
+.graph-header { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 6px; }
+.graph-header .graph-title { margin: 0; }
+.graph-refresh {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.graph-refresh:hover { background: rgba(255,255,255,0.2); }
+.graph-refresh:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
 .graph-box[data-risk-level="unstable"] {
   --risk-glow-color: rgba(255, 92, 64, 0.3);
   --risk-glow-size: 13px;
@@ -129,17 +147,44 @@ canvas {
   }
 
   .graph-title {
-    font-size: 10px;
+    font-size: 13px;
     margin-bottom: 4px;
   }
 
-  .graph-box canvas {
-    width: 100%;
-    height: auto;
-    max-height: clamp(110px, 14vh, 190px);
-    margin: 0;
-    object-fit: contain;
+  .graph-box[data-panel="mission-timeline"],
+  .graph-box[data-panel="agent-performance"] {
+    width: min(100%, calc(24vh + 16px), 376px);
+    justify-self: center;
+    align-self: center;
   }
+
+  .graph-box[data-panel="mission-risk"] {
+    width: min(100%, calc(22vh + 16px), 376px);
+    justify-self: center;
+    align-self: center;
+  }
+
+  .graph-box canvas {
+    height: auto;
+    max-height: none;
+    margin: 0;
+  }
+
+  /* Couple width to the desired height so canvases never get flattened. */
+  #lineGraph,
+  #histGraph {
+    width: min(100%, 24vh, 360px);
+    aspect-ratio: 2 / 1;
+  }
+  #pieGraph {
+    width: min(100%, 22vh, 360px);
+    aspect-ratio: 1 / 1;
+  }
+
+  .graph-box[data-panel="mission-risk"] { justify-content: center; }
+
+  .graph-header { min-height: 28px; margin-bottom: 3px; }
+  .graph-refresh { width: 24px; height: 24px; font-size: 19px; }
 }
 
 /* Canvases are drawn at devicePixelRatio resolution by dashboard.js; --canvas-w
@@ -149,7 +194,7 @@ canvas {
   height: auto;
 }
 @media (orientation: portrait) {
-  .graph-box canvas { width: 100%; }
+  .graph-box canvas { height: auto; }
 }
 
 /* Risk level changed: one bright ring pulse (overrides the looping alarm briefly) */

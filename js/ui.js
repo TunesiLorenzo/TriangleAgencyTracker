@@ -58,7 +58,7 @@ export function toast(message, { kind = 'info', duration = 3200, action } = {}) 
  * `submit` also runs when a <form> inside the content is submitted (Enter).
  * onClose runs however the modal is dismissed. Returns a close() function.
  */
-export function openModal({ title, content, actions = [], className = '', onClose }) {
+export function openModal({ title, content, actions = [], className = '', closeLabel, onClose }) {
   const previousFocus = document.activeElement;
 
   const backdrop = document.createElement('div');
@@ -94,8 +94,20 @@ export function openModal({ title, content, actions = [], className = '', onClos
   }
 
   function run(action) {
+    if (closed) return;
     if (action.onClick?.() === false) return;
     close();
+  }
+
+  if (closeLabel) {
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'modal-close';
+    closeButton.textContent = '\u00d7';
+    closeButton.setAttribute('aria-label', closeLabel);
+    closeButton.title = closeLabel;
+    closeButton.addEventListener('click', close);
+    panel.appendChild(closeButton);
   }
 
   actions.forEach(action => {

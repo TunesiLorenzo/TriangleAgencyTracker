@@ -207,6 +207,27 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
 .then span { color: var(--muted); font-size: 0.75rem; }
 .then select { flex: 1; }
 
+/* ---------- buttons: one submenu per viewer tab ---------- */
+.subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.subtab {
+  min-height: 32px;
+  padding: 0 14px;
+  border-color: var(--line);
+  border-radius: 999px;
+  background: rgba(0,0,0,0.35);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.subtab:hover { color: var(--text); border-color: var(--accent); filter: none; }
+.subtab.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.button-slot {
+  grid-template-columns: minmax(150px, 1.2fr) minmax(140px, 1fr) minmax(130px, 1fr) auto;
+}
+
 /* ---------- competencies ---------- */
 .competency-list {
   display: grid;
@@ -301,11 +322,14 @@ footer { display: flex; justify-content: center; padding-top: 10px; }
 /* ---------- phones ---------- */
 @media (max-width: 720px) {
   h1 { font-size: 1.6rem; }
+  .tabs { flex-wrap: wrap; }
+  .tab { padding: 10px 6px; font-size: 0.8rem; }
   .competency-list, #effectGroups, .library { grid-template-columns: minmax(0, 1fr); }
   .slot {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "name play" "source source" "then then" "volume volume";
   }
+  .button-slot { grid-template-areas: "name play" "source source" "volume volume"; }
   .slot-name { grid-area: name; }
   .slot > select { grid-area: source; }
   .slot .then { grid-area: then; }
@@ -318,3 +342,20 @@ footer { display: flex; justify-content: center; padding-top: 10px; }
   .field select { grid-column: 1 / -1; }
   .toggle i { grid-column: 2; }
 }
+
+/* Scrollbars: same thin HUD treatment as the tracker (see css/base.css). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(92, 126, 166, 0.78) transparent;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(92, 126, 166, 0.78) padding-box;
+  box-shadow: inset 0 0 0 1px rgba(175, 211, 255, 0.18);
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(116, 158, 207, 0.92); }
+::-webkit-scrollbar-thumb:active { background-color: rgba(140, 184, 235, 1); }
+::-webkit-scrollbar-button { display: none; }

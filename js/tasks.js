@@ -4,6 +4,7 @@ import { animateTriangle, chooseAgent, updateTint, updateTopCharacters } from '.
 import { openModal, toast } from './ui.js';
 
 const MAX_TASK_AMOUNT = 20;
+let taskGeneration = 0;
 
 // ---------- persistence helpers ----------
 function saveTasksArray(tasks) {
@@ -44,8 +45,9 @@ export function initTaskPanel(opts = {}) {
       toast('That task has already been used.', { kind: 'warn' });
       return;
     }
+    const generation = taskGeneration;
     const target = await chooseAgent(`Apply "${task.title}" to…`);
-    if (target) executeTaskOnChar(task, target, card);
+    if (target && generation === taskGeneration) executeTaskOnChar(task, target, card);
   });
 
   return container;
@@ -178,6 +180,7 @@ export function deleteTaskById(id) {
 
 // ---------- reset tasks ----------
 export function resetTasks() {
+  taskGeneration++;
   const panel = getPanel();
   if (!panel) return;
   // keep the add button (first child) if present, remove others
@@ -190,6 +193,7 @@ export function resetTasks() {
 
 // ---------- execution ----------
 function executeTaskOnChar(task, charEl, card) {
+  const generation = taskGeneration;
   const times = Math.max(1, Number(task.amount || 1));
   const isMerit = task.type === 'merit';
   const triangle = isMerit ? charEl.querySelector('.triangle') : charEl.querySelector('.triangle-down');
@@ -199,6 +203,8 @@ function executeTaskOnChar(task, charEl, card) {
 
   let i = 0;
   const step = () => {
+    // A mission reset cancels points still queued by an animated task.
+    if (generation !== taskGeneration) return;
     const n = parseInt(triangle.textContent) || 0;
     triangle.textContent = n + 1;
     animateTriangle(triangle);

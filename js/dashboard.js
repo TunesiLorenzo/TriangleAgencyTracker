@@ -111,23 +111,23 @@ function renderAgentPerformance() {
   const stats = getAgentStats();
   if (!stats.length) {
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = '13px sans-serif';
+    ctx.font = '15px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('No agents', w / 2, h / 2);
     return;
   }
 
   const rows = 5;
-  const headerH = 14;
+  const headerH = 18;
   const rowH = (h - headerH) / rows;
   const midX = w / 2;
   const maxVal = Math.max(1, ...stats.map(s => Math.max(s.merit, s.demerit)));
   const barMax = midX - 46; // leave room for name + net text
 
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = '9px sans-serif';
+  ctx.font = '11px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`DEMERIT  ${maxVal}  ←  0  →  ${maxVal}  MERIT`, midX, 9);
+  ctx.fillText(`DEMERIT  ${maxVal}  ←  0  →  ${maxVal}  MERIT`, midX, 11);
 
   stats.forEach((s, i) => {
     const y0 = headerH + i * rowH;
@@ -140,9 +140,9 @@ function renderAgentPerformance() {
     }
 
     ctx.fillStyle = s.dead ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.85)';
-    ctx.font = '10px sans-serif';
+    ctx.font = '12px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText((s.name || `Agent ${i + 1}`).slice(0, 10), 4, y0 + 12);
+    ctx.fillText((s.name || `Agent ${i + 1}`).slice(0, 10), 4, y0 + 14);
 
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.beginPath(); ctx.moveTo(midX, y0 + 4); ctx.lineTo(midX, y0 + rowH - 4); ctx.stroke();
@@ -158,12 +158,12 @@ function renderAgentPerformance() {
     ctx.fillRect(midX - demeritW, cy - barH / 2, demeritW, barH);
 
     ctx.fillStyle = s.isTopNet ? COLOR_GOLD : 'rgba(255,255,255,0.85)';
-    ctx.font = s.isTopNet ? 'bold 10px sans-serif' : '10px sans-serif';
+    ctx.font = s.isTopNet ? 'bold 12px sans-serif' : '12px sans-serif';
     ctx.textAlign = 'right';
     const netLabel = `${s.net > 0 ? '+' : ''}${s.net}${s.isTopNet ? ' ★' : ''}`;
-    ctx.fillText(netLabel, w - 4, y0 + 12);
+    ctx.fillText(netLabel, w - 4, y0 + 14);
 
-    ctx.font = '11px sans-serif';
+    ctx.font = '13px sans-serif';
     if (s.isTopMerit) { ctx.textAlign = 'left'; ctx.fillText('\u{1F451}', Math.min(midX + meritW + 3, w - 20), cy + 4); }
     if (s.isTopDemerit) { ctx.textAlign = 'right'; ctx.fillText('⚠', Math.max(midX - demeritW - 3, 20), cy + 4); }
   });
@@ -174,9 +174,9 @@ function renderTimeline() {
   const { ctx, w, h } = els.line;
   ctx.clearRect(0, 0, w, h);
 
-  if (timeline.length < 2) {
+  if (!timeline.length) {
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = '12px sans-serif';
+    ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('No mission data yet', w / 2, h / 2);
     return;
@@ -197,13 +197,13 @@ function renderTimeline() {
     series.map(({ key }) => numericValue(point, key))
   ));
   const axisMax = fittedAxisMax(largestValue);
-  const plot = { left: 28, right: w - 7, top: 25, bottom: h - 18 };
-  const xAt = i => plot.left + (i / (n - 1)) * (plot.right - plot.left);
+  const plot = { left: 32, right: w - 7, top: 28, bottom: h - 20 };
+  const xAt = i => plot.left + (i / Math.max(1, n - 1)) * (plot.right - plot.left);
   const yAt = value => plot.bottom - (value / axisMax) * (plot.bottom - plot.top);
 
   // A single shared numeric axis keeps equal values at equal heights for every
   // color. Previously, each series used its own maximum and distorted the data.
-  ctx.font = '9px sans-serif';
+  ctx.font = '11px sans-serif';
   ctx.lineWidth = 1;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
@@ -223,6 +223,13 @@ function renderTimeline() {
   // Use steps rather than diagonal interpolation: one series changes exactly at
   // its event while the other series remain at their previous values.
   function drawSeries({ key, color }) {
+    if (n === 1) {
+      ctx.beginPath();
+      ctx.arc(xAt(0), yAt(numericValue(points[0], key)), 3, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      return;
+    }
     ctx.beginPath();
     let previousY = yAt(numericValue(points[0], key));
     ctx.moveTo(xAt(0), previousY);
@@ -243,7 +250,7 @@ function renderTimeline() {
 
   // Legend includes the current value, so color mapping and axes are explicit.
   ctx.textBaseline = 'alphabetic';
-  ctx.font = '9px sans-serif';
+  ctx.font = '10px sans-serif';
   const legendSlot = (plot.right - plot.left) / series.length;
   series.forEach(({ key, label, color }, index) => {
     const legendX = plot.left + index * legendSlot;
@@ -262,7 +269,7 @@ function renderTimeline() {
   // Compact labels for major (task) events, skipping labels that would land
   // too close together to stay readable. Witnesses are rendered as a series.
   let lastLabelX = -Infinity;
-  ctx.font = '10px sans-serif';
+  ctx.font = '11px sans-serif';
   points.forEach((p, i) => {
     const x = xAt(i);
     if (p.isTask && x - lastLabelX > 26) {
@@ -306,9 +313,9 @@ function renderRisk() {
   ring(outerR - ringW / 2, risk.chaosRatio, COLOR_CHAOS);      // outer ring = chaos
   ring(innerR - ringW / 2, risk.witnessRatio, COLOR_WITNESS);  // inner ring = witnesses
 
-  let fontSize = 15;
+  let fontSize = 18;
   ctx.font = `bold ${fontSize}px sans-serif`;
-  while (ctx.measureText(risk.level).width > innerR * 1.5 && fontSize > 8) {
+  while (ctx.measureText(risk.level).width > innerR * 1.5 && fontSize > 10) {
     fontSize -= 1;
     ctx.font = `bold ${fontSize}px sans-serif`;
   }
@@ -348,6 +355,12 @@ export function initDashboard() {
   els.pieBox = pie.closest('.graph-box');
   els.witnessFlash = document.getElementById('witnessFlash');
   els.chaosPulse = document.getElementById('chaosPulseOverlay');
+
+  document.getElementById('restartTimelineButton')?.addEventListener('click', () => {
+    timeline = [{ t: Date.now(), label: 'Timeline restart', isTask: false, witnessMarker: false, ...currentTotals() }];
+    persistTimeline();
+    renderTimeline();
+  });
 
   // Restore persisted mission history; otherwise seed a baseline point so the
   // timeline isn't empty on first paint.

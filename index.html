@@ -11,6 +11,10 @@
   <link rel="stylesheet" href="./css/effects.css">
   <link rel="stylesheet" href="./css/graphs.css">
   <link rel="stylesheet" href="./css/ui.css">
+  <link rel="stylesheet" href="./css/relationships.css">
+  <link rel="stylesheet" href="./css/anomalies.css">
+  <link rel="stylesheet" href="./css/agency.css">
+  <link rel="stylesheet" href="./css/previousCases.css">
   <link rel="stylesheet" href="./css/utilities.css">
 </head>
 <body>
@@ -38,10 +42,22 @@
         <a id="settingsLink" class="nav-link" href="/settings" target="_blank" rel="noopener">Settings</a>
       </nav>
 
-      <div class="workspace">
+      <div class="view-tabs" role="tablist" aria-label="Main view">
+        <button type="button" class="view-tab" role="tab" id="agentsTab" aria-controls="agentsView" aria-selected="true">Agents</button>
+        <button type="button" class="view-tab" role="tab" id="relationshipsTab" aria-controls="relationshipsView" aria-selected="false" tabindex="-1">Relationships</button>
+        <button type="button" class="view-tab" role="tab" id="anomalyTab" aria-controls="anomalyView" aria-selected="false" tabindex="-1">Anomaly</button>
+        <button type="button" class="view-tab" role="tab" id="agencyTab" aria-controls="agencyView" aria-selected="false" tabindex="-1">Agency</button>
+        <button type="button" class="view-tab" role="tab" id="previousCasesTab" aria-controls="previousCasesView" aria-selected="false" tabindex="-1">Previous Cases</button>
+      </div>
+
+      <div class="workspace" id="agentsView" role="tabpanel" aria-labelledby="agentsTab">
         <aside id="taskPanel" aria-label="Tasks"></aside>
         <section class="characters" id="charContainer" aria-label="Agents"></section>
       </div>
+      <div class="relationships-view" id="relationshipsView" role="tabpanel" aria-labelledby="relationshipsTab" hidden></div>
+      <div class="anomaly-view" id="anomalyView" role="tabpanel" aria-labelledby="anomalyTab" hidden></div>
+      <div class="agency-view" id="agencyView" role="tabpanel" aria-labelledby="agencyTab" hidden></div>
+      <div class="reference-view" id="previousCasesView" role="tabpanel" aria-labelledby="previousCasesTab" hidden></div>
 
       <section class="world-section" aria-label="Branch status">
         <div class="world">
@@ -61,7 +77,10 @@
         </div>
 
         <div class="graph-box" data-panel="mission-timeline" aria-label="Mission Timeline">
-          <h3 class="graph-title">Mission Timeline</h3>
+          <div class="graph-header">
+            <h3 class="graph-title">Mission Timeline</h3>
+            <button id="restartTimelineButton" class="graph-refresh" type="button" aria-label="Restart timeline from current values" title="Restart timeline from current values">&#8635;</button>
+          </div>
           <canvas id="lineGraph" width="300" height="150"></canvas>
         </div>
         <div class="graph-box" data-panel="agent-performance" aria-label="Agent Performance">
@@ -73,6 +92,9 @@
           <canvas id="pieGraph" width="200" height="200"></canvas>
         </div>
       </section>
+      <nav class="mission-controls" aria-label="Mission controls">
+        <button id="nextMissionButton" type="button" class="modal-btn modal-btn-primary">NEXT MISSION</button>
+      </nav>
     </div>
   </main>
 

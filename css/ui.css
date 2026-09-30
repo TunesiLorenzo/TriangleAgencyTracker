@@ -47,6 +47,37 @@
 }
 
 /* ---------- Agent card controls ---------- */
+.mission-controls {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 16px;
+}
+.mission-modal .modal-actions { flex-wrap: wrap; }
+.mission-modal { position: relative; }
+.mission-modal .modal-title { padding-right: 28px; }
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font-size: 22px;
+  cursor: pointer;
+}
+.modal-close:hover { background: rgba(255,255,255,0.16); }
+.modal-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.mission-modal .modal-btn-captured { background: var(--captured-color); color: #fff; }
+.mission-modal .modal-btn-escaped { background: var(--escaped-color); color: #fff; }
+.mission-modal .modal-btn-killed { background: var(--killed-color); color: #111; }
+.mission-modal .modal-btn:hover { filter: brightness(1.15); }
+
 .char img {
   cursor: pointer;
   transition: transform 180ms ease, box-shadow 180ms ease, outline-color 180ms ease;
@@ -422,4 +453,13 @@
 @keyframes task-running {
   from { background: rgba(255,255,255,0.04); }
   to   { background: rgba(255,255,255,0.14); }
+}
+
+/* Portrait cards are narrow: the flip and export buttons sit in the top-right corner
+   instead of reaching in over the centred portrait. */
+@media (orientation: portrait) {
+  .char .flip-btn { top: 6px; right: 6px; }
+  .char .export-btn { top: 6px; right: 38px; }
+  .char .thumb { top: 38px; right: 8px; }
+  .mission-controls { padding-top: 8px; }
 }
