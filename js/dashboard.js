@@ -70,6 +70,23 @@ function pushEvent({ label, isTask = false, witnessMarker = false } = {}) {
 }
 
 /* ---------- restrained event effects ---------- */
+/** A "+1" (or "−1") rising from the triangle that was clicked. */
+function floatScore(triangle, type, delta) {
+  const card = triangle?.closest('.char');
+  if (!card || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const from = triangle.getBoundingClientRect();
+  const box = card.getBoundingClientRect();
+  const label = document.createElement('span');
+  label.className = `fx-float ${type}`;
+  label.textContent = delta < 0 ? '−1' : '+1';
+  label.style.left = `${from.left - box.left + from.width / 2}px`;
+  label.style.top = `${from.top - box.top}px`;
+  label.setAttribute('aria-hidden', 'true');
+  card.appendChild(label);
+  label.addEventListener('animationend', () => label.remove());
+  setTimeout(() => label.remove(), 1500);
+}
+
 function flash(el, className) {
   if (!el) return;
   el.classList.remove(className);
@@ -117,17 +134,31 @@ function renderAgentPerformance() {
     return;
   }
 
-  const rows = 5;
-  const headerH = 18;
+  // Three columns that never share space: names | bars (markers inside) | net score.
+  const rows = Math.max(5, stats.length);
+  const headerH = 16;
   const rowH = (h - headerH) / rows;
-  const midX = w / 2;
+  const fontPx = Math.max(8, Math.min(12, Math.floor(rowH * 0.55)));
+  const nameW = 72;
+  const netW = 38;
+  const markerW = 14;                                 // room for the crown / warning past a full bar
+  const midX = nameW + (w - nameW - netW) / 2;
+  const barMax = (w - nameW - netW) / 2 - markerW;
   const maxVal = Math.max(1, ...stats.map(s => Math.max(s.merit, s.demerit)));
-  const barMax = midX - 46; // leave room for name + net text
 
+  ctx.textBaseline = 'middle';
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = '11px sans-serif';
+  ctx.font = '10px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`DEMERIT  ${maxVal}  ←  0  →  ${maxVal}  MERIT`, midX, 11);
+  ctx.fillText(`DEMERIT ${maxVal} ← 0 → ${maxVal} MERIT`, midX, headerH / 2);
+
+  // Longest prefix of the name that fits its column, with an ellipsis if cut.
+  const fitName = text => {
+    if (ctx.measureText(text).width <= nameW - 8) return text;
+    let cut = text;
+    while (cut.length > 1 && ctx.measureText(`${cut}…`).width > nameW - 8) cut = cut.slice(0, -1);
+    return `${cut}…`;
+  };
 
   stats.forEach((s, i) => {
     const y0 = headerH + i * rowH;
@@ -136,20 +167,20 @@ function renderAgentPerformance() {
     if (s.isTopMerit || s.isTopDemerit) {
       ctx.strokeStyle = s.isTopDemerit ? '#ff9500' : COLOR_GOLD;
       ctx.lineWidth = 1;
-      ctx.strokeRect(2, y0 + 2, w - 4, rowH - 4);
+      ctx.strokeRect(1.5, y0 + 1.5, w - 3, rowH - 3);
     }
 
     ctx.fillStyle = s.dead ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.85)';
-    ctx.font = '12px sans-serif';
+    ctx.font = `${fontPx}px sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText((s.name || `Agent ${i + 1}`).slice(0, 10), 4, y0 + 14);
+    ctx.fillText(fitName(s.name || `Agent ${i + 1}`), 5, cy);
 
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.beginPath(); ctx.moveTo(midX, y0 + 4); ctx.lineTo(midX, y0 + rowH - 4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(midX, y0 + 3); ctx.lineTo(midX, y0 + rowH - 3); ctx.stroke();
 
     const meritW = (s.merit / maxVal) * barMax;
     const demeritW = (s.demerit / maxVal) * barMax;
-    const barH = Math.max(6, rowH * 0.28);
+    const barH = Math.max(4, Math.min(10, rowH * 0.32));
 
     ctx.fillStyle = COLOR_MERIT;
     ctx.fillRect(midX, cy - barH / 2, meritW, barH);
@@ -158,15 +189,15 @@ function renderAgentPerformance() {
     ctx.fillRect(midX - demeritW, cy - barH / 2, demeritW, barH);
 
     ctx.fillStyle = s.isTopNet ? COLOR_GOLD : 'rgba(255,255,255,0.85)';
-    ctx.font = s.isTopNet ? 'bold 12px sans-serif' : '12px sans-serif';
+    ctx.font = `${s.isTopNet ? 'bold ' : ''}${fontPx}px sans-serif`;
     ctx.textAlign = 'right';
-    const netLabel = `${s.net > 0 ? '+' : ''}${s.net}${s.isTopNet ? ' ★' : ''}`;
-    ctx.fillText(netLabel, w - 4, y0 + 14);
+    ctx.fillText(`${s.net > 0 ? '+' : ''}${s.net}${s.isTopNet ? '★' : ''}`, w - 5, cy);
 
-    ctx.font = '13px sans-serif';
-    if (s.isTopMerit) { ctx.textAlign = 'left'; ctx.fillText('\u{1F451}', Math.min(midX + meritW + 3, w - 20), cy + 4); }
-    if (s.isTopDemerit) { ctx.textAlign = 'right'; ctx.fillText('⚠', Math.max(midX - demeritW - 3, 20), cy + 4); }
+    ctx.font = `${fontPx}px sans-serif`;
+    if (s.isTopMerit) { ctx.textAlign = 'left'; ctx.fillText('\u{1F451}', midX + meritW + 2, cy); }
+    if (s.isTopDemerit) { ctx.textAlign = 'right'; ctx.fillText('⚠', midX - demeritW - 2, cy); }
   });
+  ctx.textBaseline = 'alphabetic';
 }
 
 /* ---------- Mission Timeline (was: line graph) ---------- */
@@ -378,9 +409,10 @@ export function initDashboard() {
   renderRisk();
 
   document.addEventListener('triangle-action', e => {
-    const { type, element } = e.detail;
+    const { type, element, delta = 1 } = e.detail;
     pushEvent({ label: type === 'merit' ? 'Merit' : 'Demerit' });
     flash(element?.closest('.char'), type === 'merit' ? 'fx-merit' : 'fx-demerit');
+    floatScore(element, type, delta);
     renderAgentPerformance();
     renderRisk();
   });

@@ -26,12 +26,60 @@ export const SOUND_EVENTS = [
   { key: 'witness', label: 'Witness', hint: 'Local witness added' },
   { key: 'chaos', label: 'Chaos', hint: 'Chaos added' },
   { key: 'globalWitness', label: 'Global witness', hint: 'Global witness added' },
-  { key: 'captured', label: 'Anomaly captured', hint: '' },
-  { key: 'killed', label: 'Anomaly killed', hint: '' },
-  { key: 'escaped', label: 'Anomaly escaped', hint: '' },
+  { key: 'captured', label: 'Mission outcome: Captured', hint: 'Played after Next Mission' },
+  { key: 'killed', label: 'Mission outcome: Killed', hint: 'Played after Next Mission' },
+  { key: 'escaped', label: 'Mission outcome: Escaped', hint: 'Played after Next Mission' },
   { key: 'counterDown', label: 'Counter decreased', hint: 'Any counter right-clicked down' },
   { key: 'glitch', label: 'Critical glitch', hint: 'Screen-tear burst at high risk' }
 ];
+
+// Room lights (LightRPG, see lights.py). Every sound event can also cue the lights,
+// plus the cues that play as buttons: the Previous Cases gates and the mission end.
+export const LIGHT_EVENTS = [
+  ...SOUND_EVENTS.filter(event => !['captured', 'killed', 'escaped'].includes(event.key)),
+  { key: 'prime', label: 'Prime Directive', hint: 'Back of an agent card' },
+  { key: 'encouraged', label: 'Encouraged Behavior', hint: 'Back of an agent card' },
+  { key: 'captured', label: 'Captured', hint: 'Next Mission outcome' },
+  { key: 'killed', label: 'Killed', hint: 'Next Mission outcome' },
+  { key: 'escaped', label: 'Escaped', hint: 'Next Mission outcome' },
+  { key: 'vaultOpen', label: 'Security gates open', hint: 'Previous Cases alarm' },
+  { key: 'vaultClose', label: 'Security gates close', hint: 'Previous Cases' }
+];
+// Buttons ("group.key") whose click is a light event.
+export const LIGHT_BUTTONS = {
+  'previousCases.openVault': 'vaultOpen',
+  'previousCases.closeVault': 'vaultClose'
+};
+export const LIGHT_ACTIONS = [
+  { key: 'none', label: 'Nothing' },
+  { key: 'color', label: 'Colour' },
+  { key: 'white', label: 'White' },
+  { key: 'effect', label: 'Effect' },
+  { key: 'off', label: 'Bulbs off' }
+];
+export const LIGHT_TARGETS = [
+  { key: 'all', label: 'Every bulb and the LED strip' },
+  { key: 'all_bulbs', label: 'Every bulb' },
+  { key: 'strip', label: 'LED strip only' },
+  { key: 'top_left', label: 'Top-left bulb' },
+  { key: 'center', label: 'Center bulb' },
+  { key: 'bottom_right', label: 'Bottom-right bulb' }
+];
+// LightRPG's own effects: bulb effects run on the Tapo bulbs, strip effects are the
+// controller's built-in programs. Room Wave needs two or more bulbs.
+export const LIGHT_EFFECTS = [
+  ...['bonfire', 'mystic', 'police', 'flicker', 'breathe', 'thunderstorm', 'aurora', 'room_wave']
+    .map(name => ({ key: `bulb:${name}`, label: name.replace('_', ' '), group: 'Bulbs' })),
+  ...['jump_rgb', 'jump_rgbycmw', 'crossfade_rgb', 'crossfade_rgbycmw', 'crossfade_red', 'crossfade_green',
+    'crossfade_blue', 'crossfade_yellow', 'crossfade_cyan', 'crossfade_magenta', 'crossfade_white',
+    'crossfade_red_green', 'crossfade_red_blue', 'crossfade_green_blue', 'blink_rgbycmw', 'blink_red',
+    'blink_green', 'blink_blue', 'blink_yellow', 'blink_cyan', 'blink_magenta', 'blink_white']
+    .map(name => ({ key: `strip:${name}`, label: name.replaceAll('_', ' '), group: 'LED strip' }))
+];
+
+/** A light cue; `seconds` > 0 returns to the ambient light afterwards. */
+const cue = (action, { hue = 0, saturation = 100, brightness = 100, temperature = 2700, effect = 'bulb:flicker', seconds = 0 } = {}) =>
+  ({ action, hue, saturation, brightness, temperature, effect, seconds });
 
 // Every button in the viewer, grouped like the Buttons submenus on /settings: the controls
 // shared by every tab, dialogs, then one group per main tab. A click plays the first entry
@@ -51,9 +99,6 @@ export const BUTTON_GROUPS = [
       { key: 'settings', label: 'Settings', selector: '#settingsLink', sound: 'synth:click' },
       { key: 'restartTimeline', label: 'Restart timeline', hint: 'On the Mission Timeline graph', selector: '#restartTimelineButton', sound: 'synth:close' },
       { key: 'nextMission', label: 'Next Mission', selector: '#nextMissionButton', sound: 'synth:open' },
-      { key: 'captured', label: 'Mission end: Catturata', selector: '.mission-modal .modal-btn-captured', sound: 'synth:lock', volume: 0.9 },
-      { key: 'killed', label: 'Mission end: Uccisa', selector: '.mission-modal .modal-btn-killed', sound: 'synth:thud', volume: 0.9 },
-      { key: 'escaped', label: 'Mission end: Liberata', selector: '.mission-modal .modal-btn-escaped', sound: 'synth:alarm', volume: 0.7 },
       // No selector: the last resort for a button no other entry matches.
       { key: 'other', label: 'Any other button', sound: 'synth:click', fallback: true }
     ]
@@ -87,7 +132,9 @@ export const BUTTON_GROUPS = [
       { key: 'switchAgent', label: 'Switch agent', selector: '.rel-switch', sound: 'synth:switch' },
       { key: 'back', label: 'Back', selector: '.rel-back', sound: 'synth:close' },
       { key: 'track', label: 'Relationship track', selector: '.rel-track', sound: 'synth:step' },
+      { key: 'trackBox', label: 'Tracciato Realtà box', selector: '.reality-square', sound: 'synth:typewriter' },
       { key: 'dose', label: 'Dose di Realtà track', selector: '#relationshipsView .dose-track', sound: 'synth:step' },
+      { key: 'rules', label: 'Come usare il tracciato', selector: '#relationshipsView .reality-rules summary', sound: 'synth:paper' },
       { key: 'bonusActive', label: 'Bonus Active box', selector: '.rel-active input', sound: 'synth:switch' },
       { key: 'picture', label: 'Relationship picture', selector: '.rel-picture', sound: 'synth:click' },
       { key: 'add', label: '+ Add Relationship', selector: '#relationshipsView .rel-add', sound: 'synth:pop' },
@@ -117,10 +164,14 @@ export const BUTTON_GROUPS = [
       { key: 'switch', label: 'Switch agent / item', selector: '.agency-switch', sound: 'synth:switch' },
       { key: 'back', label: 'Back', selector: '.agency-back', sound: 'synth:close' },
       { key: 'trackBox', label: 'Tracciato Competenza box', selector: '.competency-square', sound: 'synth:typewriter' },
+      { key: 'award', label: 'Nomina MVP / Sospendi', selector: '.agency-distinction-award', sound: 'synth:stamp' },
+      { key: 'revoke', label: 'Revoca (Distinzione)', selector: '.agency-distinction-revoke', sound: 'synth:close' },
+      { key: 'distinctionCount', label: 'MVP / Sospeso − +', selector: '.agency-step', sound: 'synth:tap' },
       { key: 'rules', label: 'Come usare il tracciato', selector: '#agencyView .agency-rules summary', sound: 'synth:paper' },
       { key: 'itemList', label: 'Open / close the item list', selector: '.agency-items > summary', sound: 'synth:drawer' },
       { key: 'openItem', label: 'Open an item', selector: '.agency-item-tile', sound: 'synth:paper' },
-      { key: 'itemIcon', label: 'Item icon choice', selector: '.agency-icon-choice', sound: 'synth:tap' },
+      { key: 'changeIcon', label: 'Cambia icona', hint: 'Opens the icon window', selector: '.agency-item-page-icon', sound: 'synth:open' },
+      { key: 'itemIcon', label: 'Icon in the icon window', selector: '.agency-icon-choice', sound: 'synth:tap' },
       { key: 'add', label: '+ Aggiungi oggetto', selector: '.agency-add', sound: 'synth:pop' },
       { key: 'remove', label: 'Rimuovi oggetto', selector: '.agency-remove-item', sound: 'synth:trash' },
       { key: 'promo', label: 'Promo banner controls', hint: 'Arrows, dots and pause', selector: '.promo button', sound: 'synth:tap' },
@@ -130,7 +181,8 @@ export const BUTTON_GROUPS = [
   {
     key: 'previousCases', label: 'Previous Cases', hint: 'Delete case, Open original and File case are Dialog buttons.',
     buttons: [
-      { key: 'openVault', label: 'Open archive security gates', selector: '.cases-vault-trigger', sound: 'synth:alarm', volume: 0.8 },
+      { key: 'openVault', label: 'Security gates: opening alarm', selector: '.cases-vault-trigger', sound: 'synth:alarm', volume: 0.8 },
+      { key: 'closeVault', label: 'Security gates: closing', selector: '.cases-vault-closing-sound', sound: 'synth:gate', volume: 0.9 },
       { key: 'openCase', label: 'Open a case envelope', selector: '.case-envelope', sound: 'synth:paper' },
       { key: 'fileCase', label: '+ File a new case', selector: '.cases-add', sound: 'synth:drawer' },
       { key: 'other', label: 'Other buttons', selector: '#previousCasesView *', sound: 'synth:click', fallback: true }
@@ -138,8 +190,9 @@ export const BUTTON_GROUPS = [
   }
 ];
 
-// These already play an Event or Competency sound, so they get no button sound on top.
-export const EVENT_SOUND_BUTTONS = '.death-btn, .back-action-btn';
+// These play their own event, competency or synchronized effect, so the delegated
+// button listener must not add a second sound on top.
+export const EVENT_SOUND_BUTTONS = '.death-btn, .back-action-btn, .cases-vault-trigger, .mission-modal .modal-btn-captured, .mission-modal .modal-btn-killed, .mission-modal .modal-btn-escaped';
 
 function competencyDefaults() {
   return Object.fromEntries(COMPETENCIES.map(name => [name, { prime: slot(''), encouraged: slot('') }]));
@@ -179,6 +232,30 @@ export const DEFAULT_CONFIG = {
     competencies: competencyDefaults(),
     buttons: buttonDefaults()
   },
+  lights: {
+    enabled: false,        // off until the room lights are set up in LightRPG
+    autoStart: true,       // launch LightRPG with the tracker (serve.py) while enabled
+    target: 'all',
+    ambient: cue('white', { temperature: 2700, brightness: 60 }),
+    events: {
+      merit: cue('color', { hue: 45, saturation: 85, seconds: 2 }),
+      demerit: cue('color', { hue: 0, seconds: 2 }),
+      sickLeave: cue('effect', { effect: 'bulb:flicker', seconds: 4 }),
+      return: cue('color', { hue: 130, saturation: 80, seconds: 3 }),
+      witness: cue('color', { hue: 220, saturation: 80, seconds: 1.5 }),
+      chaos: cue('effect', { effect: 'bulb:thunderstorm', seconds: 4 }),
+      globalWitness: cue('color', { hue: 265, saturation: 80, seconds: 2 }),
+      counterDown: cue('none'),
+      glitch: cue('none'),
+      prime: cue('color', { hue: 0, seconds: 2 }),
+      encouraged: cue('color', { hue: 45, saturation: 85, seconds: 2 }),
+      captured: cue('color', { hue: 200, saturation: 70, seconds: 4 }),
+      killed: cue('color', { hue: 355, brightness: 40, seconds: 5 }),
+      escaped: cue('effect', { effect: 'bulb:police', seconds: 6 }),
+      vaultOpen: cue('effect', { effect: 'bulb:police', seconds: 8.5 }),
+      vaultClose: cue('none')
+    }
+  },
   effects: {
     atmosphere: {
       maxChaos: 16,        // chaos at which everything is fully intense
@@ -215,6 +292,16 @@ export const DEFAULT_CONFIG = {
       burstsPerSecond: 0.5,
       rgbSplit: 4,         // px of red/blue color fringe
       titleTear: true
+    },
+    gates: {               // seconds from the click, timed to the gate sounds
+      disengageAt: 1,      // opening: the locks release with a jolt
+      openStartAt: 2,      // the doors start to slide, speeding up...
+      openSlamAt: 6,       // ...until the slam, then slow down
+      openEndAt: 8.5,      // fully open
+      closeStartAt: 2,     // closing: the doors start to move, speeding up...
+      closeSlamAt: 6,      // ...until the slam, then creep shut
+      closeEndAt: 8.5,     // fully closed
+      slamShare: 0.8       // how far the doors have travelled at the slam
     }
   }
 };

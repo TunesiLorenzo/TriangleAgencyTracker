@@ -257,8 +257,12 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   c._relationships = Array.isArray(data?.relationships) ? data.relationships.map(normalizeRelationship) : [];
   c._anomalyState = normalizeAnomalyState(data?.anomalyState);
   c._realityDose = Math.min(MAX_REALITY_DOSE, Math.max(0, Number.parseInt(data?.realityDose, 10) || 0));
-  // The Competenza track is edited on the Agency tab.
+  // The Realtà track is edited on the Relationships tab, the Competenza track on the Agency tab.
+  c._realityProgress = Math.min(TRACK_LENGTH, Math.max(0, Number.parseInt(data?.realityProgress, 10) || 0));
   c._competencyProgress = Math.min(TRACK_LENGTH, Math.max(0, Number.parseInt(data?.competencyProgress, 10) || 0));
+  // Distinzioni received so far (Agenda Vita-Lavoro, "Numero di volte"); who holds them now is branch data.
+  const times = key => Math.max(0, Number.parseInt(data?.distinctions?.[key], 10) || 0);
+  c._distinctions = { mvp: times('mvp'), suspended: times('suspended') };
   // Agency items name their owner and holder by this id, so it survives renames, exports and undo.
   // A second copy of an agent already on the branch gets its own.
   const takenIds = new Set(getCharElements().map(card => card._id));
@@ -427,7 +431,12 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
 
   // append everything to the char
   // structure: char contains controls and content; backFace sits along-side front content and is shown/hidden via CSS using .flipped
-  c.append(removeBtn, flipBtn, img, ...statDivs, trackerRow, activityMeter, netIndicator, deathOverlay, deathBtn, backFace);
+  // The portrait sits in a frame that can wear the Distinzioni (MVP, Sospeso) set on the Agency tab.
+  const portrait = document.createElement('span');
+  portrait.className = 'agency-portrait char-portrait';
+  portrait.appendChild(img);
+
+  c.append(removeBtn, flipBtn, portrait, ...statDivs, trackerRow, activityMeter, netIndicator, deathOverlay, deathBtn, backFace);
 
   // The Competency fills the back of the card with its Prime Directive and
   // Encouraged Behaviors: empty fields on load, and on every change of Competency.
@@ -512,6 +521,14 @@ export function getAgentStats() {
   return stats;
 }
 
+/** The badge on the top-merit ("Top Performer") or top-demerit ("Sotto osservazione") card. */
+function createStanding(className, text) {
+  const badge = document.createElement('div');
+  badge.className = `${className} standing-badge`;
+  badge.textContent = text;
+  return badge;
+}
+
 /**
  * updateTopCharacters - find top single merit/demerit/net and apply visual overlays.
  */
@@ -521,8 +538,7 @@ export function updateTopCharacters() {
   // clear
   stats.forEach(({ el }) => {
     el.classList.remove('star','tilt','crooked','top-merit','top-demerit');
-    el.querySelectorAll('.thumb').forEach(t => t.remove());
-    el.querySelectorAll('.shine-overlay, .broken-overlay, .vignette-overlay, .warning-badge').forEach(e => e.remove());
+    el.querySelectorAll('.thumb, .shine-overlay, .broken-overlay, .vignette-overlay, .warning-badge').forEach(e => e.remove());
   });
 
   // apply
@@ -530,15 +546,17 @@ export function updateTopCharacters() {
     const { el, merit, demerit, net, isTopMerit, isTopDemerit, isTopNet } = s;
 
     if (isTopMerit) {
+      // The Agency's own recognition: a gold frame, a slow shine and a badge.
       el.classList.add('star','top-merit');
-      const thumb = document.createElement('div'); thumb.className='thumb'; thumb.textContent='👑'; el.appendChild(thumb);
-      if (!el.querySelector('.shine-overlay')) { const sh=document.createElement('div'); sh.className='shine-overlay'; sh.setAttribute('aria-hidden','true'); el.appendChild(sh); }
+      el.appendChild(createStanding('thumb', '👑 Top Performer'));
+      const shine = document.createElement('div'); shine.className = 'shine-overlay'; shine.setAttribute('aria-hidden', 'true'); el.appendChild(shine);
     }
 
     if (isTopDemerit) {
+      // ...and its own concern: a crooked card, a flickering edge and a badge.
       el.classList.add('tilt','top-demerit','crooked');
-      if (!el.querySelector('.vignette-overlay')){ const v=document.createElement('div'); v.className='vignette-overlay'; v.setAttribute('aria-hidden','true'); el.appendChild(v); }
-      const warn = document.createElement('div'); warn.className='warning-badge'; warn.textContent='⚠️'; warn.setAttribute('aria-hidden','true'); el.appendChild(warn);
+      const vignette = document.createElement('div'); vignette.className = 'vignette-overlay'; vignette.setAttribute('aria-hidden', 'true'); el.appendChild(vignette);
+      el.appendChild(createStanding('warning-badge', '⚠ Sotto osservazione'));
     }
 
     const netEl = el.querySelector('.net-indicator');
@@ -546,6 +564,8 @@ export function updateTopCharacters() {
       const symbol = net > 0 ? '▲' : net < 0 ? '▼' : '▬';
       netEl.textContent = `${symbol} ${net > 0 ? '+' : ''}${net}`;
       netEl.classList.toggle('top-net', !!isTopNet);
+      netEl.classList.toggle('positive', net > 0);
+      netEl.classList.toggle('negative', net < 0);
     }
 
     const meritFill = el.querySelector('.activity-fill.merit');

@@ -1,23 +1,27 @@
 // relationships.js
 // Responsibilities: the Relationships view (the alternate main tab). The overview gives
 // each agent a summary column: Reality, how many relationships, how many are in Network and
-// the Dose di Realtà. Clicking an agent opens their page: the Dose di Realtà track (0-5,
-// 5 = X) and their relationships as tiles. Clicking one opens it on its own page, laid out
-// like the Relazioni sheet of the ARC dossier: name, picture, who plays them, description,
-// a 0-9 track (9 = Network) and a Relationship Bonus with its Active box. The data lives on the agent card (card._realityDose,
-// card._relationships), so it is saved, exported and restored together with the rest of
-// the agent.
+// the Realtà track of the Agenda Vita-Lavoro at a glance. Clicking an agent opens their page:
+// the Realtà track (ARC_Dossier page 8), the Dose di Realtà track (0-5, 5 = X) and their
+// relationships as tiles. Clicking one opens it on its own page, laid out like the Relazioni
+// sheet of the ARC dossier: name, picture, who plays them, description, a 0-9 track
+// (9 = Network) and a Relationship Bonus with its Active box. The data lives on the agent
+// card (card._realityProgress, card._realityDose, card._relationships), so it is saved,
+// exported and restored together with the rest of the agent.
 
 import {
   MAX_CONNECTION, MAX_REALITY_DOSE, animateOnce, bindImagePicker, createChoiceSelect,
   getCharElements, loadImageFile, normalizeRelationship
 } from './charSystem.js';
+import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { saveSettings } from './storage.js';
 import { toast } from './ui.js';
 
 const PICTURE_SIZE = 128;    // px, longest side after downscaling (shown at 56px)
 const MANAGER = 'Manager';   // the GM can play a relationship too
 const DOSE_NOTE = 'Devi scegliere un nuovo tipo di Realtà.';   // printed under every Reality's track
+// Playwall Documents on the Realtà track (ARC_Dossier page 8); the bottom row runs right to left.
+const DOCUMENTS = { 1: 'C4', 4: 'L11', 8: 'E2', 10: 'O4', 14: 'T6', 16: 'V2', 20: 'X3', 22: 'H5', 26: 'E3' };
 
 let view = null;
 let openCard = null;   // the agent whose page is open; null shows the overview
@@ -212,6 +216,47 @@ function createTrack(relationship, onChange) {
   caption.textContent = 'Network ▲';
   wrap.append(track, caption);
   return wrap;
+}
+
+/** The agent's Realtà track of the Agenda Vita-Lavoro: 30 boxes, some with a Playwall code. */
+function createRealityTrack(card) {
+  const section = document.createElement('section');
+  section.className = 'reality-track-section';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Tracciato Realtà';
+  const count = document.createElement('span');
+  count.className = 'reality-progress';
+  const showCount = () => { count.textContent = `${card._realityProgress || 0} / ${TRACK_LENGTH}`; };
+
+  const squares = createLifeWorkTrack({
+    label: 'Tracciato Realtà', className: 'reality-track', squareClass: 'reality-square', codes: DOCUMENTS,
+    get: () => card._realityProgress || 0,
+    set: value => { card._realityProgress = value; },
+    onChange: (previous, next) => {
+      showCount();
+      const unlocked = reachedCodes(DOCUMENTS, previous, next);
+      if (unlocked.length) toast(`Leggi in Playwall: ${unlocked.join(', ')}.`);
+    }
+  });
+  showCount();
+
+  const rules = document.createElement('details');
+  rules.className = 'reality-rules';
+  const summary = document.createElement('summary');
+  summary.textContent = 'Come usare il tracciato';
+  rules.append(summary, ...[
+    'Segna 1 casella per unità di Tempo disponibile a fine Incarico. Quando segni un tracciato, cancella l’ultima casella dei tracciati che non hai scelto. Se trovi un codice, leggi il Documento in Playwall.',
+    'Quando segni una casella Realtà, aumenta di +1 il Legame con una Relazione a tua scelta. Ripeti per ogni Relazione nel Network.',
+    'Quando non ricevi nessuna Distinzione, puoi aumentare di +1 il Legame con una Relazione a scelta.'
+  ].map(text => {
+    const p = document.createElement('p');
+    p.textContent = text;
+    return p;
+  }));
+
+  section.append(title, count, squares, rules);
+  return section;
 }
 
 /** The agent's Dose di Realtà track, drawn like the paper: ▶ 1-2-3-4-X. */
@@ -494,32 +539,33 @@ function createCounts(card) {
   return { counts, update };
 }
 
-/** Read-only Dose di Realtà for the overview: 1-2-3-4-X, filled up to the current dose. */
-function createDoseSummary(card) {
-  const dose = card._realityDose || 0;
+/** Read-only Realtà track for the overview: the marked boxes and the Playwall codes. */
+function createRealityTrackSummary(card) {
+  const progress = card._realityProgress || 0;
   const box = document.createElement('span');
-  box.className = 'rel-summary-dose';
-  box.classList.toggle('full', dose >= MAX_REALITY_DOSE);
+  box.className = 'rel-summary-track';
 
   const caption = document.createElement('span');
   caption.className = 'rel-label';
-  caption.textContent = 'Dose di Realtà';
+  caption.textContent = 'Tracciato Realtà';
+  const count = document.createElement('strong');
+  count.className = 'rel-summary-progress';
+  count.textContent = `${progress} / ${TRACK_LENGTH}`;
 
-  const pips = document.createElement('span');
-  pips.className = 'dose-pips';
-  for (let step = 1; step <= MAX_REALITY_DOSE; step++) {
-    const pip = document.createElement('span');
-    pip.className = 'dose-pip';
-    pip.classList.toggle('reached', step <= dose);
-    pip.textContent = step === MAX_REALITY_DOSE ? 'X' : step;
-    pips.appendChild(pip);
+  const row = TRACK_LENGTH / 2;
+  const squares = document.createElement('span');
+  squares.className = 'rel-summary-squares';
+  for (let n = 1; n <= TRACK_LENGTH; n++) {
+    const square = document.createElement('span');
+    square.className = 'rel-summary-square';
+    square.textContent = DOCUMENTS[n] || '';
+    square.classList.toggle('reached', n <= progress);
+    square.style.gridRow = n <= row ? '1' : '2';
+    square.style.gridColumn = String(n <= row ? n : TRACK_LENGTH + 1 - n);
+    squares.appendChild(square);
   }
 
-  const note = document.createElement('span');
-  note.className = 'dose-note';
-  note.textContent = DOSE_NOTE;
-
-  box.append(caption, pips, note);
+  box.append(caption, count, squares);
   return box;
 }
 
@@ -527,7 +573,6 @@ function createDoseSummary(card) {
 function createSummary(card, index) {
   const relationships = relationshipsOf(card);
   const network = relationships.filter(inNetwork).length;
-  const dose = card._realityDose || 0;
 
   const tile = document.createElement('button');
   tile.type = 'button';
@@ -538,15 +583,14 @@ function createSummary(card, index) {
     agentName(card, index),
     `Reality: ${statOf(card, 'reality') || 'none'}`,
     `${relationships.length} relationships, ${network} in Network`,
-    `Dose di Realtà ${dose} of ${MAX_REALITY_DOSE}`,
-    ...(dose >= MAX_REALITY_DOSE ? [DOSE_NOTE] : [])
+    `Tracciato Realtà ${card._realityProgress || 0} of ${TRACK_LENGTH}`
   ].join('. '));
 
   const open = document.createElement('span');
   open.className = 'rel-open';
   open.textContent = 'Open ›';
 
-  tile.append(createIdentity(card, index), createReality(card), createCounts(card).counts, createDoseSummary(card), open);
+  tile.append(createIdentity(card, index), createReality(card), createCounts(card).counts, createRealityTrackSummary(card), open);
   tile.addEventListener('click', () => openAgent(card));
   return tile;
 }
@@ -624,7 +668,7 @@ function createRelationshipNav(card, index) {
 }
 
 /**
- * An agent's page: their profile with the editable Dose di Realtà, beside their relationships
+ * An agent's page: their profile with the Realtà track and the Dose di Realtà, beside their relationships
  * as tiles. An open relationship gets the whole view instead.
  */
 function createDetail(card, cards) {
@@ -644,7 +688,7 @@ function createDetail(card, cards) {
   const profile = document.createElement('div');
   profile.className = 'rel-profile';
   profile.classList.toggle('dead', card.classList.contains('dead'));
-  profile.append(createIdentity(card, index, { heading: true }), createReality(card), counts, createDose(card));
+  profile.append(createIdentity(card, index, { heading: true }), createReality(card), counts, createRealityTrack(card), createDose(card));
 
   const list = document.createElement('div');
   list.className = 'rel-list';

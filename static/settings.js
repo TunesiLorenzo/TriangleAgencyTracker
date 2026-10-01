@@ -1,15 +1,17 @@
 // settings.js
 // The /settings page: assigns sounds to tracker events, viewer buttons (one submenu
 // per viewer tab) and competency cues, tunes the amplifier keep-alive tone, manages
-// the audio library, and tunes the visual effects. Every edit updates a local draft,
+// the audio library, tunes the visual effects, and sets the room-light cues sent
+// to LightRPG. Every edit updates a local draft,
 // previews immediately, and is saved (debounced) to the server, which pushes it to
 // open viewers.
 
 import {
-  BUTTON_GROUPS, COMPETENCIES, DEFAULT_CONFIG, RISK_LEVELS, SOUND_EVENTS,
-  competencyFile, getConfig, isCompetencyFolderFile, onConfigChange, saveConfig,
-  setLocalConfig, setSoundFiles, startConfigSync
+  BUTTON_GROUPS, COMPETENCIES, DEFAULT_CONFIG, LIGHT_ACTIONS, LIGHT_EFFECTS, LIGHT_EVENTS,
+  LIGHT_TARGETS, RISK_LEVELS, SOUND_EVENTS, competencyFile, getConfig, isCompetencyFolderFile,
+  onConfigChange, saveConfig, setLocalConfig, setSoundFiles, startConfigSync
 } from '/js/config.js';
+import { sendLightCue } from '/js/lights.js';
 import { playSlot, resolveSlot } from '/js/soundEffects.js';
 import { SYNTHS } from '/js/synth.js';
 import { COMPETENCY_INFO } from '/js/competencies.js';
@@ -22,6 +24,27 @@ const KEEP_ALIVE_FIELDS = [
   { key: 'level', label: 'Drone volume', min: 0, max: 0.05, step: 0.001, percent: true, decimals: 1 },
   { key: 'frequency', label: 'Drone pitch', min: 20, max: 250, step: 5, unit: 'Hz' }
 ];
+
+// The Lights tab: the general switches, then the sliders each cue action shows.
+const LIGHT_GENERAL_FIELDS = [
+  { key: 'enabled', label: 'Event lights on', type: 'toggle' },
+  { key: 'autoStart', label: 'Start LightRPG with the tracker', type: 'toggle' },
+  { key: 'target', label: 'Lights to use', type: 'select', options: LIGHT_TARGETS }
+];
+const LIGHT_FIELDS = {
+  hue: { label: 'Hue', min: 0, max: 360, step: 5, unit: '°' },
+  saturation: { label: 'Saturation', min: 0, max: 100, step: 5, unit: '%' },
+  brightness: { label: 'Brightness', min: 1, max: 100, step: 1, unit: '%' },
+  temperature: { label: 'Temperature', min: 2500, max: 6500, step: 100, unit: 'K' },
+  seconds: { label: 'Hold', min: 0, max: 30, step: 0.5, unit: 's', zeroLabel: 'keep' }
+};
+const LIGHT_ACTION_FIELDS = {
+  none: [],
+  color: ['hue', 'saturation', 'brightness'],
+  white: ['temperature', 'brightness'],
+  effect: ['brightness'],
+  off: []
+};
 
 // Slider/toggle definitions for the Effects tab.
 const EFFECT_GROUPS = [
@@ -60,6 +83,20 @@ const EFFECT_GROUPS = [
       { key: 'burstsPerSecond', label: 'Glitches per second', min: 0, max: 4, step: 0.1 },
       { key: 'rgbSplit', label: 'Colour fringe', min: 0, max: 15, step: 0.5, unit: 'px' },
       { key: 'titleTear', label: 'Tear the title', type: 'toggle' }
+    ]
+  },
+  {
+    key: 'gates', title: 'Security gates', eyebrow: 'PREVIOUS CASES',
+    hint: 'Seconds from the click, matched to the gate sounds. The doors speed up until the slam, then slow down to the end.',
+    fields: [
+      { key: 'disengageAt', label: 'Opening: locks release', min: 0, max: 10, step: 0.1, unit: 's' },
+      { key: 'openStartAt', label: 'Opening: doors start moving', min: 0, max: 10, step: 0.1, unit: 's' },
+      { key: 'openSlamAt', label: 'Opening: slam', min: 0, max: 15, step: 0.1, unit: 's' },
+      { key: 'openEndAt', label: 'Opening: fully open', min: 0, max: 15, step: 0.1, unit: 's' },
+      { key: 'closeStartAt', label: 'Closing: doors start moving', min: 0, max: 10, step: 0.1, unit: 's' },
+      { key: 'closeSlamAt', label: 'Closing: slam', min: 0, max: 15, step: 0.1, unit: 's' },
+      { key: 'closeEndAt', label: 'Closing: fully closed', min: 0, max: 15, step: 0.1, unit: 's' },
+      { key: 'slamShare', label: 'Travel done at the slam', min: 0.3, max: 1, step: 0.05, percent: true }
     ]
   },
   {
@@ -254,6 +291,7 @@ function renderLibrary() {
 }
 
 function formatValue(field, value) {
+  if (field.zeroLabel && Number(value) === 0) return field.zeroLabel;
   if (field.percent) return `${(value * 100).toFixed(field.decimals || 0)}%`;
   const rounded = Number.isInteger(field.step) ? value : Number(value).toFixed(String(field.step).split('.')[1]?.length || 0);
   return `${rounded}${field.unit ? ` ${field.unit}` : ''}`;
@@ -267,8 +305,10 @@ function renderField(path, field) {
       <input type="checkbox" data-path="${path}" data-kind="boolean"${value ? ' checked' : ''}><i aria-hidden="true"></i></label>`;
   }
   if (field.type === 'select') {
+    // Options are plain values, or { key, label } where the value differs from the label.
+    const options = field.options.map(o => typeof o === 'string' ? { key: o, label: o[0].toUpperCase() + o.slice(1) } : o);
     return `<label class="field"><span>${field.label}</span>
-      <select data-path="${path}">${field.options.map(o => `<option value="${o}"${o === value ? ' selected' : ''}>${o[0].toUpperCase() + o.slice(1)}</option>`).join('')}</select></label>`;
+      <select data-path="${path}">${options.map(o => `<option value="${o.key}"${o.key === value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</select></label>`;
   }
   return `<label class="field"><span>${field.label}</span>
     <input type="range" min="${field.min}" max="${field.max}" step="${field.step}" value="${value}" data-path="${path}" data-kind="number">
@@ -289,6 +329,100 @@ function renderEffects() {
   }).join('');
 }
 
+/* ---------- lights ---------- */
+/** Roughly what the cue looks like, for the round swatch beside it. */
+function swatchStyle(cue) {
+  const level = 25 + cue.brightness * 0.3;
+  if (cue.action === 'color') return `background: hsl(${cue.hue} ${cue.saturation}% ${level}%)`;
+  if (cue.action === 'white') {
+    const t = (cue.temperature - 2500) / 4000;   // warm amber to cool blue-white
+    return `background: hsl(${35 + t * 185} ${90 - t * 50}% ${level + 15}%)`;
+  }
+  if (cue.action === 'effect') return 'background: conic-gradient(#f33, #fd0, #3c6, #39f, #c3f, #f33)';
+  return '';
+}
+
+function lightFieldKeys(cue, { hold }) {
+  const keys = cue.action === 'effect' && !cue.effect.startsWith('strip:') ? [] : [...LIGHT_ACTION_FIELDS[cue.action]];
+  if (hold && cue.action !== 'none') keys.push('seconds');
+  return keys;
+}
+
+function effectOptions(selected) {
+  const groups = [...new Set(LIGHT_EFFECTS.map(effect => effect.group))];
+  return groups.map(group => `<optgroup label="${group}">${LIGHT_EFFECTS.filter(effect => effect.group === group)
+    .map(effect => `<option value="${effect.key}"${effect.key === selected ? ' selected' : ''}>${escapeHtml(effect.label)}</option>`).join('')}</optgroup>`).join('');
+}
+
+/** One cue editor: the action, its sliders, a swatch and (for events) a test button. */
+function lightCueRow(path, cue, { label, hint, hold = true, test = true }) {
+  const actions = LIGHT_ACTIONS.map(action =>
+    `<option value="${action.key}"${action.key === cue.action ? ' selected' : ''}>${action.label}</option>`).join('');
+  const fields = lightFieldKeys(cue, { hold }).map(key => renderField(`${path}.${key}`, LIGHT_FIELDS[key])).join('');
+  const effect = cue.action === 'effect'
+    ? `<label class="field"><span>Effect</span><select data-path="${path}.effect">${effectOptions(cue.effect)}</select></label>` : '';
+  return `<div class="light-slot">
+    ${label ? `<div class="slot-name"><strong>${escapeHtml(label)}</strong>${hint ? `<small>${escapeHtml(hint)}</small>` : ''}</div>` : ''}
+    <select data-path="${path}.action" aria-label="${escapeHtml(label || 'Ambient')} light">${actions}</select>
+    <span class="light-swatch" data-swatch="${path}" style="${swatchStyle(cue)}" aria-hidden="true"></span>
+    ${test ? `<button type="button" class="play" data-test-light="${path.replace('lights.', '')}" aria-label="Try the ${escapeHtml(label)} light">&#9654;</button>` : ''}
+    <div class="light-fields">${effect}${fields}</div>
+  </div>`;
+}
+
+function renderLights() {
+  const outcomeEvents = new Set(['captured', 'killed', 'escaped']);
+  $('#lightGeneral').innerHTML = LIGHT_GENERAL_FIELDS.map(field => renderField(`lights.${field.key}`, field)).join('');
+  $('#lightAmbient').innerHTML = lightCueRow('lights.ambient', draft.lights.ambient, { hold: false, test: false });
+  $('#missionOutcomeLightSlots').innerHTML = LIGHT_EVENTS.filter(({ key }) => outcomeEvents.has(key)).map(({ key, label, hint }) =>
+    lightCueRow(`lights.events.${key}`, draft.lights.events[key], { label, hint })).join('');
+  $('#lightSlots').innerHTML = LIGHT_EVENTS.filter(({ key }) => !outcomeEvents.has(key)).map(({ key, label, hint }) =>
+    lightCueRow(`lights.events.${key}`, draft.lights.events[key], { label, hint })).join('');
+  $('#openLightRPG').href = `${location.protocol}//${location.hostname}:5000/`;
+}
+
+let lightStatusTimer = 0;
+
+async function refreshLightStatus() {
+  const status = $('#lightStatus');
+  try {
+    const data = await (await fetch('/api/lights/status', { cache: 'no-store' })).json();
+    const bulbs = Object.values(data.bulbs || {}).filter(Boolean).length;
+    if (data.reachable) {
+      const parts = [`${bulbs} bulb${bulbs === 1 ? '' : 's'}`, data.strip ? 'LED strip' : 'no strip'];
+      status.textContent = data.lastError ? `Last cue failed: ${data.lastError}` : `Connected · ${parts.join(' · ')}`;
+      status.dataset.state = data.lastError ? 'error' : 'saved';
+    } else {
+      status.textContent = !data.installed ? 'LightRPG folder not found' : data.starting ? 'LightRPG is starting…' : 'LightRPG is not running';
+      status.dataset.state = data.starting ? 'saving' : 'error';
+    }
+    $('#startLightRPG').hidden = data.reachable || !data.installed;
+  } catch {
+    status.textContent = 'Tracker server not reachable';
+    status.dataset.state = 'error';
+  }
+}
+
+/** Poll LightRPG only while the Lights tab is on show. */
+function watchLightStatus(active) {
+  clearInterval(lightStatusTimer);
+  lightStatusTimer = 0;
+  if (!active) return;
+  refreshLightStatus();
+  lightStatusTimer = setInterval(refreshLightStatus, 4000);
+}
+
+async function testLight(button) {
+  const key = button.dataset.testLight;
+  // 'ambient' or 'events.<event>'; the ambient light has no hold, so it just stays.
+  const cue = key === 'ambient' ? { ...draft.lights.ambient, seconds: 0 } : getPath(draft.lights, key);
+  button.classList.add('playing');
+  const result = await sendLightCue(cue, draft.lights);
+  if (!result.ok) setStatus(result.message || 'Light cue failed', 'error');
+  // The server queues the cue; give the bulbs a moment, then show how it went.
+  setTimeout(() => { button.classList.remove('playing'); refreshLightStatus(); }, 1500);
+}
+
 function renderAll() {
   renderMaster();
   renderKeepAlive();
@@ -298,12 +432,14 @@ function renderAll() {
   renderCompetencies();
   renderLibrary();
   renderEffects();
+  renderLights();
 }
 
 /* ---------- editing ---------- */
 /** The slider definition behind an effects or keep-alive path; volumes have none. */
 function fieldFor(path) {
   if (path.startsWith('sounds.keepAlive.')) return KEEP_ALIVE_FIELDS.find(f => path === `sounds.keepAlive.${f.key}`);
+  if (path.startsWith('lights.')) return LIGHT_FIELDS[path.split('.').pop()] || null;
   if (!path.startsWith('effects.')) return null;
   const [, groupKey, fieldKey] = path.split('.');
   return EFFECT_GROUPS.find(g => g.key === groupKey)?.fields.find(f => f.key === fieldKey);
@@ -323,10 +459,18 @@ function handleEdit(event) {
 
   const output = document.querySelector(`output[data-out="${path}"]`);
   if (output) output.textContent = formatValue(fieldFor(path) || { percent: true }, value);
+  if (path.startsWith('lights.')) {
+    // A new action or effect shows different sliders; other edits only recolour the swatch.
+    if (/\.(action|effect)$/.test(path)) renderLights();
+    const cuePath = path.slice(0, path.lastIndexOf('.'));
+    const swatch = document.querySelector(`[data-swatch="${cuePath}"]`);
+    if (swatch) swatch.style.cssText = swatchStyle(getPath(draft, cuePath));
+  }
   scheduleSave();
 }
 
 async function playFor(button) {
+  if (button.dataset.testLight) return testLight(button);
   button.classList.add('playing');
   try {
     if (button.dataset.testEvent) {
@@ -388,6 +532,7 @@ function showTab(name) {
     tab.setAttribute('aria-selected', String(active));
   });
   document.querySelectorAll('[data-tab-panel]').forEach(panel => { panel.hidden = panel.dataset.tabPanel !== name; });
+  watchLightStatus(name === 'lights');
   try { localStorage.setItem(TAB_KEY, name); } catch { /* ignore */ }
 }
 
@@ -438,6 +583,22 @@ async function init() {
     draft.sounds.buttons[buttonGroup] = structuredClone(DEFAULT_CONFIG.sounds.buttons[buttonGroup]);
     renderButtons();
     scheduleSave();
+  });
+
+  $('#resetLights').addEventListener('click', () => {
+    draft.lights.events = structuredClone(DEFAULT_CONFIG.lights.events);
+    renderLights();
+    scheduleSave();
+  });
+
+  $('#startLightRPG').addEventListener('click', async () => {
+    try {
+      const data = await (await fetch('/api/lights/start', { method: 'POST' })).json();
+      setStatus(data.message, data.ok ? 'saved' : 'error');
+    } catch {
+      setStatus('Could not reach the tracker server', 'error');
+    }
+    refreshLightStatus();
   });
 
   $('#competencyUpload').addEventListener('change', event => {

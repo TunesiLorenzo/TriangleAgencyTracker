@@ -52,16 +52,7 @@
 }
 
 /* portrait + name + player · competency */
-.agency-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.agency-identity img {
-  flex: none;
-  width: 48px;
-  height: 48px;
-  border-radius: 33%;
-  object-fit: cover;
-  background: #444;
-}
-.dead .agency-identity img { filter: grayscale(1); opacity: 0.6; }
+.agency-identity { display: flex; align-items: center; gap: 18px; min-width: 0; }
 .agency-identity-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .agency-name { font-size: 20px; letter-spacing: 1px; text-transform: uppercase; overflow-wrap: anywhere; }
 .agency-subtitle { color: #ff9d96; font-size: 14px; }
@@ -328,16 +319,42 @@
 /* ---------- Item page: one item, whole view, large type ---------- */
 .agency-item-page { gap: 20px; padding: clamp(16px, 3vw, 28px); }
 .agency-item-page-header { display: flex; align-items: center; gap: 18px; }
+/* the big icon is also the button that opens the icon window */
 .agency-item-page-icon {
+  position: relative;
   display: grid;
   flex: none;
   place-items: center;
   width: 96px;
   height: 96px;
+  padding: 0;
+  border: none;
   border-radius: 20px;
   background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--competency-color) 45%, #2a2a2a), #1a1a1a);
+  color: #fff;
+  font: inherit;
   font-size: 58px;
+  line-height: 1;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--competency-color) 45%, transparent);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.agency-item-page-icon:hover {
+  transform: scale(1.04);
+  box-shadow: inset 0 0 0 2px var(--competency-color), 0 8px 18px rgba(0,0,0,0.6);
+}
+.agency-item-page-icon-edit {
+  position: absolute;
+  right: -6px;
+  bottom: -8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--competency-color);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
 }
 .agency-field { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; }
 .agency-item-page-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -365,20 +382,29 @@
 select.agency-input { cursor: pointer; }
 .agency-view .agency-item-page-name { font-size: 26px; font-weight: 700; }
 .agency-view .agency-item-page-description { min-height: 7em; field-sizing: content; resize: vertical; font-size: 19px; line-height: 1.55; }
-.agency-icon-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+/* the icon window */
+.agency-icon-modal { position: relative; width: min(560px, 100%); }
+.agency-icon-modal .modal-title { padding-right: 28px; }
+.agency-icon-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px;
+  margin-bottom: 4px;
+}
 .agency-icon-choice {
-  min-width: 46px;
-  height: 46px;
+  height: 64px;
   padding: 0 8px;
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 10px;
   background: rgba(0,0,0,0.4);
   color: #fff;
-  font-size: 24px;
+  font-size: 34px;
   cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease;
 }
-.agency-icon-choice:first-child { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
-.agency-icon-choice:hover { border-color: rgba(255,255,255,0.45); }
+.agency-icon-choice:first-child { font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+.agency-icon-choice:hover { border-color: rgba(255,255,255,0.45); transform: scale(1.06); }
+.agency-icon-choice:focus-visible { outline: 2px solid white; outline-offset: 2px; }
 .agency-icon-choice[aria-pressed="true"] {
   border-color: var(--competency-color);
   background: color-mix(in srgb, var(--competency-color) 28%, rgba(0,0,0,0.5));
@@ -593,6 +619,209 @@ select.agency-input { cursor: pointer; }
   to   { opacity: 1; transform: none; }
 }
 
+/* ---------- Distinzioni: MVP and Sospeso ---------- */
+/* the portrait, dressed for its Distinzione */
+.agency-portrait {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 56px;
+}
+.agency-portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 33%;
+  object-fit: cover;
+  background: #444;
+}
+.agency-profile .agency-portrait { width: 84px; height: 84px; }
+.dead .agency-portrait img { filter: grayscale(1); opacity: 0.6; }
+
+/* MVP: a gold frame with a slow shine, and the rosette */
+.agency-portrait.mvp img {
+  box-shadow: 0 0 0 3px #ffd60a, 0 0 18px color-mix(in srgb, #ffd60a 55%, transparent);
+}
+.agency-portrait.mvp::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 33%;
+  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%) -150% 0 / 250% 100% no-repeat;
+  animation: agency-shine 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+/* Sospeso: grey, a little crooked, stamped */
+.agency-portrait.suspended img { filter: grayscale(1) contrast(0.9); opacity: 0.8; transform: rotate(-4deg); }
+.agency-portrait-stamp {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  padding: 1px 5px;
+  border: 2px solid #ff3b30;
+  border-radius: 4px;
+  color: #ff3b30;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: rgba(20,20,20,0.55);
+  transform: translate(-50%, -50%) rotate(-18deg);
+  pointer-events: none;
+}
+.agency-profile .agency-portrait-stamp { font-size: 14px; padding: 2px 8px; border-width: 3px; }
+.agency-portrait-badge {
+  position: absolute;
+  right: -8px;
+  bottom: -6px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 15px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.6);
+}
+.agency-portrait-badge.mvp { background: radial-gradient(circle at 35% 30%, #fff3a8, #ffd60a 55%, #b88a00); }
+.agency-portrait-badge.suspended { top: -6px; bottom: auto; background: #2a2a2a; box-shadow: 0 0 0 2px #ff3b30, 0 3px 8px rgba(0,0,0,0.6); }
+.agency-profile .agency-portrait-badge { width: 34px; height: 34px; font-size: 20px; }
+.agency-portrait.mvp.suspended .agency-portrait-badge.suspended { left: -8px; right: auto; }
+
+/* the ribbon under the name */
+.agency-ribbon {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.agency-ribbon.mvp { background: linear-gradient(90deg, #ffd60a, #ffe98a); color: #3a2a00; }
+.agency-ribbon.suspended { border: 1px dashed #ff3b30; color: #ff8a82; }
+
+/* the moment of the award */
+.agency-portrait.celebrate-mvp { animation: agency-mvp-pop 900ms cubic-bezier(.2,.9,.3,1.3); }
+.agency-portrait.celebrate-suspended .agency-portrait-stamp { animation: agency-stamp 600ms cubic-bezier(.3,1.4,.5,1) both; }
+.agency-confetti {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 11px;
+  margin: -5px 0 0 -3px;
+  border-radius: 2px;
+  background: var(--color);
+  pointer-events: none;
+  animation: agency-confetti 1.6s cubic-bezier(.15,.8,.3,1) forwards;
+}
+@keyframes agency-shine {
+  0%, 60% { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
+}
+@keyframes agency-mvp-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.3) rotate(-6deg); }
+  60% { transform: scale(0.95) rotate(3deg); }
+  100% { transform: scale(1); }
+}
+@keyframes agency-stamp {
+  from { opacity: 0; transform: translate(-50%, -50%) rotate(-18deg) scale(3); }
+  to   { opacity: 1; transform: translate(-50%, -50%) rotate(-18deg) scale(1); }
+}
+@keyframes agency-confetti {
+  0% { opacity: 1; transform: rotate(var(--angle)) translateY(0) rotate(0); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--angle)) translateY(calc(-1 * var(--distance))) rotate(540deg); }
+}
+
+/* the counts on an overview tile */
+.agency-summary-tally { display: flex; flex-wrap: wrap; gap: 6px; }
+.agency-tally {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.4);
+  font-size: 13px;
+  font-weight: 700;
+}
+.agency-tally.mvp { color: #ffe066; }
+.agency-tally.suspended { color: #ff8a82; }
+
+/* the panel on the agent's page */
+.agency-distinctions { gap: 12px; }
+.agency-distinction {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  background: rgba(0,0,0,0.35);
+}
+.agency-distinction.mvp.current {
+  border-color: #ffd60a;
+  background: linear-gradient(135deg, color-mix(in srgb, #ffd60a 16%, rgba(0,0,0,0.4)), rgba(0,0,0,0.35));
+}
+.agency-distinction.suspended.current {
+  border: 2px dashed #ff3b30;
+  background: repeating-linear-gradient(-45deg, rgba(255,59,48,0.08) 0 12px, rgba(0,0,0,0.35) 12px 24px);
+}
+.agency-distinction-head { display: flex; align-items: center; gap: 12px; }
+.agency-distinction-icon { font-size: 34px; line-height: 1; }
+.agency-distinction-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.agency-distinction-title { font-size: 20px; letter-spacing: 1px; text-transform: uppercase; }
+.agency-distinction.mvp .agency-distinction-title { color: #ffd60a; }
+.agency-distinction.suspended .agency-distinction-title { color: #ff6b61; }
+.agency-distinction-rule { font-size: 14px; opacity: 0.7; }
+.agency-distinction-count { display: flex; align-items: center; gap: 10px; }
+.agency-distinction-count .agency-label { margin-right: auto; }
+.agency-distinction-value { min-width: 2ch; font-size: 24px; text-align: center; font-variant-numeric: tabular-nums; }
+.agency-step {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.4);
+  color: #fff;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.agency-step:hover { background: rgba(255,255,255,0.12); }
+.agency-distinction-flavor { margin: 0; font-size: 15px; font-style: italic; line-height: 1.45; opacity: 0.85; }
+.agency-distinction-award,
+.agency-distinction-revoke {
+  align-self: flex-start;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.agency-distinction.mvp .agency-distinction-award { border: none; background: #ffd60a; color: #2a2000; }
+.agency-distinction.suspended .agency-distinction-award { border: 2px solid #ff3b30; background: transparent; color: #ff8a82; }
+.agency-distinction-award:hover { filter: brightness(1.1); }
+.agency-distinction-revoke { border: 1px solid rgba(255,255,255,0.25); background: transparent; color: #fff; opacity: 0.8; }
+.agency-distinction-revoke:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .agency-portrait.mvp::after, .agency-portrait.celebrate-mvp, .agency-portrait.celebrate-suspended .agency-portrait-stamp { animation: none; }
+}
+@media (orientation: portrait) {
+  .agency-portrait { width: 64px; height: 64px; }
+  .agency-profile .agency-portrait { width: 96px; height: 96px; }
+  .agency-ribbon { font-size: clamp(12px, 1.8vw, 14px); }
+  .agency-tally { font-size: clamp(13px, 2vw, 16px); }
+  .agency-distinction-title { font-size: clamp(20px, 3vw, 24px); }
+  .agency-distinction-rule, .agency-distinction-flavor { font-size: clamp(14px, 2.2vw, 18px); }
+  .agency-distinction-value { font-size: clamp(24px, 3.6vw, 30px); }
+  .agency-step { width: 48px; height: 48px; }
+  .agency-distinction-award, .agency-distinction-revoke { font-size: clamp(15px, 2.3vw, 18px); padding: 12px 20px; }
+}
+
 /* ---------- Motion ---------- */
 .agency-agent-page, .agency-item-view { animation: agency-page-in 260ms ease-out both; }
 @keyframes agency-page-in {
@@ -662,7 +891,10 @@ select.agency-input { cursor: pointer; }
   .agency-view .agency-input { font-size: clamp(18px, 2.7vw, 22px); }
   .agency-view .agency-item-page-name { font-size: clamp(22px, 3.2vw, 28px); }
   .agency-view .agency-item-page-description { font-size: clamp(19px, 2.9vw, 24px); }
-  .agency-icon-choice { min-width: 54px; height: 54px; font-size: 28px; }
+  .agency-item-page-icon-edit { font-size: clamp(12px, 1.8vw, 14px); }
+  .agency-icon-picker { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 10px; }
+  .agency-icon-choice { height: 76px; font-size: 42px; }
+  .agency-icon-choice:first-child { font-size: clamp(13px, 2vw, 16px); }
   .agency-remove-item { font-size: clamp(15px, 2.3vw, 18px); }
 
   .promo { height: clamp(240px, 36vw, 300px); }

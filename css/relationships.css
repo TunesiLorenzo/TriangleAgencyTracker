@@ -204,39 +204,35 @@
 .rel-summary:focus-visible { outline: 2px solid rgba(255,255,255,0.7); outline-offset: 3px; }
 .rel-summary.dead { opacity: 0.8; }
 
-/* read-only Dose di Realtà: 1-2-3-4-X */
-.rel-summary-dose {
+/* read-only Realtà track: 30 boxes in two rows, the bottom one running back */
+.rel-summary-track {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.dose-pips {
+.rel-summary-progress { font-size: 14px; }
+.rel-summary-squares {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
+  grid-template-columns: repeat(15, minmax(0, 1fr));
+  gap: 2px;
 }
-.dose-pip {
+.rel-summary-square {
   display: grid;
   place-items: center;
-  height: 22px;
+  aspect-ratio: 1;
+  min-width: 0;
   border: 1px solid color-mix(in srgb, var(--reality-color) 40%, transparent);
-  border-radius: 5px;
-  color: rgba(255,255,255,0.55);
-  font-size: 11px;
+  border-radius: 2px;
+  background: #2e2a1c;
+  color: color-mix(in srgb, var(--reality-color) 70%, #fff);
+  font-size: 7px;
   font-weight: 700;
 }
-.dose-pip.reached {
+.rel-summary-square.reached {
   border-color: var(--reality-color);
   background: var(--reality-color);
   color: #111;
 }
-.rel-summary-dose.full .dose-pip:last-child {
-  border-color: var(--competency-color);
-  background: var(--competency-color);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--competency-color) 50%, transparent);
-  color: #fff;
-}
-.rel-summary-dose.full .dose-note { display: block; }
 
 .rel-open {
   align-self: flex-end;
@@ -330,6 +326,29 @@
 }
 .rel-profile .rel-identity img { width: 60px; height: 60px; }
 .rel-profile .rel-identity-name { font-size: 17px; }
+
+/* ---------- Tracciato Realtà (Agenda Vita-Lavoro), on the agent's page ---------- */
+.reality-track-section h3 { margin: 0 0 4px; color: var(--reality-color); font-size: 16px; }
+.reality-progress { display: block; margin-bottom: 8px; font-size: 14px; }
+.reality-track { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 3px; }
+.reality-square {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--reality-color) 45%, transparent);
+  border-radius: 3px;
+  background: #2e2a1c;
+  color: color-mix(in srgb, var(--reality-color) 70%, #fff);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.reality-square:hover { border-color: var(--reality-color); }
+.reality-square:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.reality-square[aria-pressed="true"] { border-color: var(--reality-color); background: var(--reality-color); color: #111; }
+.reality-rules { margin-top: 10px; color: #ddd; font-size: 14px; line-height: 1.5; }
+.reality-rules summary { cursor: pointer; }
 
 /* ---------- Dose di Realtà (one per agent): ▶ 1-2-3-4-X ---------- */
 .dose-box {
@@ -858,7 +877,7 @@
 .rel-reality strong { font-size: 18px; }
 .rel-count strong { font-size: 24px; }
 .rel-count small { font-size: 11px; }
-.dose-pip { height: 28px; font-size: 14px; }
+.rel-summary-progress, .reality-progress { font-size: 15px; }
 .dose-title { font-size: 16px; }
 .dose-node { width: 32px; height: 32px; font-size: 15px; }
 .dose-note { font-size: 14px; }
@@ -1000,7 +1019,10 @@
   .rel-reality strong { font-size: clamp(18px, 2.8vw, 22px); }
   .rel-count strong { font-size: clamp(24px, 3.6vw, 30px); }
   .rel-count small { font-size: clamp(11px, 1.7vw, 13px); }
-  .dose-pip { height: clamp(28px, 4.2vw, 36px); font-size: clamp(14px, 2.2vw, 17px); }
+  .rel-summary-progress, .reality-progress, .reality-rules { font-size: clamp(15px, 2.3vw, 18px); }
+  .rel-summary-square { font-size: clamp(7px, 1.2vw, 10px); }
+  .reality-track-section h3 { font-size: clamp(16px, 2.5vw, 20px); }
+  .reality-square { font-size: clamp(10px, 1.9vw, 15px); }
   .dose-title { font-size: clamp(16px, 2.5vw, 20px); }
   .dose-node { width: clamp(32px, 5vw, 42px); height: clamp(32px, 5vw, 42px); font-size: clamp(15px, 2.3vw, 18px); }
   .dose-note { font-size: clamp(14px, 2.2vw, 17px); }

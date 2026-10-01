@@ -317,6 +317,38 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
 .toggle input:checked + i::after { transform: translateX(18px); }
 .toggle input:focus-visible + i { outline: 2px solid #fff; outline-offset: 2px; }
 
+/* ---------- lights ---------- */
+.button.secondary { background: transparent; border-color: var(--line); color: var(--text); text-decoration: none; }
+.button.secondary:hover { border-color: var(--accent); }
+.button.small { min-height: 30px; padding: 0 10px; font-size: 0.78rem; }
+.light-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.light-actions [hidden] { display: none; }
+#lightStatus { white-space: normal; text-align: right; }
+.light-slot {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.1fr) minmax(120px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.light-slot:first-child { border-top: none; }
+#lightAmbient .light-slot { grid-template-columns: minmax(120px, 1fr) auto; padding-top: 0; }
+.light-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 8px 20px;
+}
+.light-fields:empty { display: none; }
+.light-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: transparent;
+}
+
 footer { display: flex; justify-content: center; padding-top: 10px; }
 
 /* ---------- phones ---------- */
@@ -341,6 +373,15 @@ footer { display: flex; justify-content: center; padding-top: 10px; }
   .field input[type=range] { grid-column: 1 / -1; grid-row: 2; }
   .field select { grid-column: 1 / -1; }
   .toggle i { grid-column: 2; }
+  .light-slot {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "name swatch play" "action action action" "fields fields fields";
+  }
+  #lightAmbient .light-slot { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "action swatch" "fields fields"; }
+  .light-slot > select { grid-area: action; }
+  .light-slot .light-swatch { grid-area: swatch; }
+  .light-slot .play { grid-area: play; }
+  .light-fields { grid-area: fields; grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Scrollbars: same thin HUD treatment as the tracker (see css/base.css). */

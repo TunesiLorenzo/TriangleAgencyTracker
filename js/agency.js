@@ -11,8 +11,8 @@
 import { ACQUISITIONS, DEFAULT_ICON, ITEM_ICONS, PROMO_DIR, PROMO_SLIDES, STANDARD_KIT } from './agencyData.js';
 import { animateOnce, getCharElements } from './charSystem.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
-import { loadSettings, updateSettings } from './storage.js';
-import { toast } from './ui.js';
+import { loadSettings, saveSettings, updateSettings } from './storage.js';
+import { openModal, toast } from './ui.js';
 
 const TEAM = 'team';   // owner or holder of a communal item
 const ITEMS_OPEN_KEY = 'ta-agency-items-open';
@@ -35,11 +35,32 @@ const RANKS = [
 ];
 const CODES = Object.fromEntries(RANKS.filter(rank => rank.code).map(rank => [rank.from, rank.code]));
 
+// The two Distinzioni of every Incarico (Agenda Vita-Lavoro), with the Agency's own brand of praise.
+const DISTINCTIONS = {
+  mvp: {
+    title: 'MVP', icon: '🏆', rule: 'Più Note di Merito nell’Incarico', award: 'Nomina MVP',
+    ribbon: 'Dipendente dell’Incarico',
+    flavor: 'L’Agenzia riconosce il tuo impegno. Il premio è la soddisfazione di averlo fatto.',
+    toast: name => `🏆 Congratulazioni, ${name}! Sei l’MVP dell’Incarico. Ritira la tua stretta di mano in Risorse Umane.`,
+    track: 'Competenza'
+  },
+  suspended: {
+    title: 'Sospeso', icon: '⛔', rule: 'Più Note di Demerito nell’Incarico', award: 'Sospendi',
+    ribbon: 'In attesa di revisione disciplinare',
+    flavor: 'La tua scrivania è stata temporaneamente riassegnata. Il caffè no.',
+    toast: name => `⛔ ${name} è Sospeso. Consegna il badge alla reception e attendi istruzioni.`,
+    track: 'Anomalia'
+  }
+};
+const CONFETTI = ['#ffd60a', '#ff3b30', '#0a84ff', '#ffffff'];
+
 let view = null;
 let items = [];
 let promo = null;       // the promotional banner, kept across renders
 let openCard = null;    // the agent whose page is open
 let openItem = null;    // { id, from }: the item on show, and the agent page it was opened from (null: the overview)
+let holders = { mvp: null, suspended: null };   // ids of the agents holding the last Incarico's Distinzioni
+const celebrations = new Set();   // `${kind}:${id}` awarded but not yet celebrated on screen
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -100,11 +121,168 @@ function saveItems() {
   updateSettings(settings => { settings.world.items = items; });
 }
 
-/** Back to the two Acquisizioni every Squadra Operativa starts with (Close Branch). */
-export function resetItems() {
+/** A new branch (Close Branch): the two Acquisizioni every Squadra Operativa starts with, no Distinzioni. */
+export function resetAgency() {
   items = STANDARD_KIT.map(normalizeItem);
+  holders = { mvp: null, suspended: null };
   saveItems();
+  saveHolders();
+  decorateAgentCards();
   renderAgency();
+}
+
+// ---------- Distinzioni ----------
+function saveHolders() {
+  updateSettings(settings => { settings.world.distinctions = holders; });
+}
+
+/** The box a Distinzione lets the agent mark without erasing others: Competenza (MVP) or Anomalia (Sospeso). */
+function markTrack(card, kind) {
+  if (kind === 'mvp') card._competencyProgress = Math.min(TRACK_LENGTH, card._competencyProgress + 1);
+  else card._anomalyState.progress = Math.min(TRACK_LENGTH, card._anomalyState.progress + 1);
+  saveSettings();
+  renderAgency();
+}
+
+/** The Distinzioni on the Agents tab too: each card's portrait dressed up, the ribbon under it. */
+function decorateAgentCards() {
+  getCharElements().forEach(card => {
+    const portrait = card.querySelector('.char-portrait');
+    if (!portrait) return;
+    portrait.querySelectorAll('.agency-portrait-badge, .agency-portrait-stamp').forEach(node => node.remove());
+    card.querySelector('.char-ribbons')?.remove();
+    const ribbons = el('div', 'char-ribbons');
+    Object.entries(DISTINCTIONS).forEach(([kind, distinction]) => {
+      const holds = holders[kind] === card._id;
+      portrait.classList.toggle(kind, holds);
+      if (!holds) return;
+      portrait.append(el('span', `agency-portrait-badge ${kind}`, distinction.icon));
+      if (kind === 'suspended') portrait.append(el('span', 'agency-portrait-stamp', 'Sospeso'));
+      ribbons.append(el('span', `agency-ribbon ${kind}`, `${distinction.icon} ${distinction.ribbon}`));
+    });
+    if (ribbons.childElementCount) portrait.after(ribbons);
+  });
+}
+
+/** Hand a Distinzione to `card` (null: to nobody). The previous holder keeps their count. */
+function award(kind, card) {
+  holders[kind] = card?._id ?? null;
+  decorateAgentCards();
+  if (!card) return;
+  card._distinctions[kind] += 1;
+  celebrations.add(`${kind}:${card._id}`);
+  // Awarded while the agent cards are on screen (Next Mission): celebrate there straight away.
+  const cardPortrait = card.querySelector('.char-portrait');
+  if (cardPortrait && !card.closest('[hidden]')) celebrate(cardPortrait, kind);
+  const distinction = DISTINCTIONS[kind];
+  const cards = getCharElements();
+  toast(distinction.toast(agentName(card, cards.indexOf(card))), {
+    duration: 9000,
+    action: { label: `Segna ${distinction.track}`, onClick: () => markTrack(card, kind) }
+  });
+}
+
+/** Take back a Distinzione handed out by mistake. */
+function revoke(kind, card) {
+  if (holders[kind] !== card._id) return;
+  holders[kind] = null;
+  card._distinctions[kind] = Math.max(0, card._distinctions[kind] - 1);
+  decorateAgentCards();
+}
+
+/**
+ * End of an Incarico: MVP to the agent with the most Note di Merito, Sospeso to the one with
+ * the most Note di Demerito. A tie (or nobody scoring) leaves it unassigned for the GM to hand out.
+ */
+export function awardMissionDistinctions({ mvp = null, suspended = null } = {}) {
+  award('mvp', mvp);
+  award('suspended', suspended);
+  saveHolders();
+  saveSettings();
+}
+
+/** Confetti for a new MVP, the stamp coming down on a new Sospeso. */
+function celebrate(portrait, kind) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  portrait.classList.add(`celebrate-${kind}`);
+  if (kind === 'mvp') {
+    for (let i = 0; i < 20; i++) {
+      const bit = el('span', 'agency-confetti');
+      bit.style.setProperty('--angle', `${i * 18 + (i % 2) * 7}deg`);
+      bit.style.setProperty('--distance', `${46 + (i % 3) * 16}px`);
+      bit.style.setProperty('--color', CONFETTI[i % CONFETTI.length]);
+      portrait.append(bit);
+    }
+  }
+  setTimeout(() => {
+    portrait.classList.remove(`celebrate-${kind}`);
+    portrait.querySelectorAll('.agency-confetti').forEach(bit => bit.remove());
+  }, 1900);
+}
+
+/** The agent's portrait, dressed for whatever Distinzione they hold. */
+function createPortrait(card) {
+  const portrait = el('span', 'agency-portrait');
+  const img = el('img');
+  img.src = card.querySelector('img')?.src || './images/pfp.jpg';
+  img.alt = '';
+  portrait.append(img);
+  Object.entries(DISTINCTIONS).forEach(([kind, distinction]) => {
+    if (holders[kind] !== card._id) return;
+    portrait.classList.add(kind);
+    portrait.append(el('span', `agency-portrait-badge ${kind}`, distinction.icon));
+    if (kind === 'suspended') portrait.append(el('span', 'agency-portrait-stamp', 'Sospeso'));
+    const key = `${kind}:${card._id}`;
+    if (celebrations.has(key) && !view.hidden) {
+      celebrations.delete(key);
+      requestAnimationFrame(() => celebrate(portrait, kind));
+    }
+  });
+  return portrait;
+}
+
+/** MVP and Sospeso on the agent's page: how many times, and whether they hold it now. */
+function createDistinctions(card) {
+  const section = el('section', 'agency-panel agency-distinctions');
+  section.append(el('h3', '', 'Distinzioni'));
+  const cards = getCharElements();
+  Object.entries(DISTINCTIONS).forEach(([kind, distinction]) => {
+    const current = holders[kind] === card._id;
+    const box = el('div', `agency-distinction ${kind}`);
+    box.classList.toggle('current', current);
+
+    const text = el('span', 'agency-distinction-text');
+    const holder = cards.find(other => other._id === holders[kind]);
+    const rule = holder && !current ? `${distinction.rule} · in carica: ${agentName(holder, cards.indexOf(holder))}` : distinction.rule;
+    text.append(el('strong', 'agency-distinction-title', distinction.title), el('span', 'agency-distinction-rule', rule));
+    const head = el('div', 'agency-distinction-head');
+    head.append(el('span', 'agency-distinction-icon', distinction.icon), text);
+
+    const value = el('strong', 'agency-distinction-value', String(card._distinctions[kind]));
+    const step = delta => {
+      card._distinctions[kind] = Math.max(0, card._distinctions[kind] + delta);
+      value.textContent = String(card._distinctions[kind]);
+      saveSettings();
+    };
+    const minus = button('agency-step', '−', () => step(-1));
+    minus.setAttribute('aria-label', `${distinction.title}: una volta in meno`);
+    const plus = button('agency-step', '+', () => step(1));
+    plus.setAttribute('aria-label', `${distinction.title}: una volta in più`);
+    const count = el('div', 'agency-distinction-count');
+    count.append(el('span', 'agency-label', 'Numero di volte'), minus, value, plus);
+
+    box.append(head, count);
+    if (current) {
+      box.append(
+        el('p', 'agency-distinction-flavor', `${distinction.ribbon}. ${distinction.flavor}`),
+        button('agency-distinction-revoke', 'Revoca', () => { revoke(kind, card); saveHolders(); saveSettings(); renderAgency(); })
+      );
+    } else {
+      box.append(button('agency-distinction-award', distinction.award, () => { award(kind, card); saveHolders(); saveSettings(); renderAgency(); }));
+    }
+    section.append(box);
+  });
+  return section;
 }
 
 function createCatalog() {
@@ -135,26 +313,29 @@ function createPartySelect(item, key, cards, changed) {
   return select;
 }
 
-/** Icon choices for an item: its catalog icon (the default), then the rest. */
-function createIconPicker(item, onPick) {
+/**
+ * The icon window: the catalog icon ("Auto", the default), then the rest. Picking one sets
+ * it on the item, runs `onPick` and closes the window.
+ */
+function chooseIcon(item, onPick) {
   const picker = el('div', 'agency-icon-picker');
   picker.setAttribute('role', 'group');
-  picker.setAttribute('aria-label', 'Icona');
-  const show = () => [...picker.children].forEach(choice => choice.setAttribute('aria-pressed', String(choice.dataset.icon === item.icon)));
+  picker.setAttribute('aria-label', 'Icone');
+  let close = () => {};
   ['', ...ITEM_ICONS].forEach(icon => {
     const choice = el('button', 'agency-icon-choice', icon || 'Auto');
     choice.type = 'button';
-    choice.dataset.icon = icon;
-    choice.title = icon ? `Icona ${icon}` : 'Icona del catalogo';
+    choice.title = icon ? `Icona ${icon}` : `Icona del catalogo (${catalogEntry(item.name)?.icon || DEFAULT_ICON})`;
+    choice.setAttribute('aria-pressed', String(icon === item.icon));
+    if (icon === item.icon) choice.autofocus = true;
     choice.addEventListener('click', () => {
       item.icon = icon;
-      show();
       onPick();
+      close();
     });
     picker.append(choice);
   });
-  show();
-  return picker;
+  close = openModal({ title: 'Scegli un’icona', content: picker, className: 'agency-icon-modal', closeLabel: 'Annulla' });
 }
 
 function itemsOpenSaved() {
@@ -286,15 +467,15 @@ function createNav(backLabel, entries) {
 // ---------- pieces shared by the pages ----------
 function createIdentity(card, index) {
   const identity = el('span', 'agency-identity');
-  const portrait = el('img');
-  portrait.src = card.querySelector('img')?.src || './images/pfp.jpg';
-  portrait.alt = '';
   const dead = card.classList.contains('dead');
   const subtitle = el('span', 'agency-subtitle', [statOf(card, 'player'), statOf(card, 'competency')].filter(Boolean).join(' · '));
   if (dead) subtitle.append(el('span', 'agency-sick', subtitle.textContent ? ' · Sick leave' : 'Sick leave'));
   const text = el('span', 'agency-identity-text');
   text.append(el('strong', 'agency-name', agentName(card, index)), subtitle);
-  identity.append(portrait, text);
+  Object.entries(DISTINCTIONS).forEach(([kind, distinction]) => {
+    if (holders[kind] === card._id) text.append(el('span', `agency-ribbon ${kind}`, `${distinction.icon} ${distinction.ribbon}`));
+  });
+  identity.append(createPortrait(card), text);
   return identity;
 }
 
@@ -354,7 +535,11 @@ function createSummary(card, index) {
   if (held.length) inventory.append(...held.map(item => el('span', 'agency-summary-icon', iconOf(item))));
   else inventory.append(el('span', 'agency-empty', 'Nessun oggetto'));
 
-  tile.append(createIdentity(card, index), rank, createTrackSummary(card), inventory, el('span', 'agency-open', 'Apri ›'));
+  const { mvp, suspended } = card._distinctions;
+  const tally = el('span', 'agency-summary-tally');
+  tally.append(el('span', 'agency-tally mvp', `🏆 MVP ×${mvp}`), el('span', 'agency-tally suspended', `⛔ Sospeso ×${suspended}`));
+
+  tile.append(createIdentity(card, index), rank, createTrackSummary(card), tally, inventory, el('span', 'agency-open', 'Apri ›'));
   return tile;
 }
 
@@ -422,7 +607,7 @@ function createAgentPage(card, cards) {
   inventory.append(el('h3', '', `Inventario (${held.length})`), grid);
 
   const side = el('div', 'agency-agent-side');
-  side.append(inventory, ladder.section);
+  side.append(createDistinctions(card), inventory, ladder.section);
   const body = el('div', 'agency-agent-body');
   body.append(profile, side);
 
@@ -464,7 +649,12 @@ function createItemPage(item, cards) {
   })));
   const chip = nav.querySelector('.agency-switch[aria-current="true"]');
 
-  const icon = el('span', 'agency-item-page-icon');
+  // the big icon is the button that opens the icon window
+  const icon = el('span', 'agency-item-page-icon-glyph');
+  const iconButton = button('agency-item-page-icon', '', () => chooseIcon(item, () => { showIcon(); saveItems(); }));
+  iconButton.title = 'Cambia icona';
+  iconButton.setAttribute('aria-label', 'Cambia icona');
+  iconButton.append(icon, el('span', 'agency-item-page-icon-edit', 'Cambia'));
   const name = el('input', 'agency-input agency-item-page-name');
   name.type = 'text';
   name.maxLength = 80;
@@ -502,7 +692,7 @@ function createItemPage(item, cards) {
     return wrap;
   };
   const header = el('header', 'agency-item-page-header');
-  header.append(icon, field('Nome', name, 'agency-item-page-title'));
+  header.append(iconButton, field('Nome', name, 'agency-item-page-title'));
 
   const owners = el('div', 'agency-item-page-parties');
   owners.append(
@@ -510,11 +700,8 @@ function createItemPage(item, cards) {
     field('Detentore', createPartySelect(item, 'holder', cards, saveItems))
   );
 
-  const icons = el('div', 'agency-field');
-  icons.append(el('span', 'agency-label', 'Icona'), createIconPicker(item, () => { showIcon(); saveItems(); }));
-
   const page = el('article', 'agency-panel agency-item-page');
-  page.append(header, owners, field('Descrizione', description), icons, button('agency-remove-item', 'Rimuovi oggetto', () => removeItem(item)));
+  page.append(header, owners, field('Descrizione', description), button('agency-remove-item', 'Rimuovi oggetto', () => removeItem(item)));
   showIcon();
 
   const wrap = el('section', 'agency-item-view');
@@ -641,9 +828,15 @@ export function initAgency() {
   const saved = loadSettings()?.world?.items;
   items = Array.isArray(saved) ? saved.map(normalizeItem) : STANDARD_KIT.map(normalizeItem);
   if (!Array.isArray(saved)) saveItems();   // a new branch, or one saved before items existed
+  const distinctions = loadSettings()?.world?.distinctions;
+  holders = { mvp: distinctions?.mvp ?? null, suspended: distinctions?.suspended ?? null };
   document.body.append(createCatalog());
   promo = createPromo();
-  document.addEventListener('dashboard-refresh', () => { if (!view.hidden) renderAgency(); });
+  // Hiring, recalling, removing an agent all end in updateTopCharacters(), which fires this.
+  document.addEventListener('dashboard-refresh', () => {
+    decorateAgentCards();
+    if (!view.hidden) renderAgency();
+  });
   view.addEventListener('keydown', event => {
     if (event.key !== 'Escape' || !(openCard || openItem) || event.target.closest('input, textarea, select')) return;
     event.preventDefault();

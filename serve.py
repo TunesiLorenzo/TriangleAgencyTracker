@@ -11,7 +11,7 @@ import argparse
 import threading
 import webbrowser
 
-from web import app
+from web import app, autostart_lights
 
 
 def main():
@@ -27,6 +27,10 @@ def main():
     print("  Viewer:   {}".format(url))
     print("  Settings: {}settings".format(url))
     print("Bound to {}:{} - other devices on the LAN can open it too. Ctrl+C to stop.".format(args.host, args.port))
+
+    lights_message = autostart_lights()
+    if lights_message:
+        print("Lights: {}".format(lights_message))
 
     if not args.no_browser:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()

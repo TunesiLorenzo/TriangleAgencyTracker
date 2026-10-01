@@ -1,4 +1,4 @@
-import { addChar, chooseAgent, getCharElements, resetChar, updateTopCharacters } from './charSystem.js';
+import { addChar, chooseAgent, getAgentStats, getCharElements, resetChar, updateTopCharacters } from './charSystem.js';
 import { initDashboard, resetDashboard } from './dashboard.js';
 import {
   connectAutomaticSaveFile,
@@ -15,9 +15,9 @@ import { initTaskPanel, resetTasks } from './tasks.js';
 import { isServerAvailable, startConfigSync } from './config.js';
 import { initRelationships, renderRelationships } from './relationships.js';
 import { initAnomalies, renderAnomalies } from './anomalies.js';
-import { initAgency, renderAgency, resetItems } from './agency.js';
-import { initPreviousCases, renderPreviousCases } from './previousCases.js';
-import { initButtonSounds, initKeepAlive, isMuted, setMuted } from './soundEffects.js';
+import { awardMissionDistinctions, initAgency, renderAgency, resetAgency } from './agency.js';
+import { closePreviousCases, initPreviousCases, renderPreviousCases } from './previousCases.js';
+import { initButtonSounds, initKeepAlive, isMuted, playEvent, setMuted } from './soundEffects.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
 
@@ -31,20 +31,26 @@ function nextMission() {
   let completed = false;
   const content = document.createElement('p');
   content.className = 'modal-message';
-  content.textContent = 'Come si conclude l’anomalia? Scegli un esito per aggiungere testimoni, meriti e demeriti ai totali globali e azzerare i valori della missione e il caos.';
+  content.textContent = 'How did the anomaly mission end? The selected outcome increases its counter, plays its assigned sound and triggers its configured room-light cue. Mission witnesses, merit, demerit and chaos are then carried forward or reset as usual.';
   openModal({
-    title: 'Fine missione',
+    title: 'Mission outcome',
     content,
     className: 'mission-modal',
     closeLabel: 'Annulla',
     actions: [
-      ...[['Catturata', 'captured'], ['Liberata', 'escaped'], ['Uccisa', 'killed']].map(([label, outcome]) => ({
+      ...[['Captured', 'captured'], ['Killed', 'killed'], ['Escaped', 'escaped']].map(([label, outcome]) => ({
         label,
         variant: outcome,
         onClick: () => {
           // Ignore additional clicks while the dialog plays its closing animation.
           if (completed) return;
           completed = true;
+          // The Distinzioni go by this mission's triangles, so read them before they are reset.
+          const stats = getAgentStats();
+          const distinctions = {
+            mvp: stats.find(agent => agent.isTopMerit)?.el ?? null,
+            suspended: stats.find(agent => agent.isTopDemerit)?.el ?? null
+          };
           resetTasks();
           getCharElements().forEach(character => {
             // Triangles track this mission; adjacent inputs hold global totals.
@@ -56,6 +62,8 @@ function nextMission() {
             });
           });
           finishMissionWorld(outcome);
+          playEvent(outcome);
+          awardMissionDistinctions(distinctions);
           updateTopCharacters();
           resetDashboard();
           if (saveSettings()) toast(`Next mission ready. Anomalia: ${label}.`);
@@ -69,7 +77,7 @@ function nextMission() {
 async function resetAll() {
   const confirmed = await confirmDialog({
     title: 'Close Branch?',
-    message: 'This removes every agent, task, witness, chaos point and the mission timeline, and puts the Agency items back to the standard kit. Export a Team CV first if you want a backup.',
+    message: 'This removes every agent, task, witness, chaos point and the mission timeline, and puts the Agency items back to the standard kit with no MVP or Sospeso. Export a Team CV first if you want a backup.',
     confirmLabel: 'Close Branch',
     danger: true
   });
@@ -77,7 +85,7 @@ async function resetAll() {
 
   resetChar();
   resetTasks();
-  resetItems();
+  resetAgency();
   setWorldData();
   resetDashboard();
   saveSettings();
@@ -116,9 +124,20 @@ function bindControls() {
 /** Main view tabs; the choice is remembered on this device. */
 function initViewTabs() {
   const tabs = [...document.querySelectorAll('.view-tabs [role="tab"]')];
-  const select = (tab, { focus = false } = {}) => {
+  let switching = false;
+  const select = async (tab, { focus = false } = {}) => {
+    if (switching) return;
+    const selectedTab = tabs.find(item => item.getAttribute('aria-selected') === 'true');
     // Clicking Relationships while it is already open goes back from an agent's page to the overview.
     const reselected = tab.getAttribute('aria-selected') === 'true';
+    if (selectedTab?.id === 'previousCasesTab' && tab !== selectedTab) {
+      switching = true;
+      try {
+        await closePreviousCases();
+      } finally {
+        switching = false;
+      }
+    }
     tabs.forEach(t => {
       const selected = t === tab;
       t.setAttribute('aria-selected', String(selected));
@@ -136,7 +155,7 @@ function initViewTabs() {
   };
 
   tabs.forEach((tab, i) => {
-    tab.addEventListener('click', () => select(tab));
+    tab.addEventListener('click', () => { select(tab); });
     tab.addEventListener('keydown', event => {
       const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
       if (!step) return;

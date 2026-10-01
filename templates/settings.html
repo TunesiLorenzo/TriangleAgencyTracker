@@ -25,6 +25,7 @@
       <button class="tab" type="button" role="tab" data-tab="buttons">Buttons</button>
       <button class="tab" type="button" role="tab" data-tab="competencies">Competencies</button>
       <button class="tab" type="button" role="tab" data-tab="effects">Effects</button>
+      <button class="tab" type="button" role="tab" data-tab="lights">Lights</button>
     </nav>
 
     <p class="live-note">Changes save automatically and apply to every open viewer within a couple of seconds.</p>
@@ -103,6 +104,50 @@
 
     <section class="tab-panel" data-tab-panel="effects">
       <div id="effectGroups"></div>
+    </section>
+
+    <section class="tab-panel" data-tab-panel="lights">
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">ROOM LIGHTS</span><h2>LightRPG</h2></div>
+          <span id="lightStatus" class="status" data-state="idle">Checking…</span>
+        </div>
+        <p class="hint">The Tapo bulbs and the LED strip are driven by LightRPG, which runs next to the tracker in its own window.
+          Set up and assign the bulbs and connect the strip on the LightRPG page once; the tracker then sends it a cue for each event below.
+          Cues don't depend on a viewer's mute button.</p>
+        <div id="lightGeneral" class="fields"></div>
+        <div class="light-actions">
+          <button id="startLightRPG" type="button" class="secondary small">Start LightRPG</button>
+          <a id="openLightRPG" class="button secondary small" target="_blank" rel="noopener">Open LightRPG page &rarr;</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">BETWEEN EVENTS</span><h2>Ambient light</h2></div>
+          <button type="button" class="play" data-test-light="ambient" aria-label="Apply the ambient light">&#9654;</button>
+        </div>
+        <p class="hint">The lights go back to this after an event cue with a hold time. "Nothing" leaves them on the last cue.</p>
+        <div id="lightAmbient"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">NEXT MISSION</span><h2>Mission outcome lights</h2></div>
+        </div>
+        <p class="hint">Choose the colour or LightRPG effect used when a mission ends with the anomaly captured, killed or escaped. Each cue can return to the ambient light after its hold time.</p>
+        <div id="missionOutcomeLightSlots" class="slot-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">TRACKER EVENTS</span><h2>Event lights</h2></div>
+          <button id="resetLights" type="button" class="secondary small">Reset</button>
+        </div>
+        <p class="hint">"Hold" returns to the ambient light after that many seconds; "keep" leaves the cue on until the next one.
+          Bulbs take a moment per change, so a new cue replaces one still waiting.</p>
+        <div id="lightSlots" class="slot-list"></div>
+      </div>
     </section>
 
     <footer>

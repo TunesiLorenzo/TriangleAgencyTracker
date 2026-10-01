@@ -101,6 +101,7 @@
   transform: scale(1.1);
 }
 .char .death-btn {
+  margin-top: 12px;   /* clear of the net score pill above */
   cursor: pointer;
   transition: transform 150ms ease, background 150ms ease;
 }
@@ -460,6 +461,21 @@
 @media (orientation: portrait) {
   .char .flip-btn { top: 6px; right: 6px; }
   .char .export-btn { top: 6px; right: 38px; }
-  .char .thumb { top: 38px; right: 8px; }
   .mission-controls { padding-top: 8px; }
+}
+
+/* The save file is linked but not being written (browser permission lapsed): impossible to miss. */
+#autoSaveFileButton.needs-attention {
+  background: #ff9f0a;
+  color: #1a1000;
+  font-weight: 700;
+  animation: save-file-attention 1.4s ease-in-out infinite;
+}
+.top-buttons-right:has(.needs-attention) { opacity: 1; }
+@keyframes save-file-attention {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,159,10,0.7); }
+  50%      { box-shadow: 0 0 0 7px rgba(255,159,10,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #autoSaveFileButton.needs-attention { animation: none; }
 }

@@ -10,6 +10,8 @@ phone on the same network) shows up on the display without a reload.
 Tracker data (agents, tasks, counters) stays in the viewer's browser storage.
 Previous cases (HD scans of each mission's Rapporto) are too big for that, so they
 live in cases/ next to this file, indexed by cases/cases.json.
+Room lights go through LightRPG, which runs beside the tracker (see lights.py);
+/api/lights/* forwards cues to it, so phones never need to reach it directly.
 """
 
 import datetime
@@ -22,6 +24,8 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from werkzeug.exceptions import HTTPException
+
+import lights
 
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_DIR = BASE_DIR / "audio"
@@ -112,13 +116,10 @@ def load_cases():
 
 
 def case_score(value):
-    """Return a valid 0-100 team score, or raise a useful API error."""
-    try:
-        score = int(value)
-    except (TypeError, ValueError):
-        raise ValueError("Give the team a score from 0 to 100") from None
-    if not 0 <= score <= 100:
-        raise ValueError("The team score must be between 0 and 100")
+    """Return a short uppercase team rank, or raise a useful API error."""
+    score = str(value or "").strip().upper()
+    if not re.fullmatch(r"[A-Z0-9+-]{1,6}", score):
+        raise ValueError("Use 1-6 letters, numbers, + or - for the team rank")
     return score
 
 
@@ -129,6 +130,109 @@ def case_outcome(value):
     if outcome not in CASE_OUTCOMES:
         raise ValueError("Choose Contained, Killed or Escaped")
     return outcome
+
+
+def case_brightness(value):
+    """Validate the persisted CSS brightness percentage for a scanned page."""
+    try:
+        brightness = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("Brightness must be a whole percentage") from None
+    if not 20 <= brightness <= 150:
+        raise ValueError("Brightness must be between 20% and 150%")
+    return brightness
+
+
+def case_files(case):
+    """Return normalized page records, including legacy one-file cases."""
+    records = []
+    saved = case.get("files")
+    if isinstance(saved, list):
+        for index, item in enumerate(saved, start=1):
+            if isinstance(item, str):
+                item = {"file": item}
+            if not isinstance(item, dict):
+                continue
+            try:
+                brightness = case_brightness(item.get("brightness", 100))
+            except ValueError:
+                brightness = 100
+            page_id = re.sub(r"[^A-Za-z0-9_-]", "", str(item.get("id") or "")) or f"page-{index:03d}"
+            if item.get("kind") == "scatter" and isinstance(item.get("photos"), list):
+                for photo_index, photo in enumerate(item["photos"], start=1):
+                    if not isinstance(photo, dict):
+                        continue
+                    filename = os.path.basename(str(photo.get("file") or ""))
+                    if not filename:
+                        continue
+                    try:
+                        photo_brightness = case_brightness(photo.get("brightness", 100))
+                    except ValueError:
+                        photo_brightness = 100
+                    photo_id = re.sub(r"[^A-Za-z0-9_-]", "", str(photo.get("id") or "")) or f"photo-{photo_index:03d}"
+                    records.append({
+                        "id": f"{page_id}-{photo_id}",
+                        "kind": "page",
+                        "file": filename,
+                        "name": str(photo.get("name") or filename)[:120],
+                        "brightness": photo_brightness,
+                    })
+                continue
+            filename = os.path.basename(str(item.get("file") or ""))
+            if not filename:
+                continue
+            records.append({
+                "id": page_id,
+                "kind": "page",
+                "file": filename,
+                "name": str(item.get("name") or filename)[:120],
+                "brightness": brightness,
+            })
+    if not records:
+        filename = os.path.basename(str(case.get("file") or ""))
+        if filename:
+            records.append({"id": "page-001", "kind": "page", "file": filename, "name": filename, "brightness": 100})
+    return records
+
+
+def attach_case_files(case):
+    """Attach the normalized page collection used by the current client."""
+    files = case_files(case)
+    case["files"] = files
+    case["file"] = files[0]["file"] if files else ""
+    return case
+
+
+def uploaded_case_files():
+    """Accept the new multi-page field and the former single-file field."""
+    uploads = [upload for upload in request.files.getlist("files") if upload and upload.filename]
+    legacy = request.files.get("file")
+    if not uploads and legacy is not None and legacy.filename:
+        uploads = [legacy]
+    for upload in uploads:
+        suffix = os.path.splitext(upload.filename)[1].casefold()
+        if suffix not in CASE_EXTENSIONS:
+            raise ValueError("Upload images or PDFs: " + ", ".join(sorted(CASE_EXTENSIONS)))
+    return uploads
+
+
+def save_case_pages(case_id, uploads):
+    """Save uploaded pages with stable ids and return their metadata records."""
+    pages = []
+    CASES_DIR.mkdir(parents=True, exist_ok=True)
+    for upload in uploads:
+        suffix = os.path.splitext(upload.filename)[1].casefold()
+        page_id = f"page-{secrets.token_hex(4)}"
+        filename = f"{case_id}-{page_id}{suffix}"
+        upload.save(CASES_DIR / filename)
+        pages.append({
+            "id": page_id,
+            "kind": "page",
+            "file": filename,
+            "name": os.path.basename(upload.filename)[:120],
+            "brightness": 100,
+        })
+    return pages
 
 
 # -----------------------------
@@ -237,18 +341,15 @@ def upload_sound():
 @app.get("/api/cases")
 def get_cases():
     with cases_lock:
-        return jsonify({"ok": True, "cases": load_cases()})
+        return jsonify({"ok": True, "cases": [attach_case_files(case) for case in load_cases()]})
 
 
 @app.post("/api/cases")
 def add_case():
     request.max_content_length = MAX_CASE_BYTES   # HD scans outgrow the sound-upload limit
-    upload = request.files.get("file")
-    if upload is None or not upload.filename:
-        raise ValueError("Choose the scan of the Rapporto")
-    suffix = os.path.splitext(upload.filename)[1].casefold()
-    if suffix not in CASE_EXTENSIONS:
-        raise ValueError("Upload an image or a PDF: " + ", ".join(sorted(CASE_EXTENSIONS)))
+    uploads = uploaded_case_files()
+    if not uploads:
+        raise ValueError("Choose at least one page of the Rapporto")
     name = (request.form.get("name") or "").strip()[:80]
     if not name:
         raise ValueError("Give the case a name")
@@ -263,8 +364,7 @@ def add_case():
         cases = load_cases()
         number = max((int(case.get("number") or 0) for case in cases), default=0) + 1
         case_id = f"case-{number:03d}-{secrets.token_hex(3)}"
-        CASES_DIR.mkdir(parents=True, exist_ok=True)
-        upload.save(CASES_DIR / (case_id + suffix))
+        pages = save_case_pages(case_id, uploads)
         case = {
             "id": case_id,
             "number": number,
@@ -273,7 +373,8 @@ def add_case():
             "date": date,
             "score": score,
             "outcome": outcome,
-            "file": case_id + suffix,
+            "file": pages[0]["file"],
+            "files": pages,
             "added": datetime.datetime.now().isoformat(timespec="seconds"),
         }
         cases.append(case)
@@ -283,10 +384,12 @@ def add_case():
 
 @app.patch("/api/cases/<case_id>")
 def update_case(case_id):
-    """Update the classification printed on a filed case without replacing its scan."""
-    payload = request.get_json(silent=True) or {}
+    """Update a filed case and, optionally, append more scanned pages."""
+    request.max_content_length = MAX_CASE_BYTES
+    payload = request.form if request.mimetype == "multipart/form-data" else (request.get_json(silent=True) or {})
     score = case_score(payload.get("score"))
     outcome = case_outcome(payload.get("outcome"))
+    uploads = uploaded_case_files()
     with cases_lock:
         cases = load_cases()
         case = next((case for case in cases if case.get("id") == case_id), None)
@@ -294,7 +397,55 @@ def update_case(case_id):
             raise ValueError("That case is not in the archive")
         case["score"] = score
         case["outcome"] = outcome
+        pages = case_files(case)
+        if uploads:
+            pages.extend(save_case_pages(case_id, uploads))
+        case["files"] = pages
+        case["file"] = pages[0]["file"] if pages else ""
         write_json_file(CASES_FILE, {"cases": cases})
+    return jsonify({"ok": True, "case": case})
+
+
+@app.patch("/api/cases/<case_id>/files/<page_id>")
+def update_case_page(case_id, page_id):
+    """Persist display settings for one scanned page."""
+    payload = request.get_json(silent=True) or {}
+    brightness = case_brightness(payload.get("brightness"))
+    with cases_lock:
+        cases = load_cases()
+        case = next((case for case in cases if case.get("id") == case_id), None)
+        if case is None:
+            raise ValueError("That case is not in the archive")
+        pages = case_files(case)
+        page = next((page for page in pages if page.get("id") == page_id), None)
+        if page is None:
+            raise ValueError("That page is not in the case folder")
+        page["brightness"] = brightness
+        case["files"] = pages
+        case["file"] = pages[0]["file"] if pages else ""
+        write_json_file(CASES_FILE, {"cases": cases})
+    return jsonify({"ok": True, "file": page})
+
+
+@app.delete("/api/cases/<case_id>/files/<page_id>")
+def delete_case_page(case_id, page_id):
+    """Remove one page from a dossier."""
+    with cases_lock:
+        cases = load_cases()
+        case = next((case for case in cases if case.get("id") == case_id), None)
+        if case is None:
+            raise ValueError("That case is not in the archive")
+        pages = case_files(case)
+        page = next((page for page in pages if page.get("id") == page_id), None)
+        if page is None:
+            raise ValueError("That page is not in the case folder")
+        if len(pages) <= 1:
+            raise ValueError("A dossier must keep at least one page; delete the case instead")
+        pages.remove(page)
+        case["files"] = pages
+        case["file"] = pages[0]["file"]
+        write_json_file(CASES_FILE, {"cases": cases})
+        (CASES_DIR / page["file"]).unlink(missing_ok=True)
     return jsonify({"ok": True, "case": case})
 
 
@@ -307,9 +458,56 @@ def delete_case(case_id):
             raise ValueError("That case is not in the archive")
         cases.remove(case)
         write_json_file(CASES_FILE, {"cases": cases})
-        scan = os.path.basename(case.get("file") or "")
-        if scan:
+        scans = {page["file"] for page in case_files(case)}
+        for scan in scans:
             (CASES_DIR / scan).unlink(missing_ok=True)
+    return jsonify({"ok": True})
+
+
+# -----------------------------
+# LIGHTS (LightRPG bridge)
+# -----------------------------
+light_bridge = lights.LightBridge(app.logger)
+
+
+def saved_light_settings():
+    with config_lock:
+        saved = config_state["config"].get("lights")
+    return saved if isinstance(saved, dict) else {}
+
+
+def autostart_lights():
+    """Launch LightRPG with the tracker when /settings asks for it (off by default)."""
+    saved = saved_light_settings()
+    if not (saved.get("enabled") and saved.get("autoStart", True)):
+        return None
+    try:
+        return light_bridge.start_lightrpg()
+    except Exception as error:
+        return f"Could not start LightRPG: {error}"
+
+
+@app.get("/api/lights/status")
+def lights_status():
+    return jsonify({"ok": True, **light_bridge.report()})
+
+
+@app.post("/api/lights/start")
+def lights_start():
+    return jsonify({"ok": True, "message": light_bridge.start_lightrpg()})
+
+
+@app.post("/api/lights/cue")
+def lights_cue():
+    """Queue one cue and answer at once; the bulbs are far slower than a click."""
+    payload = request.get_json(silent=True) or {}
+    cue, ambient = payload.get("cue"), payload.get("ambient")
+    if not isinstance(cue, dict) or not (ambient is None or isinstance(ambient, dict)):
+        raise ValueError("Expected a light cue")
+    target = payload.get("target") or "all"
+    if target not in lights.TARGETS:
+        raise ValueError("Unknown light target")
+    light_bridge.submit(cue, ambient, target)
     return jsonify({"ok": True})
 
 

@@ -241,12 +241,38 @@ const VOICES = {
     noiseBurst(ac, out, t + 0.3, { length: 0.03, filter: 'highpass', freq: 2000, peak: 0.3, attack: 0.001 });
     return 0.46;
   },
+  // Heavy iron security doors rolling on their track and meeting in the centre.
+  gate(ac, out, t) {
+    const grind = noiseBurst(ac, out, t, { length: 0.72, filter: 'bandpass', freq: 260, to: 110, q: 0.7, peak: 0.42, attack: 0.08 });
+    for (let s = 0.08; s < 0.7; s += 0.055) {
+      grind.gain.setValueAtTime(0.11 + Math.random() * 0.28, t + s);
+    }
+    tone(ac, out, t + 0.7, { from: 105, to: 42, glide: 0.15, peak: 0.85, attack: 0.002, decay: 0.24 });
+    noiseBurst(ac, out, t + 0.7, { length: 0.08, filter: 'lowpass', freq: 720, peak: 0.65, attack: 0.002 });
+    tone(ac, out, t + 0.73, { type: 'square', from: 1180, to: 720, glide: 0.1, peak: 0.055, attack: 0.001, decay: 0.18 });
+    return 1.02;
+  },
   // A step along a track: a short rising pip.
   step(ac, out, t) {
     tone(ac, out, t, { type: 'triangle', from: 600, to: 760, glide: 0.04, peak: 0.3, decay: 0.07 });
     return 0.1;
   }
 };
+
+// Seconds returned by each voice above. Used by visual effects that synchronize
+// their movement to a selected built-in sound without playing it once to measure it.
+const VOICE_LENGTHS = {
+  eye: 0.5, static: 0.4, globe: 1.2, lock: 0.4, thud: 0.6, alarm: 0.8,
+  tick: 0.12, glitch: 0.2, chime: 0.7, fanfare: 1, buzzer: 0.45, descend: 0.6,
+  click: 0.06, tap: 0.1, pop: 0.14, switch: 0.1, open: 0.24, close: 0.22,
+  confirm: 0.28, cancel: 0.26, trash: 0.36, stamp: 0.22, typewriter: 0.08,
+  paper: 0.34, drawer: 0.46, gate: 1.02, step: 0.1
+};
+
+/** Approximate audible duration of a built-in voice, including its cleanup tail. */
+export function synthDuration(id) {
+  return VOICE_LENGTHS[id] ? VOICE_LENGTHS[id] + 0.1 : 0;
+}
 
 // `button: true` voices are listed first for button slots on /settings.
 export const SYNTHS = [
@@ -275,6 +301,7 @@ export const SYNTHS = [
   { id: 'typewriter', label: 'Typewriter key', button: true },
   { id: 'paper', label: 'Paper swish', button: true },
   { id: 'drawer', label: 'Filing drawer', button: true },
+  { id: 'gate', label: 'Iron security gate', button: true },
   { id: 'step', label: 'Track step', button: true }
 ];
 

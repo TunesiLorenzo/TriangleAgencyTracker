@@ -1,32 +1,126 @@
 // previousCases.js
 // Responsibilities: the Previous Cases tab. Every filed mission is a TOP SECRET envelope;
-// opening one shows the scan of its Rapporto di Fine Incarico, and the button at the
-// bottom files a new scan. HD scans are far too big for browser storage, so they live on
+// opening one shows the scanned pages of its Rapporto di Fine Incarico, and the button at
+// the bottom files new pages. HD scans are far too big for browser storage, so they live on
 // disk in cases/ next to the app and go through the tracker server (/api/cases).
 
 import { confirmDialog, openModal, toast } from './ui.js';
+import { playButton, soundStartDelay } from './soundEffects.js';
+import { getConfig } from './config.js';
 
 const MAX_SCAN_BYTES = 100 * 1024 * 1024;   // mirrors MAX_CASE_BYTES in web.py
 const SCAN_TYPES = '.jpg,.jpeg,.png,.webp,.pdf';
 const OPEN_DELAY = 700;                      // ms: flap lifts and the report slides out first
-const GATE_ALARM_DELAY = 260;                // the warning light gets a beat before the doors move
-const GATE_OPEN_DELAY = 1250;
+const SHELF_TURN_MS = 760;
 const OUTCOMES = {
   contained: { label: 'Contained' },
   killed: { label: 'Killed' },
   escaped: { label: 'Escaped' }
 };
-
 let view = null;
 let request = 0;   // ignores a slow listing that finished after a newer one
 let archiveUnlocked = false;
+let gateSequence = 0;   // invalidates an opening sequence if navigation starts closing it
+
+const GATE_OPEN_X = 103;        // % the doors travel sideways to clear the frame
+const GATE_JOLT = 0.035;        // share of the travel the doors jump when the locks release
+const EASE_IN = 'cubic-bezier(.5,0,.85,.55)';     // slow off the mark, fastest at the slam
+const EASE_OUT = 'cubic-bezier(.15,.55,.35,1)';   // after the slam, braking to a stop
+
+/**
+ * Play one door timeline. `stops` are [seconds, open share 0..1, easing to the next stop];
+ * resolves when the last stop is reached (or the animation is cancelled).
+ */
+function animateGates(vault, stops) {
+  releaseGates(vault);   // an interrupted opening hands over to the closing
+  // Hold the first position while the sound is still starting (amplifier warm-up).
+  if (stops[0][0] > 0) stops = [[0, stops[0][1]], ...stops];
+  const total = stops.at(-1)[0];
+  const doors = [
+    [vault.querySelector('.cases-vault-door-left'), -1, ''],
+    [vault.querySelector('.cases-vault-door-right'), 1, ' scaleX(-1)']
+  ];
+  const animations = doors.map(([door, side, flip]) => door.animate(
+    stops.map(([time, share, easing]) => ({
+      offset: total ? time / total : 0,
+      transform: `translateX(${side * share * GATE_OPEN_X}%)${flip}`,
+      easing: easing || 'linear'
+    })),
+    { duration: total * 1000, fill: 'forwards' }
+  ));
+  vault._gateAnimations = animations;
+  return Promise.all(animations.map(animation => animation.finished.catch(() => {})));
+}
+
+/** Drop the scripted door positions once the .open class describes the same state. */
+function releaseGates(vault) {
+  vault._gateAnimations?.forEach(animation => animation.cancel());
+  vault._gateAnimations = null;
+}
+
+/** Times from /settings, forced into order so a stray slider cannot break the timeline. */
+function gateTimes() {
+  const gates = getConfig().effects.gates;
+  const ordered = keys => keys.reduce((times, key) => [...times, Math.max(times.at(-1) ?? 0, Number(gates[key]) || 0)], []);
+  const [disengage, openStart, openSlam, openEnd] = ordered(['disengageAt', 'openStartAt', 'openSlamAt', 'openEndAt']);
+  const [closeStart, closeSlam, closeEnd] = ordered(['closeStartAt', 'closeSlamAt', 'closeEndAt']);
+  return { disengage, openStart, openSlam, openEnd, closeStart, closeSlam, closeEnd, slam: gates.slamShare };
+}
 
 function reducedMotion() {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
 
-function scanUrl(entry) {
-  return `./cases/${encodeURIComponent(entry.file)}`;
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function caseFiles(entry) {
+  const saved = Array.isArray(entry.files) ? entry.files : [];
+  const files = [];
+  saved.forEach((item, index) => {
+    const record = typeof item === 'string' ? { file: item } : item;
+    const brightness = Number.parseInt(record?.brightness, 10);
+    const id = String(record?.id || `page-${String(index + 1).padStart(3, '0')}`);
+    if (record?.kind === 'scatter' && Array.isArray(record.photos)) {
+      record.photos.forEach((photo, photoIndex) => {
+        const photoFile = String(photo?.file || '');
+        if (!photoFile) return;
+        const photoBrightness = Number.parseInt(photo?.brightness, 10);
+        const photoId = String(photo?.id || `photo-${String(photoIndex + 1).padStart(3, '0')}`);
+        files.push({
+          id: `${id}-${photoId}`,
+          kind: 'page',
+          file: photoFile,
+          name: String(photo?.name || photoFile || `Page ${files.length + 1}`),
+          brightness: Number.isInteger(photoBrightness) && photoBrightness >= 20 && photoBrightness <= 150 ? photoBrightness : 100
+        });
+      });
+      return;
+    }
+    const file = String(record?.file || '');
+    if (!file) return;
+    files.push({
+      id,
+      kind: 'page',
+      file,
+      name: String(record?.name || record?.file || `Page ${index + 1}`),
+      brightness: Number.isInteger(brightness) && brightness >= 20 && brightness <= 150 ? brightness : 100
+    });
+  });
+  if (!files.length && entry.file) {
+    files.push({ id: 'page-001', kind: 'page', file: String(entry.file), name: String(entry.file), brightness: 100 });
+  }
+  entry.files = files;
+  return files;
+}
+
+function scanUrl(file) {
+  return `./cases/${encodeURIComponent(file.file)}`;
+}
+
+function isPdf(file) {
+  return file.file.toLowerCase().endsWith('.pdf');
 }
 
 function caseNumber(entry, { short = false } = {}) {
@@ -45,8 +139,13 @@ function caseOutcome(entry) {
 }
 
 function caseScore(entry) {
-  const score = Number.parseInt(entry.score, 10);
-  return Number.isInteger(score) && score >= 0 && score <= 100 ? score : null;
+  const score = String(entry.score || '').trim().toUpperCase();
+  return /^[A-Z0-9+-]{1,6}$/.test(score) ? score : null;
+}
+
+function normalizeScoreInput(input) {
+  input.value = input.value.toUpperCase().replace(/[^A-Z0-9+-]/g, '').slice(0, 6);
+  input.classList.remove('invalid');
 }
 
 function outcomeLabel(entry) {
@@ -76,17 +175,18 @@ async function api(path, options) {
 }
 
 // ---------- envelope ----------
-function createEnvelope(entry, index) {
+function createEnvelope(entry, index, onActivate = null) {
   const envelope = el('button', 'case-envelope');
   const outcome = caseOutcome(entry);
   const score = caseScore(entry);
   envelope.type = 'button';
   envelope.dataset.id = entry.id;
   envelope.dataset.outcome = outcome;
+  envelope.dataset.spine = `${caseNumber(entry, { short: true })} · ${entry.name}`;
   envelope.classList.add(`case-outcome-${outcome}`);
   envelope.style.setProperty('--i', index);
   envelope.style.setProperty('--tilt', `${tiltFor(entry.id)}deg`);
-  envelope.setAttribute('aria-label', `${caseNumber(entry)}: ${entry.name}. ${outcomeLabel(entry)}. Team score ${score ?? 'not assigned'}. Open the Rapporto`);
+  envelope.setAttribute('aria-label', `${caseNumber(entry)}: ${entry.name}. ${outcomeLabel(entry)}. Team rank ${score ?? 'not assigned'}. Open the Rapporto`);
 
   // Layers, back to front: inside of the envelope, the Rapporto, the pocket, the flap
   // (stamped TOP SECRET), and the string-and-button closure holding the flap down.
@@ -97,7 +197,11 @@ function createEnvelope(entry, index) {
   label.append(caption, el('span', 'case-name', entry.name));
   const meta = el('span', 'case-meta');
   meta.append(el('span', '', entry.code), el('span', '', caseDate(entry)));
-  front.append(label, meta, el('span', 'case-agency', '▲ Triangle Agency'));
+  const blood = el('span', 'case-blood-splatter');
+  blood.setAttribute('aria-hidden', 'true');
+  const danger = el('span', 'case-danger-tape', 'Escaped');
+  danger.setAttribute('aria-hidden', 'true');
+  front.append(blood, label, meta, el('span', 'case-agency', '▲ Triangle Agency'), danger);
 
   const flap = el('span', 'case-flap');
   flap.append(el('span', 'case-flap-shadow'), el('span', 'case-flap-face'), el('span', 'case-stamp', 'Top Secret'));
@@ -107,17 +211,15 @@ function createEnvelope(entry, index) {
   closure.innerHTML = '<svg viewBox="0 0 40 60"><path d="M20 8 C 4 18, 36 30, 20 46 C 6 56, 34 58, 20 46"/><circle cx="20" cy="8" r="6"/><circle cx="20" cy="46" r="6"/></svg>';
 
   const scoreBadge = el('span', 'case-score');
+  scoreBadge.dataset.rankLength = String((score ?? '--').length);
   scoreBadge.append(
-    el('span', 'case-score-label', 'Team score'),
-    el('strong', '', score === null ? '--' : String(score)),
-    el('span', 'case-score-total', '/100')
+    el('span', 'case-score-label', 'Team rank'),
+    el('strong', '', score === null ? '--' : score)
   );
   const status = el('span', 'case-status', outcomeLabel(entry));
-  const danger = el('span', 'case-danger-tape', 'Danger // Danger // Danger');
-  danger.setAttribute('aria-hidden', 'true');
 
-  envelope.append(el('span', 'case-back'), el('span', 'case-paper'), front, flap, closure, status, scoreBadge, danger);
-  envelope.addEventListener('click', () => openCase(envelope, entry));
+  envelope.append(el('span', 'case-back'), el('span', 'case-paper'), front, flap, closure, status, scoreBadge);
+  envelope.addEventListener('click', () => (onActivate ? onActivate(envelope, entry) : openCase(envelope, entry)));
   return envelope;
 }
 
@@ -129,7 +231,8 @@ function openCase(envelope, entry) {
 
 // ---------- viewer ----------
 function showRapporto(entry, onClose) {
-  const url = scanUrl(entry);
+  const files = caseFiles(entry);
+  let currentIndex = 0;
   const body = el('div', 'case-viewer-body');
   const score = caseScore(entry);
   const summary = el('div', `case-viewer-summary case-viewer-summary-${caseOutcome(entry)}`);
@@ -139,36 +242,187 @@ function showRapporto(entry, onClose) {
     el('p', 'case-viewer-meta', [caseNumber(entry), entry.code, caseDate(entry)].filter(Boolean).join(' · '))
   );
   const summaryScore = el('div', 'case-viewer-score');
-  summaryScore.append(el('span', '', 'Team score'), el('strong', '', score === null ? '--' : String(score)), el('small', '', '/100'));
+  summaryScore.append(el('span', '', 'Team rank'), el('strong', '', score === null ? '--' : score));
   summary.append(summaryText, summaryScore);
   body.appendChild(summary);
 
   const frame = el('div', 'case-document');
-  if (entry.file.toLowerCase().endsWith('.pdf')) {
-    const pdf = el('iframe');
-    pdf.src = url;
-    pdf.title = `Rapporto: ${entry.name}`;
-    frame.appendChild(pdf);
-  } else {
-    // Fits the screen; a click shows the scan at full resolution around the clicked point.
-    const img = el('img');
-    img.src = url;
-    img.alt = `Rapporto di Fine Incarico: ${entry.name}`;
-    img.title = 'Click to zoom';
-    img.addEventListener('click', event => {
-      const rect = img.getBoundingClientRect();
-      const x = (event.clientX - rect.left) / rect.width;
-      const y = (event.clientY - rect.top) / rect.height;
-      const zoomed = frame.classList.toggle('zoomed');
-      img.title = zoomed ? 'Click to fit' : 'Click to zoom';
-      if (zoomed) {
-        frame.scrollLeft = x * img.offsetWidth - frame.clientWidth / 2;
-        frame.scrollTop = y * img.offsetHeight - frame.clientHeight / 2;
+  const stack = el('div', 'case-paper-stack');
+  stack.classList.toggle('single-page', files.length < 2);
+  stack.tabIndex = 0;
+  stack.setAttribute('autofocus', '');
+  stack.setAttribute('role', 'group');
+  stack.setAttribute('aria-label', 'Case pages');
+  const surface = el('div', 'case-page-surface');
+  const underlay = el('button', 'case-page-underlay');
+  underlay.type = 'button';
+  underlay.setAttribute('aria-label', 'Show next page');
+  const position = el('span', 'case-page-position');
+
+  const settingsButton = el('button', 'case-image-settings', '⚙');
+  settingsButton.type = 'button';
+  settingsButton.title = 'Image brightness';
+  settingsButton.setAttribute('aria-label', 'Adjust image brightness');
+  settingsButton.setAttribute('aria-expanded', 'false');
+  const settings = el('div', 'case-brightness-panel');
+  settings.hidden = true;
+  const settingHeading = el('strong', '', 'Image brightness');
+  const settingValue = el('output', 'case-brightness-value', '100%');
+  const range = document.createElement('input');
+  range.type = 'range';
+  range.min = '20';
+  range.max = '150';
+  range.step = '5';
+  range.setAttribute('aria-label', 'Image brightness percentage');
+  const reset = el('button', 'case-brightness-reset', 'Reset');
+  reset.type = 'button';
+  settings.append(settingHeading, settingValue, range, reset);
+
+  const currentFile = () => files[currentIndex];
+  const applyBrightnessPreview = () => {
+    const image = surface.querySelector('.case-page-image');
+    if (image) image.style.filter = `brightness(${range.value}%)`;
+    settingValue.textContent = `${range.value}%`;
+  };
+
+  const renderPage = direction => {
+    const file = currentFile();
+    surface.classList.remove('zoomed');
+    surface.replaceChildren();
+    settings.hidden = true;
+    settingsButton.setAttribute('aria-expanded', 'false');
+    position.textContent = `${currentIndex + 1} / ${files.length}`;
+    position.hidden = files.length < 2;
+    underlay.hidden = files.length < 2;
+    underlay.title = `Show page ${currentIndex + 2 > files.length ? 1 : currentIndex + 2} of ${files.length}`;
+    stack.style.setProperty('--page-tilt', `${[-0.55, 0.35, -0.25, 0.5][currentIndex % 4]}deg`);
+    stack.classList.remove('shuffle-forward', 'shuffle-backward');
+    void stack.offsetWidth;
+    if (direction) stack.classList.add(direction > 0 ? 'shuffle-forward' : 'shuffle-backward');
+
+    if (isPdf(file)) {
+      stack.style.setProperty('--page-ratio', '0.707');
+      const pdf = el('iframe');
+      pdf.src = scanUrl(file);
+      pdf.title = `Rapporto: ${entry.name}, page ${currentIndex + 1}`;
+      surface.appendChild(pdf);
+      settingsButton.hidden = true;
+    } else {
+      const img = el('img', 'case-page-image');
+      img.src = scanUrl(file);
+      img.alt = `Rapporto di Fine Incarico: ${entry.name}, page ${currentIndex + 1}`;
+      img.title = 'Click to zoom';
+      img.style.filter = `brightness(${file.brightness}%)`;
+      img.addEventListener('load', () => {
+        if (img.naturalWidth && img.naturalHeight) {
+          stack.style.setProperty('--page-ratio', String(img.naturalWidth / img.naturalHeight));
+        }
+      }, { once: true });
+      img.addEventListener('click', event => {
+        const rect = img.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        const zoomed = surface.classList.toggle('zoomed');
+        img.title = zoomed ? 'Click to fit' : 'Click to zoom';
+        if (zoomed) {
+          surface.scrollLeft = x * img.offsetWidth - surface.clientWidth / 2;
+          surface.scrollTop = y * img.offsetHeight - surface.clientHeight / 2;
+        }
+      });
+      surface.appendChild(img);
+      range.value = String(file.brightness);
+      settingHeading.textContent = 'Image brightness';
+      applyBrightnessPreview();
+      settingsButton.hidden = false;
+      settingsButton.title = 'Image brightness';
+      settingsButton.setAttribute('aria-label', 'Adjust image brightness');
+    }
+  };
+
+  const shuffle = direction => {
+    if (files.length < 2) return;
+    currentIndex = (currentIndex + direction + files.length) % files.length;
+    renderPage(direction);
+    stack.focus({ preventScroll: true });
+  };
+  underlay.addEventListener('click', () => shuffle(1));
+  stack.addEventListener('keydown', event => {
+    if (event.target === range) return;
+    if (event.key === 'ArrowLeft') { event.preventDefault(); shuffle(-1); }
+    if (event.key === 'ArrowRight') { event.preventDefault(); shuffle(1); }
+  });
+  settingsButton.addEventListener('click', () => {
+    settings.hidden = !settings.hidden;
+    settingsButton.setAttribute('aria-expanded', String(!settings.hidden));
+    if (!settings.hidden) range.focus();
+  });
+  range.addEventListener('input', applyBrightnessPreview);
+  range.addEventListener('change', async () => {
+    const file = currentFile();
+    const brightness = Number(range.value);
+    range.disabled = true;
+    try {
+      const saved = await api(`/api/cases/${encodeURIComponent(entry.id)}/files/${encodeURIComponent(file.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brightness })
+      });
+      file.brightness = saved.file.brightness;
+      if (currentFile() === file) {
+        settingValue.textContent = `${file.brightness}% · saved`;
       }
-    });
-    frame.appendChild(img);
-  }
+    } catch (error) {
+      if (currentFile() === file) {
+        range.value = String(file.brightness);
+        applyBrightnessPreview();
+      }
+      toast(error.message || 'Brightness could not be saved.', { kind: 'error' });
+    } finally {
+      range.disabled = false;
+    }
+  });
+  reset.addEventListener('click', () => {
+    range.value = '100';
+    applyBrightnessPreview();
+    range.dispatchEvent(new Event('change'));
+  });
+
+  stack.append(underlay, surface, position, settingsButton, settings);
+  frame.appendChild(stack);
   body.appendChild(frame);
+  renderPage(0);
+
+  let deletingPage = false;
+  const deleteCurrentPage = async () => {
+    if (deletingPage) return;
+    if (files.length <= 1) {
+      toast('A dossier must keep one page. Use Delete case to remove the whole dossier.', { kind: 'warn' });
+      return;
+    }
+    const file = currentFile();
+    const confirmed = await confirmDialog({
+      title: 'Delete this page?',
+      message: `Remove page ${currentIndex + 1} from "${entry.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete page',
+      danger: true
+    });
+    if (!confirmed) return;
+    deletingPage = true;
+    try {
+      await api(`/api/cases/${encodeURIComponent(entry.id)}/files/${encodeURIComponent(file.id)}`, { method: 'DELETE' });
+      files.splice(currentIndex, 1);
+      entry.files = files;
+      entry.file = files[0].file;
+      currentIndex = Math.min(currentIndex, files.length - 1);
+      stack.classList.toggle('single-page', files.length < 2);
+      renderPage(1);
+      toast('Page removed from the dossier.');
+    } catch (error) {
+      toast(error.message || 'The page could not be deleted.', { kind: 'error' });
+    } finally {
+      deletingPage = false;
+    }
+  };
 
   openModal({
     title: entry.name,
@@ -177,8 +431,9 @@ function showRapporto(entry, onClose) {
     closeLabel: 'Close',
     actions: [
       { label: 'Delete case', variant: 'danger', onClick: () => { setTimeout(() => deleteCase(entry)); } },
-      { label: 'Edit record', onClick: () => { setTimeout(() => openCaseEditForm(entry)); } },
-      { label: 'Open original', onClick: () => { window.open(url, '_blank', 'noopener'); return false; } }
+      { label: 'Delete page', variant: 'danger', onClick: () => { deleteCurrentPage(); return false; } },
+      { label: 'Edit / add pages', onClick: () => { setTimeout(() => openCaseEditForm(entry)); } },
+      { label: 'Open original', onClick: () => { window.open(scanUrl(currentFile()), '_blank', 'noopener'); return false; } }
     ],
     onClose
   });
@@ -197,33 +452,59 @@ function outcomeFields(selected = 'contained') {
 }
 
 function openCaseEditForm(entry) {
+  const existingFiles = caseFiles(entry);
   const form = el('form', 'task-form case-form case-edit-form');
   form.noValidate = true;
   form.innerHTML = `
     <p class="case-edit-caption"></p>
     <label class="field">
-      <span class="field-label">Team score</span>
-      <span class="case-score-input"><input name="score" type="number" min="0" max="100" step="1" inputmode="numeric" value="${caseScore(entry) ?? ''}" autofocus><span>/100</span></span>
+      <span class="field-label">Team rank</span>
+      <span class="case-score-input"><input name="score" type="text" maxlength="6" pattern="[A-Za-z0-9+-]{1,6}" placeholder="A-, 10+, S++" value="${caseScore(entry) ?? ''}" autocomplete="off" autofocus></span>
     </label>
-    ${outcomeFields(caseOutcome(entry))}`;
+    ${outcomeFields(caseOutcome(entry))}
+    <div class="field">
+      <span class="field-label">Add case files <small>(optional)</small></span>
+      <label class="case-drop case-drop-compact">
+        <input name="files" type="file" accept="${SCAN_TYPES}" multiple>
+        <span class="case-drop-text"></span>
+      </label>
+    </div>`;
   form.querySelector('.case-edit-caption').textContent = `${caseNumber(entry)} · ${entry.name}`;
 
   const scoreInput = form.elements.score;
-  scoreInput.addEventListener('input', () => scoreInput.classList.remove('invalid'));
+  const fileInput = form.elements.files;
+  const drop = form.querySelector('.case-drop');
+  const dropText = form.querySelector('.case-drop-text');
+  dropText.textContent = `${existingFiles.length} page${existingFiles.length === 1 ? '' : 's'} already filed · choose full pages to append`;
+  scoreInput.addEventListener('input', () => normalizeScoreInput(scoreInput));
+  fileInput.addEventListener('change', () => {
+    const files = Array.from(fileInput.files || []);
+    drop.classList.remove('invalid');
+    if (files.length) {
+      const total = files.reduce((sum, file) => sum + file.size, 0);
+      dropText.textContent = `Add ${files.length} page${files.length === 1 ? '' : 's'} · ${(total / 1024 / 1024).toFixed(1)} MB total`;
+    }
+  });
   let saving = false;
   const save = async () => {
-    const score = Number(scoreInput.value);
-    if (scoreInput.value === '' || !Number.isInteger(score) || score < 0 || score > 100) {
+    const score = scoreInput.value.trim().toUpperCase();
+    const files = Array.from(fileInput.files || []);
+    if (!/^[A-Z0-9+-]{1,6}$/.test(score)) {
       scoreInput.classList.add('invalid');
       scoreInput.focus();
       return;
     }
+    if (files.reduce((sum, file) => sum + file.size, 0) > MAX_SCAN_BYTES) {
+      drop.classList.add('invalid');
+      toast('The selected pages exceed 100 MB in total. Compress them before filing.', { kind: 'warn', duration: 6000 });
+      return;
+    }
+    scoreInput.value = score;
     saving = true;
     try {
       const { case: updated } = await api(`/api/cases/${encodeURIComponent(entry.id)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ score, outcome: form.elements.outcome.value })
+        body: new FormData(form)
       });
       close();
       await renderPreviousCases({ highlight: updated.id });
@@ -249,7 +530,7 @@ function openCaseEditForm(entry) {
 async function deleteCase(entry) {
   const confirmed = await confirmDialog({
     title: `Delete ${caseNumber(entry)}?`,
-    message: `"${entry.name}" and its scan will be removed from the archive folder. This can't be undone.`,
+    message: `"${entry.name}" and all of its pages will be removed from the archive folder. This can't be undone.`,
     confirmLabel: 'Delete',
     danger: true
   });
@@ -260,7 +541,8 @@ async function deleteCase(entry) {
     toast(error.message, { kind: 'error' });
     return;
   }
-  const envelope = view?.querySelector(`.case-envelope[data-id="${CSS.escape(entry.id)}"]`);
+  const envelope = view?.querySelector(`.case-shelf-slot.is-center .case-envelope[data-id="${CSS.escape(entry.id)}"]`)
+    || view?.querySelector(`.case-envelope[data-id="${CSS.escape(entry.id)}"]`);
   envelope?.classList.add('leaving');
   setTimeout(renderPreviousCases, envelope && !reducedMotion() ? 400 : 0);
   toast(`${caseNumber(entry)} deleted.`);
@@ -286,15 +568,15 @@ function openCaseForm() {
       </label>
     </div>
     <label class="field">
-      <span class="field-label">Team score</span>
-      <span class="case-score-input"><input name="score" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="0-100"><span>/100</span></span>
+      <span class="field-label">Team rank</span>
+      <span class="case-score-input"><input name="score" type="text" maxlength="6" pattern="[A-Za-z0-9+-]{1,6}" placeholder="A-, 10+, S++" autocomplete="off"></span>
     </label>
     ${outcomeFields()}
     <div class="field">
-      <span class="field-label">Rapporto scan</span>
+      <span class="field-label">Case files</span>
       <label class="case-drop">
-        <input name="file" type="file" accept="${SCAN_TYPES}">
-        <span class="case-drop-text">Drop the scan here or click to choose<br><small>JPG, PNG, WEBP or PDF, up to 100 MB</small></span>
+        <input name="files" type="file" accept="${SCAN_TYPES}" multiple>
+        <span class="case-drop-text">Drop one or more pages here or click to choose<br><small>JPG, PNG, WEBP or PDF, up to 100 MB total</small></span>
         <img class="case-drop-preview" alt="" hidden>
       </label>
     </div>
@@ -305,20 +587,24 @@ function openCaseForm() {
 
   const nameInput = form.elements.name;
   const scoreInput = form.elements.score;
-  const fileInput = form.elements.file;
+  const fileInput = form.elements.files;
   const drop = form.querySelector('.case-drop');
   const dropText = form.querySelector('.case-drop-text');
   const preview = form.querySelector('.case-drop-preview');
   let previewUrl = '';
 
   const showFile = () => {
-    const file = fileInput.files?.[0];
+    const files = Array.from(fileInput.files || []);
+    const file = files[0];
     drop.classList.remove('invalid');
     URL.revokeObjectURL(previewUrl);
     previewUrl = '';
     preview.hidden = true;
     if (!file) return;
-    dropText.textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+    const total = files.reduce((sum, selected) => sum + selected.size, 0);
+    dropText.textContent = files.length === 1
+      ? `${file.name} · ${(total / 1024 / 1024).toFixed(1)} MB`
+      : `${files.length} pages selected · ${(total / 1024 / 1024).toFixed(1)} MB total`;
     if (file.type.startsWith('image/')) {
       previewUrl = URL.createObjectURL(file);
       preview.src = previewUrl;
@@ -336,7 +622,7 @@ function openCaseForm() {
     showFile();
   });
   nameInput.addEventListener('input', () => nameInput.classList.remove('invalid'));
-  scoreInput.addEventListener('input', () => scoreInput.classList.remove('invalid'));
+  scoreInput.addEventListener('input', () => normalizeScoreInput(scoreInput));
 
   const flag = field => {
     field.classList.remove('invalid');
@@ -347,13 +633,14 @@ function openCaseForm() {
   let uploading = false;
   const submit = async () => {
     const name = nameInput.value.trim();
-    const score = Number(scoreInput.value);
-    const file = fileInput.files?.[0];
+    const score = scoreInput.value.trim().toUpperCase();
+    const files = Array.from(fileInput.files || []);
     if (!name) { flag(nameInput); nameInput.focus(); return; }
-    if (scoreInput.value === '' || !Number.isInteger(score) || score < 0 || score > 100) { flag(scoreInput); scoreInput.focus(); return; }
-    if (!file) { flag(drop); return; }
-    if (file.size > MAX_SCAN_BYTES) {
-      toast('That scan is larger than 100 MB. Export it as a JPG or a compressed PDF.', { kind: 'warn', duration: 6000 });
+    if (!/^[A-Z0-9+-]{1,6}$/.test(score)) { flag(scoreInput); scoreInput.focus(); return; }
+    scoreInput.value = score;
+    if (!files.length) { flag(drop); return; }
+    if (files.reduce((sum, file) => sum + file.size, 0) > MAX_SCAN_BYTES) {
+      toast('The selected pages exceed 100 MB in total. Compress them before filing.', { kind: 'warn', duration: 6000 });
       return;
     }
 
@@ -366,7 +653,7 @@ function openCaseForm() {
       await renderPreviousCases({ highlight: filed.id });
       toast(`${caseNumber(filed)} filed: ${filed.name}.`);
     } catch (error) {
-      toast(error.message || 'The scan could not be filed.', { kind: 'error', duration: 6000 });
+      toast(error.message || 'The pages could not be filed.', { kind: 'error', duration: 6000 });
     } finally {
       uploading = false;
       if (button) { button.textContent = 'File case'; button.disabled = false; }
@@ -390,15 +677,122 @@ function renderArchive(cases, highlight) {
   const desk = el('div', 'cases-desk');
 
   if (cases.length) {
-    const grid = el('div', 'cases-grid');
-    cases.forEach((entry, index) => {
-      const envelope = createEnvelope(entry, index);
-      if (entry.id === highlight) envelope.classList.add('filed');
-      grid.appendChild(envelope);
+    const shelfCases = cases.slice(-10);
+    const highlightedIndex = highlight ? shelfCases.findIndex(entry => entry.id === highlight) : -1;
+    let centerIndex = highlightedIndex >= 0 ? highlightedIndex : shelfCases.length - 1;
+    let moving = false;
+    const shelf = el('section', 'cases-shelf');
+    shelf.setAttribute('aria-label', 'Case-file shelf');
+    const heading = el('div', 'cases-shelf-heading');
+    heading.append(
+      el('span', 'cases-shelf-title', 'Filed dossiers'),
+      el('span', 'cases-shelf-hint', shelfCases.length > 1 ? 'Scroll or use ← → to browse' : 'Latest dossier')
+    );
+    const carousel = el('div', 'cases-carousel');
+    carousel.tabIndex = 0;
+    carousel.setAttribute('role', 'region');
+    carousel.setAttribute('aria-roledescription', 'bookshelf carousel');
+    const announcement = el('span', 'cases-shelf-announcement');
+    announcement.setAttribute('aria-live', 'polite');
+    const shelfPosition = offset => {
+      if (offset === 0) return '50%';
+      const direction = offset < 0 ? '-' : '+';
+      const extraSteps = Array(Math.max(0, Math.abs(offset) - 1)).fill(` ${direction} var(--spine-step)`).join('');
+      return `calc(50% ${direction} var(--folder-clearance)${extraSteps})`;
+    };
+
+    const updateSlot = (slot, entryIndex) => {
+      const entry = shelfCases[entryIndex];
+      const offset = entryIndex - centerIndex;
+      slot.classList.toggle('is-center', offset === 0);
+      slot.style.setProperty('--shelf-left', shelfPosition(offset));
+      slot.style.setProperty('--shelf-next-left', shelfPosition(offset - 1));
+      slot.style.setProperty('--shelf-previous-left', shelfPosition(offset + 1));
+      slot.style.setProperty('--shelf-offset', String(offset));
+      slot.style.setProperty('--shelf-distance', String(Math.abs(offset)));
+      slot.style.setProperty('--shelf-z', String(20 - Math.abs(offset)));
+      slot.style.setProperty('--shelf-fold', `${Math.sign(offset) * 88}deg`);
+      slot.dataset.offset = String(offset);
+      const spine = slot.querySelector('.case-spine');
+      spine.setAttribute('aria-label', `${offset < 0 ? 'Previous' : 'Next'} dossier: ${entry.name}`);
+      const envelope = slot.querySelector('.case-envelope');
+      envelope.tabIndex = offset === 0 ? 0 : -1;
+      if (offset !== 0) envelope.classList.remove('filed');
+    };
+
+    const paintShelf = () => {
+      if (!carousel.children.length) shelfCases.forEach((entry, entryIndex) => {
+        const offset = entryIndex - centerIndex;
+        const slot = el('div', 'case-shelf-slot');
+        slot.dataset.caseIndex = String(entryIndex);
+        slot.dataset.caseId = entry.id;
+
+        const spine = el('button', 'case-spine');
+        spine.type = 'button';
+        spine.tabIndex = -1;
+        spine.append(
+          el('span', 'case-spine-number', caseNumber(entry, { short: true })),
+          el('span', 'case-spine-name', entry.name)
+        );
+        spine.addEventListener('click', () => turnShelf(Number(slot.dataset.offset) < 0 ? -1 : 1));
+
+        const envelope = createEnvelope(entry, Math.abs(offset), (node, selected) => {
+          const currentOffset = Number(slot.dataset.offset);
+          if (currentOffset === 0) openCase(node, selected);
+          else turnShelf(currentOffset < 0 ? -1 : 1);
+        });
+        if (offset === 0 && entry.id === highlight) envelope.classList.add('filed');
+        slot.append(spine, envelope);
+        carousel.appendChild(slot);
+      });
+      shelfCases.forEach((entry, entryIndex) => {
+        const slot = carousel.querySelector(`.case-shelf-slot[data-case-index="${entryIndex}"]`);
+        updateSlot(slot, entryIndex);
+      });
+      const selected = shelfCases[centerIndex];
+      carousel.setAttribute('aria-label', `Selected dossier: ${selected.name}. Scroll to browse; press Enter to open.`);
+      announcement.textContent = `${caseNumber(selected)}: ${selected.name}`;
+    };
+
+    const turnShelf = direction => {
+      if (moving) return;
+      const targetIndex = centerIndex + direction;
+      if (targetIndex < 0 || targetIndex >= shelfCases.length) return;
+      moving = true;
+      const reduced = reducedMotion();
+      carousel.classList.add(direction > 0 ? 'shelf-next' : 'shelf-previous');
+      const delay = reduced ? 0 : SHELF_TURN_MS;
+      setTimeout(() => {
+        centerIndex = targetIndex;
+        carousel.classList.remove('shelf-next', 'shelf-previous');
+        paintShelf();
+        moving = false;
+        carousel.focus({ preventScroll: true });
+      }, delay);
+    };
+
+    carousel.addEventListener('wheel', event => {
+      if (Math.max(Math.abs(event.deltaX), Math.abs(event.deltaY)) < 4) return;
+      event.preventDefault();
+      if (moving) return;
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      turnShelf(delta > 0 ? -1 : 1);
+    }, { passive: false });
+    carousel.addEventListener('keydown', event => {
+      if (event.key === 'ArrowLeft') { event.preventDefault(); turnShelf(-1); }
+      if (event.key === 'ArrowRight') { event.preventDefault(); turnShelf(1); }
+      if (event.key === 'Enter' || event.key === ' ') {
+        if (event.target === carousel) {
+          event.preventDefault();
+          carousel.querySelector('.case-shelf-slot.is-center .case-envelope')?.click();
+        }
+      }
     });
-    desk.appendChild(grid);
+    paintShelf();
+    shelf.append(heading, carousel, announcement);
+    desk.appendChild(shelf);
   } else {
-    desk.appendChild(el('p', 'cases-empty', 'No cases filed yet. After each mission, file the scan of its Rapporto di Fine Incarico here.'));
+    desk.appendChild(el('p', 'cases-empty', 'No cases filed yet. After each mission, file the pages of its Rapporto di Fine Incarico here.'));
   }
 
   const add = el('button', 'cases-add', '+ File a new case');
@@ -436,21 +830,43 @@ function renderArchive(cases, highlight) {
     trigger.tabIndex = -1;
   } else {
     desk.inert = true;
-    trigger.addEventListener('click', () => {
+    trigger.addEventListener('click', async () => {
       if (vault.classList.contains('opening')) return;
+      const sequence = ++gateSequence;
       archiveUnlocked = true;
       trigger.setAttribute('aria-expanded', 'true');
       vault.classList.add('alarming');
-      const motionDelay = reducedMotion() ? 0 : GATE_ALARM_DELAY;
-      const settleDelay = reducedMotion() ? 0 : GATE_OPEN_DELAY;
-      setTimeout(() => vault.classList.add('opening', 'open'), motionDelay);
-      setTimeout(() => {
-        vault.classList.add('settled');
-        desk.inert = false;
-        trigger.disabled = true;
-        trigger.tabIndex = -1;
-        desk.querySelector('.case-envelope, .cases-add')?.focus({ preventScroll: true });
-      }, settleDelay);
+      const delay = soundStartDelay() / 1000;
+      playButton('previousCases', 'openVault');
+
+      if (!reducedMotion()) {
+        const t = gateTimes();
+        // Locks jolt loose, the doors hold, then speed up until the slam and brake to a stop.
+        const settle = Math.min(t.disengage + 0.3, t.openStart);
+        const motion = animateGates(vault, [
+          [0, 0],
+          [t.disengage, 0, 'cubic-bezier(.2,.9,.3,1)'],
+          [Math.min(t.disengage + 0.08, settle), GATE_JOLT, 'ease-in-out'],
+          [settle, GATE_JOLT * 0.6],
+          [t.openStart, GATE_JOLT * 0.6, EASE_IN],
+          [t.openSlam, t.slam, EASE_OUT],
+          [t.openEnd, 1]
+        ].map(([time, ...rest]) => [time + delay, ...rest]));
+        await wait((delay + t.openStart) * 1000);
+        if (sequence !== gateSequence) return;
+        vault.classList.add('opening', 'open');   // warning and seal fade, files start dealing in
+        await motion;
+        if (sequence !== gateSequence) return;
+        releaseGates(vault);
+      } else {
+        vault.classList.add('opening', 'open');
+      }
+
+      vault.classList.add('settled');
+      desk.inert = false;
+      trigger.disabled = true;
+      trigger.tabIndex = -1;
+      desk.querySelector('.cases-carousel, .cases-add')?.focus({ preventScroll: true });
     });
   }
 
@@ -472,6 +888,47 @@ export async function renderPreviousCases({ highlight } = {}) {
     view.replaceChildren(el('p', 'cases-empty',
       'The case archive needs the tracker server. Start it with start_server.bat and reload this page.'));
   }
+}
+
+/** Close the archive in front of the files; callers await this before hiding the tab. */
+export async function closePreviousCases() {
+  const vault = view?.querySelector('.cases-vault');
+  if (!archiveUnlocked || !vault) {
+    archiveUnlocked = false;
+    return;
+  }
+
+  archiveUnlocked = false;
+  const sequence = ++gateSequence;
+  const trigger = vault.querySelector('.cases-vault-trigger');
+  const desk = vault.querySelector('.cases-desk');
+  desk.inert = true;
+  trigger.disabled = true;
+  trigger.setAttribute('aria-expanded', 'false');
+  vault.classList.remove('alarming', 'opening', 'settled');
+  vault.classList.add('closing');
+  const delay = soundStartDelay() / 1000;
+  playButton('previousCases', 'closeVault');
+
+  if (reducedMotion()) {
+    vault.classList.remove('open');
+    vault.classList.add('closed');
+    return;
+  }
+
+  // The doors hold, speed up until the slam, then creep the rest of the way shut.
+  const t = gateTimes();
+  const motion = animateGates(vault, [
+    [0, 1],
+    [t.closeStart, 1, EASE_IN],
+    [t.closeSlam, 1 - t.slam, EASE_OUT],
+    [t.closeEnd, 0]
+  ].map(([time, ...rest]) => [time + delay, ...rest]));
+  vault.classList.remove('open');
+  await motion;
+  if (sequence !== gateSequence) return;
+  releaseGates(vault);
+  vault.classList.add('closed');
 }
 
 export function initPreviousCases() {

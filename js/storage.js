@@ -27,6 +27,22 @@ function setAutomaticFileStatus(status, title = '') {
   if (!automaticFileButton) return;
   automaticFileButton.textContent = status;
   automaticFileButton.title = title;
+  // Pulses while the file is linked but not being written, so a paused sync can't go unnoticed.
+  automaticFileButton.classList.toggle('needs-attention', status.startsWith('Reconnect'));
+}
+
+/**
+ * The save file stopped being written (the browser needs permission again, usually after a
+ * restart). Changes are still kept in this browser; the file catches up once reconnected.
+ */
+function warnFileNotSyncing(message) {
+  setAutomaticFileStatus('Reconnect Save File', 'Click to restore permission to the automatic save file.');
+  toast(message, {
+    kind: 'warn',
+    duration: 20000,
+    // A click on the toast is the user gesture the browser needs to grant permission again.
+    action: { label: 'Reconnect', onClick: () => connectAutomaticSaveFile() }
+  });
 }
 
 function openHandleDatabase() {
@@ -101,8 +117,7 @@ async function writeSettingsToAutomaticFile() {
     if (handle !== automaticFileHandle) return false;
     automaticFileReady = false;
     fileSaveAnnounced = false;
-    setAutomaticFileStatus('Reconnect Save File', 'Click to restore permission to the automatic save file.');
-    toast('Lost access to the save file. Click "Reconnect Save File".', { kind: 'warn', duration: 6000 });
+    warnFileNotSyncing('Lost access to the save file: changes are only kept in this browser until you reconnect it.');
     console.error('Failed to automatically save the team file', error);
     return false;
   }
@@ -115,6 +130,14 @@ function queueAutomaticFileSave(delay = 300) {
     pendingFileSave = 0;
     fileWriteChain = fileWriteChain.then(writeSettingsToAutomaticFile);
   }, delay);
+}
+
+/** Start the save file write at once (page being hidden or closed), dropping any queued one. */
+function writeAutomaticFileNow() {
+  if (!automaticFileReady) return;
+  window.clearTimeout(pendingFileSave);
+  pendingFileSave = 0;
+  fileWriteChain = fileWriteChain.then(writeSettingsToAutomaticFile);
 }
 
 export function getCharacterData(character) {
@@ -136,7 +159,9 @@ export function getCharacterData(character) {
     primeDirective: character.dataset.primeDirective || '',
     encouragedBehavior: character.dataset.encouragedBehavior || '',
     realityDose: character._realityDose || 0,
+    realityProgress: character._realityProgress || 0,
     competencyProgress: character._competencyProgress || 0,
+    distinctions: { mvp: 0, suspended: 0, ...character._distinctions },
     anomalyState: normalizeAnomalyState(character._anomalyState),
     // Copies, so a snapshot (undo, export) isn't changed by later edits.
     relationships: (character._relationships || []).map(relationship => ({ ...relationship }))
@@ -273,6 +298,8 @@ export function initLocalStorage() {
     window.clearTimeout(pendingSave);
     pendingSave = 0;
     saveSettings();
+    // Write the save file now rather than after the usual short wait: the page may be closing.
+    writeAutomaticFileNow();
   };
 
   window.addEventListener('pagehide', flushSave);
@@ -303,7 +330,7 @@ export async function initAutomaticFileSave(button) {
       showAutomaticFileOn(automaticFileHandle);
       queueAutomaticFileSave(0);
     } else {
-      setAutomaticFileStatus('Reconnect Save File', 'Click to restore permission to the automatic save file.');
+      warnFileNotSyncing(`${automaticFileHandle.name} is not being updated: reconnect it to keep the save file in sync.`);
     }
     return automaticFileReady;
   } catch (error) {

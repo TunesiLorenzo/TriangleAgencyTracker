@@ -2,10 +2,12 @@
 // Sound engine: maps tracker events and button clicks to the sources assigned on
 // /settings (a file under audio/, a built-in synth voice, or silence), applies the
 // per-slot and master volume, honours this device's mute toggle, and keeps the
-// amplifier awake with a near-silent tone.
+// amplifier awake with a near-silent tone. The same events also cue the room
+// lights (lights.js), whether or not this screen is muted.
 
-import { BUTTON_GROUPS, EVENT_SOUND_BUTTONS, competencyFile, getConfig, onConfigChange } from './config.js';
-import { getAudioContext, playSynth } from './synth.js';
+import { BUTTON_GROUPS, EVENT_SOUND_BUTTONS, LIGHT_BUTTONS, competencyFile, getConfig, onConfigChange } from './config.js';
+import { triggerLight } from './lights.js';
+import { getAudioContext, playSynth, synthDuration } from './synth.js';
 
 const MUTE_KEY = 'ta-muted';
 let muted = false;
@@ -92,6 +94,38 @@ function audioUrl(file) {
   return 'audio/' + file.split('/').map(encodeURIComponent).join('/');
 }
 
+const durationCache = new Map();
+
+/** Read an uploaded sound's duration without downloading or decoding it ourselves. */
+function fileDuration(file) {
+  if (durationCache.has(file)) return durationCache.get(file);
+  const pending = new Promise(resolve => {
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    let finished = false;
+    const done = seconds => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      audio.removeAttribute('src');
+      resolve(Number.isFinite(seconds) && seconds > 0 ? seconds : 0);
+    };
+    audio.addEventListener('loadedmetadata', () => done(audio.duration), { once: true });
+    audio.addEventListener('error', () => done(0), { once: true });
+    const timeout = setTimeout(() => done(0), 2000);
+    audio.src = audioUrl(file);
+  });
+  durationCache.set(file, pending);
+  return pending;
+}
+
+async function sourceDuration(source) {
+  if (!source || source === 'none') return 0;
+  if (source.startsWith('synth:')) return synthDuration(source.slice(6));
+  if (source.startsWith('file:')) return fileDuration(source.slice(5));
+  return 0;
+}
+
 // Resolves when the audio ends, errors, or times out.
 function playFile(src, volume) {
   return new Promise(resolve => {
@@ -112,7 +146,7 @@ function playFile(src, volume) {
     audio.addEventListener('error', cleanup);
 
     // Safety timeout in case 'ended' never fires (e.g. a corrupted file).
-    const timeout = setTimeout(cleanup, 10000);
+    const timeout = setTimeout(cleanup, 30000);
 
     // play() rejects under autoplay restrictions; just resolve.
     audio.play().catch(err => {
@@ -170,6 +204,7 @@ export async function playSlot(slot, { gain = 1 } = {}) {
 
 /** Play the sound assigned to a tracker event, e.g. playEvent('witness'). */
 export function playEvent(event, options) {
+  triggerLight(event);
   if (muted) return Promise.resolve();
   return playSlot(resolveSlot(event, options));
 }
@@ -195,7 +230,28 @@ export function buttonSlot(group, key) {
   return getConfig().sounds.buttons[group]?.[key];
 }
 
+/**
+ * Approximate configured button-sound duration in milliseconds. Visual controls
+ * use this to move for as long as their selected synth or uploaded audio plays.
+ */
+export async function buttonSoundDuration(group, key, { fallbackMs = 1600, minMs = 1600, maxMs = 15000 } = {}) {
+  const slot = buttonSlot(group, key);
+  const warmupMs = Math.max(0, warmUntil - performance.now());
+  if (!slot) return fallbackMs;
+  const durations = await Promise.all([sourceDuration(slot.source), sourceDuration(slot.next)]);
+  const seconds = durations[0] + durations[1];
+  const measured = seconds > 0 ? seconds * 1000 + warmupMs : fallbackMs;
+  return Math.max(minMs, Math.min(maxMs, measured));
+}
+
+/** ms before a sound played now is heard (the amplifier may still be waking up). */
+export function soundStartDelay() {
+  return muted ? 0 : Math.max(0, warmUntil - performance.now());
+}
+
 export function playButton(group, key) {
+  const lightEvent = LIGHT_BUTTONS[`${group}.${key}`];
+  if (lightEvent) triggerLight(lightEvent);
   if (muted) return Promise.resolve();
   return playSlot(buttonSlot(group, key), { gain: getConfig().sounds.buttonVolume });
 }

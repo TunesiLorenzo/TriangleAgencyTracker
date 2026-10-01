@@ -105,6 +105,8 @@ export function finishMissionWorld(outcome) {
   data.chaos = 0;
   data[outcome] += 1;
   setWorldData(data);
+  const outcomeElement = document.getElementById(counters[outcome]?.id);
+  if (outcomeElement) bump(outcomeElement, 1);
 }
 
 function getBackgroundVideo() {
