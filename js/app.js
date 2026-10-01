@@ -19,6 +19,7 @@ import { initRelationships, renderRelationships } from './relationships.js';
 import { initAnomalies, renderAnomalies } from './anomalies.js';
 import { awardMissionDistinctions, initAgency, renderAgency, resetAgency } from './agency.js';
 import { closePreviousCases, exportCaseArchive, importCaseArchive, initPreviousCases, renderPreviousCases, setArchiveChangeHandler } from './previousCases.js';
+import { initLogin, whenSignedIn } from './login.js';
 import { initButtonSounds, initKeepAlive, isMuted, playEvent, setMuted } from './soundEffects.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
@@ -227,6 +228,12 @@ function initViewTabs() {
 }
 
 async function init() {
+  // Right-click is a tracker control on counters and tracks. Let those handlers run,
+  // but do not open the browser's context menu over the tabletop display.
+  document.addEventListener('contextmenu', event => event.preventDefault());
+
+  // First: every load starts locked behind the login screen.
+  initLogin();
   // Before the awaits, so a remembered tab is shown without first flashing the other one.
   initRelationships();
   initAnomalies();
@@ -261,6 +268,8 @@ async function init() {
   // Any case filed, edited or deleted during the session goes into the save file too.
   setArchiveChangeHandler(() => { syncCaseArchive(); });
   if (isServerAvailable()) {
+    // The merge-or-replace question would sit unseen behind the login screen.
+    await whenSignedIn();
     await importCasesFromSettings(saved);
     // Keep the saved copy current, including cases filed only on this terminal.
     await syncCaseArchive();

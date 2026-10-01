@@ -68,7 +68,7 @@ export const ACQUISITIONS = [
 export const DEFAULT_ICON = '📦';
 export const ITEM_ICONS = ['💼', '🔫', '☕', '📎', '🗄️', '🍽️', '🚗', '📝', '🧥', '💳', '🚁', '📦', '🔑', '📱', '🔦', '🧪', '📷', '🎫', '🧯', '📻', '🕶️', '🧸'];
 
-// The promotional banner at the bottom of the Agency tab. Put the pictures in images/promo/
+// The promotional banner at the top of the Agency tab. Put the pictures in images/promo/
 // under these names (any size; posters can be portrait): a slide whose picture is missing
 // shows its icon on the Agency's own poster art instead.
 export const PROMO_DIR = './images/promo/';

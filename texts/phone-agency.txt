@@ -1,0 +1,8 @@
+# Phone: the Agency butting in (about 1 message in 8, sent as "▲ Triangle Agency").
+# One message per line; one is picked at random. Empty lines and lines starting with # are ignored.
+# {agent} is replaced by the agent's name.
+
+Promemoria: le comunicazioni personali in orario di lavoro sono un’Anomalia.
+{agent}, la tua pausa è terminata 4 minuti fa.
+Il tuo telefono personale è stato aggiornato. Non hai autorizzato l’aggiornamento.
+Ti ricordiamo che l’Agenzia ti vuole bene. Di più.

@@ -156,6 +156,15 @@ const VOICES = {
     [440, 370, 311, 262].forEach((f, i) => tone(ac, out, t + i * 0.1, { type: 'triangle', from: f, peak: 0.3, decay: 0.2 }));
     return 0.6;
   },
+  // Retina scanner: a soft electronic sweep with a fast flutter.
+  scan(ac, out, t) {
+    const flutter = ac.createGain();
+    for (let i = 0; i < 20; i++) flutter.gain.setValueAtTime(i % 2 ? 0.5 : 1, t + i * 0.04);
+    flutter.connect(out);
+    tone(ac, flutter, t, { from: 330, to: 990, glide: 0.75, peak: 0.18, attack: 0.06, decay: 0.7 });
+    tone(ac, flutter, t, { type: 'triangle', from: 1320, to: 1980, glide: 0.75, peak: 0.04, attack: 0.06, decay: 0.7 });
+    return 0.8;
+  },
 
   /* ---------- buttons: short, quiet, and office-flavoured ---------- */
   // A small dry click.
@@ -256,6 +265,26 @@ const VOICES = {
   step(ac, out, t) {
     tone(ac, out, t, { type: 'triangle', from: 600, to: 760, glide: 0.04, peak: 0.3, decay: 0.07 });
     return 0.1;
+  },
+  // Lanyard clip: a small metal clink, and the badge knocking against it a moment later.
+  clink(ac, out, t) {
+    noiseBurst(ac, out, t, { length: 0.012, filter: 'highpass', freq: 5000, peak: 0.25, attack: 0.001 });
+    [2637, 3951, 5274].forEach((f, i) => tone(ac, out, t, { from: f, peak: 0.16 / (i + 1), attack: 0.001, decay: 0.12 }));
+    [3136, 4699].forEach((f, i) => tone(ac, out, t + 0.085, { from: f, peak: 0.09 / (i + 1), attack: 0.001, decay: 0.09 }));
+    return 0.2;
+  },
+  // Card reader: a plastic card sliding into the slot, then the latch catching it.
+  cardInsert(ac, out, t) {
+    noiseBurst(ac, out, t, { length: 0.16, freq: 2600, to: 1400, q: 1.4, peak: 0.3, attack: 0.03 });
+    noiseBurst(ac, out, t + 0.17, { length: 0.015, filter: 'highpass', freq: 2800, peak: 0.45, attack: 0.001 });
+    tone(ac, out, t + 0.17, { from: 220, to: 120, glide: 0.04, peak: 0.35, attack: 0.002, decay: 0.07 });
+    return 0.26;
+  },
+  // Card reader accepting a card: two quick piezo beeps, the second higher.
+  beep(ac, out, t) {
+    tone(ac, out, t, { type: 'square', from: 1976, peak: 0.07, attack: 0.002, decay: 0.07 });
+    tone(ac, out, t + 0.1, { type: 'square', from: 2637, peak: 0.07, attack: 0.002, decay: 0.12 });
+    return 0.24;
   }
 };
 
@@ -263,10 +292,10 @@ const VOICES = {
 // their movement to a selected built-in sound without playing it once to measure it.
 const VOICE_LENGTHS = {
   eye: 0.5, static: 0.4, globe: 1.2, lock: 0.4, thud: 0.6, alarm: 0.8,
-  tick: 0.12, glitch: 0.2, chime: 0.7, fanfare: 1, buzzer: 0.45, descend: 0.6,
+  tick: 0.12, glitch: 0.2, chime: 0.7, fanfare: 1, buzzer: 0.45, descend: 0.6, scan: 0.8,
   click: 0.06, tap: 0.1, pop: 0.14, switch: 0.1, open: 0.24, close: 0.22,
   confirm: 0.28, cancel: 0.26, trash: 0.36, stamp: 0.22, typewriter: 0.08,
-  paper: 0.34, drawer: 0.46, gate: 1.02, step: 0.1
+  paper: 0.34, drawer: 0.46, gate: 1.02, step: 0.1, clink: 0.2, cardInsert: 0.26, beep: 0.24
 };
 
 /** Approximate audible duration of a built-in voice, including its cleanup tail. */
@@ -288,6 +317,7 @@ export const SYNTHS = [
   { id: 'fanfare', label: 'Fanfare' },
   { id: 'buzzer', label: 'Buzzer' },
   { id: 'descend', label: 'Descending notes' },
+  { id: 'scan', label: 'Scanner sweep' },
   { id: 'click', label: 'Click', button: true },
   { id: 'tap', label: 'Soft tap', button: true },
   { id: 'pop', label: 'Pop (add)', button: true },
@@ -302,7 +332,10 @@ export const SYNTHS = [
   { id: 'paper', label: 'Paper swish', button: true },
   { id: 'drawer', label: 'Filing drawer', button: true },
   { id: 'gate', label: 'Iron security gate', button: true },
-  { id: 'step', label: 'Track step', button: true }
+  { id: 'step', label: 'Track step', button: true },
+  { id: 'clink', label: 'Lanyard clip', button: true },
+  { id: 'cardInsert', label: 'Card into reader', button: true },
+  { id: 'beep', label: 'Reader beep', button: true }
 ];
 
 /** Play a built-in sound; resolves when it has finished. */

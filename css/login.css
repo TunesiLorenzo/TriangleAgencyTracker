@@ -1,0 +1,1076 @@
+/* login.css - the sign-in screen (moving contour background, credentials, the Manager badge
+   on its lanyard and the card reader, retina scanner, triangular window onto the main
+   screen) and the Log Out button at the bottom of every tab. */
+
+:root {
+  --login-red: #ff3b30;
+  --login-ok: #30d158;
+}
+
+/* Signed in (login.js): the main screen alone. Every page load starts signed out. */
+html[data-session="open"] .login-screen { display: none; }
+html:not([data-session="open"]) body { overflow: hidden; }
+
+/* ---------- Log Out ---------- */
+.session-controls {
+  display: flex;
+  justify-content: center;
+  padding-top: 14px;
+}
+#logoutButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #222;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity 200ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+#logoutButton svg { width: 13px; height: 13px; }
+#logoutButton:hover,
+#logoutButton:focus-visible {
+  opacity: 1;
+  background: rgba(255,59,48,0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.6);
+}
+#logoutButton:active { transform: translateY(0) scale(0.97); }
+#logoutButton:focus-visible { outline: 2px solid rgba(255,255,255,0.7); outline-offset: 2px; }
+
+@media (orientation: portrait) {
+  .session-controls { padding-top: 8px; }
+}
+
+/* ---------- Screen ---------- */
+.login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;   /* over the atmosphere layers, dialogs and toasts */
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.login-screen:not([data-state="locked"]) { cursor: progress; }
+
+/* Everything that the triangular window cuts through (login.js sets its clip-path). */
+.login-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 38%, rgba(255,59,48,0.13), transparent 70%),
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 44px 44px,
+    #050505;
+}
+/* The moving contour lines (loginBackdrop.js); without WebGL the background above shows. */
+.login-backdrop {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.login-backdrop[hidden] { display: none; }
+/* CRT scanlines and a vignette over the whole stage */
+.login-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255,255,255,0.03) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.75) 100%);
+}
+
+.login-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  /* a little shade under the form, so the lines behind never fight the text */
+  background: radial-gradient(ellipse 34% 42% at 50% 62%, rgba(0,0,0,0.55), transparent 100%);
+}
+
+.login-hud {
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  right: 18px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: rgba(255,255,255,0.4);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.login-hud > span:first-child::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--login-red);
+  box-shadow: 0 0 8px var(--login-red);
+  animation: login-blink 1.6s steps(1) infinite;
+}
+.login-clock { font-variant-numeric: tabular-nums; }
+
+/* Logo, form and prompt; lifted clear of the scanner on short screens and moved aside for the
+   card reader when it doesn't fit beside them (--lift and --shift, login.js). */
+.login-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(400px, 100%);
+  transform: translate(calc(-1 * var(--shift, 0px)), calc(-1 * var(--lift, 0px)));
+  transition: transform 600ms cubic-bezier(.2,.9,.3,1);
+}
+
+.login-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: clamp(18px, 4vh, 34px);
+  text-align: center;
+}
+.login-logo-mark {
+  width: clamp(96px, 17vh, 170px);
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 0 18px rgba(255,59,48,0.45));
+  animation: login-logo-breathe 3.2s ease-in-out infinite;
+}
+.login-logo-frame {
+  fill: none;
+  stroke: var(--login-red);
+  stroke-width: 12;
+}
+.login-logo-core {
+  fill: var(--login-red);
+  transition: fill 300ms ease;
+}
+.login-screen.is-granted .login-logo-mark { animation: none; filter: drop-shadow(0 0 10px #fff) drop-shadow(0 0 30px rgba(255,59,48,0.9)); }
+.login-screen.is-granted .login-logo-core { fill: #fff; }
+.login-wordmark {
+  margin: 0;
+  font-size: clamp(20px, 3.4vh, 30px);
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;   /* keeps the spaced-out word centred */
+  text-transform: uppercase;
+}
+.login-tagline {
+  margin: 0;
+  color: rgba(255,255,255,0.45);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  padding: 20px 20px 18px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(47,47,47,0.85) 0%, rgba(35,35,35,0.85) 40%, rgba(26,26,26,0.85) 100%);
+  box-shadow: 0 30px 60px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.login-field {
+  display: grid;
+  gap: 6px;
+}
+.login-label {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.login-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 34px 8px 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.45);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  white-space: pre;
+  overflow: hidden;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.login-field[data-field="password"] .login-value { letter-spacing: 0.2em; }
+.login-caret {
+  display: none;
+  width: 2px;
+  height: 1.15em;
+  margin-left: 2px;
+  background: #fff;
+  animation: login-blink 0.9s steps(1) infinite;
+}
+.login-field.is-typing .login-caret { display: inline-block; }
+.login-field.is-typing .login-input {
+  border-color: rgba(255,59,48,0.7);
+  box-shadow: 0 0 0 3px rgba(255,59,48,0.15);
+}
+.login-field.is-done .login-input { border-color: rgba(48,209,88,0.55); }
+.login-field.is-done .login-input::after {
+  content: '\2713';
+  position: absolute;
+  right: 12px;
+  color: var(--login-ok);
+  animation: login-pop-in 260ms cubic-bezier(.2,.9,.3,1.4) both;
+}
+
+/* The idle prompt and the progress line share one spot, free to run wider than the form. */
+.login-prompt {
+  display: grid;
+  place-items: center;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  min-height: 2.4em;
+  margin-top: 16px;
+}
+.login-prompt > * { grid-area: 1 / 1; }
+.login-start,
+.login-status {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.login-start {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  animation: login-pulse 1.8s ease-in-out infinite;
+}
+.login-start span { color: var(--login-red); }
+.login-start:focus-visible { outline: 2px solid rgba(255,255,255,0.7); outline-offset: 4px; }
+.login-screen:not([data-state="locked"]) .login-start { visibility: hidden; }
+.login-status { color: rgba(255,255,255,0.7); transition: color 200ms ease; }
+.login-status.is-ok { color: var(--login-ok); }
+
+/* After Log Out: a full-screen warning counting down to the server stopping (login.js). */
+.login-severed {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 2vh, 20px);
+  padding: 24px 16px;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 50%, rgba(90,0,0,0.55), transparent 75%),
+    rgba(5,0,0,0.82);
+  color: #ff5a4f;
+  text-align: center;
+  text-transform: uppercase;
+  animation: login-severed-in 400ms ease-out both;
+}
+.login-screen[data-state="severed"] .login-severed { display: flex; }
+/* warning bands above and below the message */
+.login-severed::before,
+.login-severed::after {
+  content: '';
+  width: min(900px, 90vw);
+  height: 3px;
+  background: var(--login-red);
+  box-shadow: 0 0 12px var(--login-red), 0 0 30px rgba(255,59,48,0.6);
+}
+.login-severed p { margin: 0; }
+.login-severed-title {
+  font-size: clamp(30px, 6.4vw, 104px);
+  letter-spacing: 0.12em;
+  line-height: 1.05;
+  text-shadow: 0 0 12px rgba(255,59,48,0.95), 0 0 40px rgba(255,59,48,0.6);
+  animation: login-severed-glow 1s ease-in-out infinite;
+}
+.login-severed-sub {
+  color: rgba(255,255,255,0.75);
+  font-size: clamp(14px, 2vw, 30px);
+  letter-spacing: 0.4em;
+  text-indent: 0.4em;
+}
+.login-severed-count {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: clamp(16px, 2.2vw, 34px);
+  letter-spacing: 0.3em;
+  text-shadow: 0 0 8px rgba(255,59,48,0.9);
+}
+.login-severed-count b {
+  min-width: 1.1em;
+  color: #fff;
+  font-size: clamp(64px, 12vw, 200px);
+  letter-spacing: 0;
+  line-height: 1;
+  text-shadow: 0 0 16px #ff3b30, 0 0 60px rgba(255,59,48,0.85);
+  animation: login-severed-glow 1s ease-in-out infinite;
+}
+
+/* ---------- Retina scanner ---------- */
+.login-scanner {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(14px, 3vw, 30px);
+  width: min(660px, 100% - 24px);
+  padding: 20px clamp(14px, 3vw, 26px) 18px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-bottom: none;
+  border-radius: 22px 22px 0 0;
+  background: linear-gradient(180deg, #24272a 0%, #141618 45%, #0a0b0c 100%);
+  box-shadow: 0 -24px 60px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.08);
+  transform: translate(-50%, 110%);
+  /* durations from the Login tab on /settings (login.js) */
+  transition: transform var(--login-scanner-rise, 460ms) cubic-bezier(.3,.8,.3,1);
+}
+.login-screen.is-scanner-open .login-scanner { transform: translate(-50%, 0); }
+/* status LED strip along the top edge */
+.login-scanner::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 24px;
+  right: 24px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--login-red);
+  box-shadow: 0 0 10px var(--login-red), 0 0 24px rgba(255,59,48,0.6);
+  opacity: 0.35;
+  transition: opacity 300ms ease;
+}
+.login-screen.is-scanning .login-scanner::before { opacity: 1; animation: login-led 400ms ease-in-out infinite alternate; }
+.login-screen.is-matched .login-scanner::before {
+  opacity: 1;
+  background: var(--login-ok);
+  box-shadow: 0 0 10px var(--login-ok), 0 0 24px rgba(48,209,88,0.6);
+}
+
+.login-lens-wrap {
+  position: relative;
+  width: clamp(112px, 17vh, 150px);
+  aspect-ratio: 1;
+}
+.login-lens {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle, #2a0b09 0%, #120606 55%, #050505 100%);
+  box-shadow:
+    0 0 0 6px #1b1d1f,
+    0 0 0 7px rgba(255,255,255,0.12),
+    0 0 0 12px #0c0d0e,
+    inset 0 0 26px rgba(0,0,0,0.9),
+    0 0 30px rgba(255,59,48,0.25);
+  transition: box-shadow 300ms ease;
+}
+.login-screen.is-matched .login-lens {
+  box-shadow:
+    0 0 0 6px #1b1d1f,
+    0 0 0 7px rgba(48,209,88,0.5),
+    0 0 0 12px #0c0d0e,
+    inset 0 0 26px rgba(0,0,0,0.9),
+    0 0 34px rgba(48,209,88,0.45);
+}
+.login-iris {
+  position: absolute;
+  inset: 21%;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(rgba(255,128,96,0.5) 0 1.5deg, rgba(110,18,12,0.35) 1.5deg 4deg),
+    radial-gradient(circle closest-side, #6a1712 30%, #2a0806 75%, #120303 100%);
+  box-shadow: 0 0 0 2px rgba(255,59,48,0.35), 0 0 22px rgba(255,59,48,0.35);
+  transition: filter 300ms ease;
+}
+.login-screen.is-matched .login-iris { filter: hue-rotate(125deg) saturate(0.8); }
+/* contracts when the beam light reaches it */
+.login-pupil {
+  position: absolute;
+  inset: 37%;
+  border-radius: 50%;
+  background: #000;
+  box-shadow: inset 4px -4px 8px rgba(255,255,255,0.06);
+  transform: scale(1.25);
+  transition: transform 900ms cubic-bezier(.2,.9,.3,1);
+}
+.login-pupil::after {
+  content: '';
+  position: absolute;
+  top: 18%;
+  left: 22%;
+  width: 22%;
+  height: 22%;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.75);
+}
+.login-screen.is-scanning .login-pupil,
+.login-screen.is-matched .login-pupil { transform: scale(0.82); }
+
+.login-eye-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.login-ring {
+  fill: none;
+  stroke: rgba(255,90,70,0.45);
+  stroke-width: 1;
+  transform-origin: 60px 60px;
+  transition: stroke 300ms ease;
+}
+.login-ring-a { stroke-dasharray: 2 4; animation: login-spin 14s linear infinite; }
+.login-ring-b { stroke-dasharray: 18 6 4 6; animation: login-spin 22s linear infinite reverse; }
+.login-vessels {
+  fill: none;
+  stroke: #ffd9d2;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 2px rgba(255,59,48,0.9));
+  transition: stroke 300ms ease, filter 300ms ease;
+}
+/* mapped as the scan progresses (--scan 0..1, login.js) */
+.login-vessels path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--scan, 0));
+}
+.login-vessels circle { opacity: var(--scan, 0); }
+.login-screen.is-matched .login-ring { stroke: rgba(48,209,88,0.6); }
+.login-screen.is-matched .login-vessels { stroke: #c8ffd6; filter: drop-shadow(0 0 2px rgba(48,209,88,0.9)); }
+
+.login-beam {
+  position: absolute;
+  top: 0;
+  left: -10%;
+  right: -10%;
+  z-index: 1;
+  height: 2px;
+  background: #ff7a70;
+  box-shadow: 0 0 8px 2px rgba(255,59,48,0.9), 0 0 28px 8px rgba(255,59,48,0.35);
+  opacity: 0;
+}
+.login-screen.is-scanning .login-beam {
+  opacity: 1;
+  animation: login-beam var(--scan-pass, 800ms) ease-in-out var(--scan-passes, 3) alternate;
+}
+
+/* the shutters that open over the lens */
+.login-lid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 51%;
+  background: linear-gradient(180deg, #2c3034, #15171a);
+  transition: transform var(--login-lens-open, 420ms) cubic-bezier(.6,0,.3,1);
+}
+.login-lid-top { top: 0; border-bottom: 1px solid rgba(255,59,48,0.55); }
+.login-lid-bottom { bottom: 0; border-top: 1px solid rgba(255,59,48,0.55); background: linear-gradient(0deg, #2c3034, #15171a); }
+.login-screen.is-lens-open .login-lid-top { transform: translateY(-101%); }
+.login-screen.is-lens-open .login-lid-bottom { transform: translateY(101%); }
+
+/* targeting brackets that lock on when the scan starts */
+.login-reticle {
+  --c: rgba(255,255,255,0.8);
+  position: absolute;
+  inset: -16px;
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 16px 2px,
+    linear-gradient(var(--c), var(--c)) top left / 2px 16px,
+    linear-gradient(var(--c), var(--c)) top right / 16px 2px,
+    linear-gradient(var(--c), var(--c)) top right / 2px 16px,
+    linear-gradient(var(--c), var(--c)) bottom left / 16px 2px,
+    linear-gradient(var(--c), var(--c)) bottom left / 2px 16px,
+    linear-gradient(var(--c), var(--c)) bottom right / 16px 2px,
+    linear-gradient(var(--c), var(--c)) bottom right / 2px 16px;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transform: scale(1.3);
+  transition: opacity 260ms ease, transform 420ms cubic-bezier(.2,.9,.3,1.3);
+  pointer-events: none;
+}
+.login-screen.is-scanning .login-reticle,
+.login-screen.is-matched .login-reticle { opacity: 1; transform: scale(1); }
+.login-screen.is-matched .login-reticle { --c: var(--login-ok); }
+
+.login-readout {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: rgba(255,255,255,0.55);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.login-readout-scan { justify-items: end; text-align: right; }
+.login-percent {
+  color: #fff;
+  font-size: clamp(22px, 4vh, 32px);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  transition: color 300ms ease;
+}
+.login-screen.is-matched .login-percent { color: var(--login-ok); }
+.login-progress {
+  width: 100%;
+  max-width: 160px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.1);
+  overflow: hidden;
+}
+.login-progress span {
+  display: block;
+  height: 100%;
+  background: var(--login-red);
+  box-shadow: 0 0 8px var(--login-red);
+  transform: scaleX(var(--scan, 0));
+  transform-origin: left;
+}
+.login-screen.is-matched .login-progress span { background: var(--login-ok); box-shadow: 0 0 8px var(--login-ok); }
+.login-checks {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.login-checks li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  transition: color 200ms ease;
+}
+.login-checks li::after { content: '\00B7\00B7\00B7'; color: rgba(255,255,255,0.3); }
+.login-checks li.is-ok { color: rgba(255,255,255,0.88); }
+.login-checks li.is-ok::after { content: 'OK'; color: var(--login-ok); }
+
+/* ---------- Manager badge on its lanyard, and the card reader ---------- */
+/* Everything is sized from the badge width. loginBadge.js moves the badge and reads where
+   the card and the reader's slot sit, so the two stay lined up at any size. */
+.login-rig {
+  /* As large as the screen height allows while the card, the slot and the reader's display
+     stay on screen; login.js slides the form aside when they don't fit beside it. */
+  --badge-w: min(clamp(170px, 36vw, 560px), 42vh);
+  --card-h: calc(var(--badge-w) * 1.585);          /* an ID card: 54 x 85.6 mm */
+  --gap: calc(var(--badge-w) * 0.06);              /* between the hanging card and the slot */
+  /* the card and the reader's face, centred on the screen but with the clip in view (only used by `top`, so % is the screen height) */
+  --rest-top: max(calc(var(--badge-w) * 0.22 + 8px), calc((100% - var(--card-h) - var(--gap) - var(--badge-w) * 0.95) / 2));
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--badge-w) * 0.17 + clamp(16px, 3vw, 64px));
+  width: var(--badge-w);
+  pointer-events: none;
+}
+
+/* A kiosk that rises from the bottom edge, like the retina scanner; the card goes into the slot on top. */
+.login-reader {
+  --reader-w: calc(var(--badge-w) * 1.34);
+  --reader-light: var(--login-red);
+  position: absolute;
+  left: calc((var(--badge-w) - var(--reader-w)) / 2);
+  top: calc(var(--rest-top) + var(--card-h) + var(--gap) - var(--badge-w) * 0.075);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: var(--reader-w);
+  font-size: calc(var(--badge-w) / 17);
+  border-radius: 1.4em 1.4em 0 0;
+  background:
+    linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.55)),
+    linear-gradient(90deg, #0d0e10, #1f2225 14%, #2a2e32 50%, #1c1f22 86%, #0b0c0d);
+  box-shadow: -18px 0 50px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08);
+  transform: var(--reader-away, translateY(110vh));
+  transition: transform var(--login-badge-enter, 1s) cubic-bezier(.3,.8,.3,1);
+}
+.login-screen.is-badge-shown .login-reader { transform: none; }
+.login-screen.is-badge-leaving .login-reader {
+  transform: var(--reader-away, translateY(110vh));
+  transition: transform var(--login-exit, 420ms) cubic-bezier(.5,0,.75,0);
+}
+/* Done once the badge is out of the slot: it sinks away, making room for the retina scanner. */
+.login-screen.is-reader-done .login-reader {
+  transform: var(--reader-away, translateY(110vh));
+  transition: transform var(--login-scanner-rise, 460ms) cubic-bezier(.5,0,.75,0) calc(var(--login-badge-eject, 500ms) * 0.6);
+}
+.login-screen.is-badge-read .login-reader { --reader-light: var(--login-ok); }
+
+/* the top face, seen from a little above, with the slot across it */
+.login-reader-top {
+  position: relative;
+  flex: none;
+  height: calc(var(--badge-w) * 0.15);
+  border-radius: inherit;
+  background: linear-gradient(180deg, #474c52, #2c3035);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 2px 0 rgba(0,0,0,0.6);
+}
+.login-reader-slit {
+  position: absolute;
+  inset: 0;
+  width: calc(var(--badge-w) * 1.1);
+  height: calc(var(--badge-w) * 0.045);
+  margin: auto;                    /* centred by layout, so loginBadge.js can measure it */
+  border-radius: 1em;
+  overflow: hidden;
+  background: #000;
+  box-shadow: inset 0 2px 3px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.14);
+}
+/* the light deep in the slot: red, flickering while it reads, then green */
+.login-reader-slit::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 0;
+  height: 40%;
+  background: var(--reader-light);
+  box-shadow: 0 0 8px 2px var(--reader-light);
+  opacity: 0.8;
+}
+.login-screen.is-badge-reading:not(.is-badge-read) .login-reader-slit::after { animation: login-pulse 240ms ease-in-out infinite; }
+
+.login-reader-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9em;
+  padding: 0.9em 1.3em 0;
+}
+.login-reader-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  color: rgba(255,255,255,0.45);
+  font-size: 0.8em;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+.login-reader-brand svg { width: 1.7em; height: auto; overflow: visible; }
+.login-reader-brand polygon:first-child { fill: none; stroke: var(--login-red); stroke-width: 16; }
+.login-reader-brand polygon:last-child { fill: var(--login-red); }
+
+.login-reader-screen {
+  position: relative;
+  flex: none;
+  width: 100%;
+  height: 4.4em;
+  border-radius: 0.5em;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255,255,255,0.035) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at 50% 40%, #2a0a08, #110303 75%);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.9), inset 0 2px 10px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.08);
+  color: #ff6a5e;
+  text-shadow: 0 0 6px rgba(255,59,48,0.8);
+  font-size: 1.1em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.login-reader-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.login-reader-msg b { font-weight: inherit; animation: login-blink 1s steps(1) infinite; }
+.login-reader-msg small { font-size: 0.62em; letter-spacing: 0.14em; opacity: 0.85; }
+.login-reader-msg[data-step="ok"] { color: #5dff8a; text-shadow: 0 0 6px rgba(48,209,88,0.8); }
+.login-reader-msg[data-step="idle"],
+.login-screen.is-badge-reading .login-reader-msg[data-step="reading"],
+.login-screen.is-badge-read .login-reader-msg[data-step="ok"] { opacity: 1; }
+.login-screen.is-badge-reading .login-reader-msg[data-step="idle"],
+.login-screen.is-badge-read .login-reader-msg[data-step="reading"] { opacity: 0; }
+.login-reader-bar {
+  width: 70%;
+  height: 0.45em;
+  background: rgba(255,90,80,0.15);
+}
+.login-reader-bar span {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(90deg, #ff6a5e 0 0.55em, transparent 0.55em 0.75em);
+  clip-path: inset(0 100% 0 0);
+}
+/* fills over the "Reader reads the badge" time from /settings */
+.login-screen.is-badge-reading .login-reader-bar span {
+  clip-path: inset(0);
+  transition: clip-path var(--login-badge-read, 1s) linear;
+}
+
+/* power, reading, accepted */
+.login-reader-leds { display: flex; gap: 0.9em; }
+.login-reader-leds i {
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.6);
+}
+.login-reader-leds i:nth-child(1) { background: var(--login-red); box-shadow: 0 0 6px var(--login-red); }
+.login-reader-leds i:nth-child(2) { background: #3a2a10; }
+.login-reader-leds i:nth-child(3) { background: #10301a; }
+.login-screen.is-badge-reading:not(.is-badge-read) .login-reader-leds i:nth-child(2) {
+  background: #ffb020;
+  box-shadow: 0 0 8px #ffb020;
+  animation: login-blink 0.3s steps(1) infinite;
+}
+.login-screen.is-badge-read .login-reader-leds i:nth-child(3) { background: var(--login-ok); box-shadow: 0 0 8px var(--login-ok); }
+
+.login-reader-grille {
+  width: 60%;
+  height: 3em;
+  margin-top: 0.4em;
+  border-radius: 0.2em;
+  background: repeating-linear-gradient(to bottom, #050606 0 0.25em, transparent 0.25em 0.6em);
+  opacity: 0.8;
+}
+
+/* The badge hangs from the lanyard; loginBadge.js drops, swings and inserts it. */
+.login-badge {
+  position: absolute;
+  top: var(--rest-top);
+  left: 0;
+  width: var(--badge-w);
+  font-size: calc(var(--badge-w) / 17);
+  perspective: 900px;
+  visibility: hidden;
+}
+.login-screen.is-badge-shown .login-badge { visibility: visible; }
+.login-badge-swing { position: relative; }
+
+/* the strap through the card's slot, the swivel and the crimp, then the two sides of the lanyard */
+.login-lanyard {
+  position: absolute;
+  left: calc(var(--badge-w) * 0.37);
+  bottom: calc(100% - var(--badge-w) * 0.062);     /* the strap ends in the card's slot */
+  width: calc(var(--badge-w) * 0.26);
+}
+.login-lanyard-clip {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+}
+.login-lanyard-strap {
+  position: absolute;
+  bottom: 90%;                                      /* inside the crimp */
+  left: calc(var(--badge-w) * 0.035);
+  width: calc(var(--badge-w) * 0.19);
+  height: 170vh;
+  overflow: hidden;
+  background: linear-gradient(90deg, #7d0c07, #c91d13 16%, #e43328 50%, #c41b12 84%, #6f0a06);
+  box-shadow: inset 2px 0 0 rgba(255,255,255,0.12), inset -2px 0 0 rgba(0,0,0,0.2), 3px 0 8px rgba(0,0,0,0.45);
+  transform-origin: 50% 100%;
+}
+/* they part slightly on their way up to the neck */
+.login-lanyard-strap:nth-child(1) { transform: translateX(-10%) rotate(-1.4deg); }
+.login-lanyard-strap:nth-child(2) { transform: translateX(10%) rotate(1.4deg); }
+.login-lanyard-strap > span {
+  position: absolute;
+  inset: 0;
+  color: rgba(255,255,255,0.88);
+  font-size: calc(var(--badge-w) * 0.065);
+  letter-spacing: 0.3em;
+  line-height: calc(var(--badge-w) * 0.19);
+  text-transform: uppercase;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+}
+/* the other side of the loop reads the other way */
+.login-lanyard-strap:nth-child(2) > span { transform: rotate(180deg); }
+
+.login-badge-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: var(--card-h);
+  padding: 2.2em 1.1em 1em;
+  border-radius: 0.9em;
+  overflow: hidden;
+  background: linear-gradient(160deg, #f6f2e9 0%, #ebe5d8 100%);
+  box-shadow: 0 26px 50px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.4) inset;
+  color: #1a1a1a;
+}
+.login-screen.is-verified .login-badge-card { animation: login-badge-thump 300ms ease-out; }
+/* holographic sheen sweeping across as the reader accepts it */
+.login-badge-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.65) 45%, rgba(140,200,255,0.35) 50%, rgba(255,180,220,0.25) 55%, transparent 68%);
+  transform: translateX(-110%);
+  pointer-events: none;
+}
+.login-screen.is-badge-read .login-badge-card::after { animation: login-sheen 1.3s ease-in-out both; }
+.login-badge-slot {
+  position: absolute;
+  top: 0.75em;
+  left: 50%;
+  width: 3.2em;
+  height: 0.6em;
+  border-radius: 1em;
+  background: #222;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.7);
+  transform: translateX(-50%);
+}
+.login-badge-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.6em;
+  align-self: stretch;
+  margin: 0 -1.1em 0.9em;
+  padding: 0.55em 1.1em;
+  background: linear-gradient(90deg, #b8160e, #e0281d);
+  color: #fff;
+  font-size: 0.78em;
+  letter-spacing: 0.18em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+.login-badge-logo { width: 2.2em; height: auto; overflow: visible; }
+.login-badge-logo polygon:first-child { fill: none; stroke: #fff; stroke-width: 16; }
+.login-badge-logo polygon:last-child { fill: #fff; }
+.login-badge-chip {
+  width: 2.3em;
+  height: 1.75em;
+  border-radius: 0.3em;
+  background:
+    linear-gradient(90deg, transparent 32%, rgba(90,60,0,0.45) 32% 36%, transparent 36% 64%, rgba(90,60,0,0.45) 64% 68%, transparent 68%),
+    linear-gradient(0deg, transparent 46%, rgba(90,60,0,0.45) 46% 54%, transparent 54%),
+    linear-gradient(135deg, #f7dc7a, #c99a2e);
+}
+.login-badge-photo {
+  width: 58%;
+  aspect-ratio: 4 / 5;
+  border: 0.2em solid #fff;
+  border-radius: 0.35em;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255,255,255,0.04) 0 2px, transparent 2px 4px),
+    linear-gradient(160deg, #4a4f55, #23262a);
+  box-shadow: 0 0.2em 0.6em rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+.login-badge-photo svg,
+.login-badge-picture { display: block; width: 100%; height: 100%; }
+.login-badge-photo svg { fill: #9aa0a6; }
+.login-badge-picture { object-fit: cover; }
+/* the Manager's own picture from /settings replaces the silhouette */
+.login-badge-photo.has-picture svg,
+.login-badge-photo:not(.has-picture) .login-badge-picture { display: none; }
+.login-badge-role {
+  margin: 0.6em 0 0;
+  font-size: 1.55em;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  text-transform: uppercase;
+}
+.login-badge-id {
+  margin: 0.15em 0 0;
+  color: #b8160e;
+  font-size: 0.9em;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+}
+.login-badge-meta {
+  display: grid;
+  gap: 0.25em;
+  align-self: stretch;
+  margin: 0.8em 0 0;
+  padding-top: 0.6em;
+  border-top: 1px dashed rgba(0,0,0,0.2);
+  font-size: 0.72em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.login-badge-meta div { display: flex; justify-content: space-between; gap: 0.6em; }
+.login-badge-meta dt { opacity: 0.55; }
+.login-badge-meta dd { margin: 0; }
+.login-badge-pips { display: inline-flex; gap: 0.2em; vertical-align: middle; }
+.login-badge-pips i {
+  width: 0.85em;
+  height: 0.75em;
+  background: #b8160e;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.login-badge-barcode {
+  display: flex;
+  align-self: stretch;
+  height: 2.3em;
+  margin-top: 0.8em;
+}
+.login-badge-barcode span { flex: 1 1 0; background: #151515; }
+.login-badge-barcode span.gap { background: transparent; }
+.login-badge-fine {
+  margin: 0.5em 0 0;
+  font-size: 0.55em;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.login-badge-stamp {
+  position: absolute;
+  right: 7%;
+  bottom: 24%;
+  padding: 0.2em 0.55em;
+  border: 0.16em solid #1f9d47;
+  border-radius: 0.3em;
+  color: #1f9d47;
+  font-size: 1.45em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0;
+  transform: rotate(-16deg) scale(2.4);
+  mix-blend-mode: multiply;
+}
+.login-screen.is-verified .login-badge-stamp { animation: login-stamp 380ms cubic-bezier(.3,1.4,.5,1) forwards; }
+
+.login-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Window onto the main screen ---------- */
+.login-iris-edge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  filter: drop-shadow(0 0 6px rgba(255,59,48,0.95)) drop-shadow(0 0 22px rgba(255,59,48,0.55));
+}
+.login-iris-edge polygon { fill: none; }
+.login-iris-edge .glow { stroke: var(--login-red); stroke-width: 6; }
+.login-iris-edge .line { stroke: #fff; stroke-width: 1.5; }
+
+/* ---------- Smaller screens ---------- */
+/* No room beside the form: a small badge and a wall-mounted reader in the top corner. */
+@media (max-width: 900px) {
+  .login-rig {
+    --badge-w: min(clamp(64px, 18vw, 150px), 22vh);
+    --rest-top: 58px;
+    right: calc(var(--badge-w) * 0.17 + 10px);
+  }
+  .login-reader {
+    --reader-away: translateX(calc(var(--badge-w) * 2 + 24px));
+    bottom: auto;
+    height: calc(var(--badge-w) * 1.08);
+    border-radius: 1.4em;
+  }
+  .login-reader-grille { display: none; }
+}
+@media (max-width: 560px) {
+  .login-readout-checks { display: none; }
+  .login-scanner { grid-template-columns: minmax(0, 1fr) auto; }
+  .login-hud { font-size: 9px; letter-spacing: 1px; }
+}
+
+/* ---------- Keyframes ---------- */
+@keyframes login-blink { 50% { opacity: 0; } }
+@keyframes login-pulse { 50% { opacity: 0.45; } }
+@keyframes login-logo-breathe {
+  50% { filter: drop-shadow(0 0 28px rgba(255,59,48,0.7)); }
+}
+@keyframes login-pop-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes login-led { from { opacity: 0.55; } to { opacity: 1; } }
+@keyframes login-severed-glow { 50% { opacity: 0.55; text-shadow: 0 0 4px rgba(255,59,48,0.6); } }
+@keyframes login-severed-in { from { opacity: 0; } }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+@keyframes login-beam {
+  from { top: 0; }
+  to   { top: calc(100% - 2px); }
+}
+@keyframes login-badge-thump {
+  40% { transform: scale(0.96); }
+}
+@keyframes login-sheen {
+  from { transform: translateX(-110%); }
+  to   { transform: translateX(110%); }
+}
+@keyframes login-stamp {
+  0%   { opacity: 0; transform: rotate(-16deg) scale(2.4); }
+  60%  { opacity: 0.95; transform: rotate(-16deg) scale(0.92); }
+  100% { opacity: 0.9; transform: rotate(-16deg) scale(1); }
+}
+
+/* Reduced motion: the same steps, faded in place instead of moving (login.js shortens the waits). */
+@media (prefers-reduced-motion: reduce) {
+  .login-hud > span:first-child::before,
+  .login-logo-mark,
+  .login-start,
+  .login-caret,
+  .login-ring,
+  .login-screen.is-verified .login-badge-card,
+  .login-screen.is-badge-read .login-badge-card::after,
+  .login-screen.is-badge-reading:not(.is-badge-read) .login-reader-slit::after,
+  .login-screen.is-badge-reading:not(.is-badge-read) .login-reader-leds i:nth-child(2),
+  .login-reader-msg b,
+  .login-severed-title,
+  .login-severed-count b,
+  .login-screen.is-scanning .login-scanner::before { animation: none; }
+  .login-panel,
+  .login-lid,
+  .login-pupil,
+  .login-reticle { transition: none; }
+  .login-beam { display: none; }
+  .login-scanner { opacity: 0; transform: translate(-50%, 0); transition: opacity 200ms ease; }
+  .login-screen.is-scanner-open .login-scanner { opacity: 1; }
+  /* the badge and the reader appear in place (loginBadge.js puts the badge straight where it goes) */
+  .login-reader,
+  .login-screen.is-badge-shown .login-reader,
+  .login-screen.is-badge-leaving .login-reader,
+  .login-screen.is-reader-done .login-reader { transform: none; opacity: 0; transition: opacity 200ms ease; }
+  .login-screen.is-badge-shown .login-reader { opacity: 1; }
+  .login-screen.is-badge-leaving .login-reader,
+  .login-screen.is-reader-done .login-reader { opacity: 0; }
+  .login-badge { opacity: 0; transition: opacity 200ms ease; }
+  .login-screen.is-badge-shown .login-badge { opacity: 1; }
+  .login-screen.is-badge-leaving .login-badge { opacity: 0; }
+}

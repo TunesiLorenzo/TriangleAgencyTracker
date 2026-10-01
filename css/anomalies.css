@@ -43,16 +43,41 @@
 .anomaly-abilities h3, .anomaly-abilities h4 { margin: 0 0 10px; }
 
 /* portrait + name + player · Anomalia */
-.anomaly-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.anomaly-identity img { flex: none; width: 48px; height: 48px; border-radius: 33%; object-fit: cover; background: #444; }
+.anomaly-identity { display: flex; align-items: center; gap: 12px; min-width: 0; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.anomaly-identity img { flex: none; width: 56px; height: 56px; border-radius: 33%; object-fit: cover; background: #444; }
+.anomaly-profile .anomaly-identity img { width: 84px; height: 84px; }
 .dead .anomaly-identity img { filter: grayscale(1); opacity: 0.6; }
 .anomaly-identity-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .anomaly-name { font-size: 20px; letter-spacing: 1px; text-transform: uppercase; overflow-wrap: anywhere; }
 .anomaly-subtitle { color: #87beff; font-size: 14px; }
 .anomaly-subtitle:empty { display: none; }
+.anomaly-sick { color: red; font-weight: 700; }
+
+/* "Anomalia" and its name, like the rank on the Agency tab */
+.anomaly-label { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.65; }
+.anomaly-kind { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.anomaly-kind-name { color: var(--anomaly-color); font-size: 22px; letter-spacing: 1px; text-transform: uppercase; overflow-wrap: anywhere; }
+.anomaly-kind.unset .anomaly-kind-name { color: #fff; opacity: .4; }
+
+/* Abilità + Usate boxes, like the counts on the Relationships tab */
+.anomaly-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.anomaly-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px 6px;
+  border-radius: 8px;
+  background: rgba(0,0,0,.35);
+  line-height: 1.15;
+  transition: background 250ms ease, box-shadow 250ms ease;
+}
+.anomaly-count strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.anomaly-count small { font-size: 11px; letter-spacing: 1px; text-align: center; text-transform: uppercase; opacity: .65; }
+.anomaly-count.lit { background: var(--anomaly-color); box-shadow: 0 0 12px rgba(10,132,255,.45); }
+.anomaly-count.lit small { opacity: .85; }
 
 .anomaly-summary-track { display: flex; flex-direction: column; gap: 7px; }
-.anomaly-summary-track-label { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.65; }
 .anomaly-summary-progress { font-size: 14px; }
 .anomaly-summary-squares { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 2px; }
 .anomaly-summary-square {
@@ -68,8 +93,21 @@
   font-weight: 700;
 }
 .anomaly-summary-square.reached { background: var(--anomaly-color); color: #fff; }
-.anomaly-summary-counts { font-size: 15px; opacity: .7; }
 .anomaly-open { align-self: flex-end; margin-top: auto; color: #87beff; font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+
+/* the overview tiles are kept compact, so the tiles and the broadcast below fit on one screen */
+.anomaly-summary { gap: 9px; padding: 12px 14px; }
+.anomaly-summary .anomaly-identity { gap: 10px; padding-bottom: 8px; }
+.anomaly-summary .anomaly-identity img { width: 44px; height: 44px; }
+.anomaly-summary .anomaly-name { font-size: 17px; }
+.anomaly-summary .anomaly-subtitle { font-size: 13px; }
+.anomaly-summary .anomaly-kind-name { font-size: 18px; }
+.anomaly-summary .anomaly-count { padding: 5px 6px 4px; }
+.anomaly-summary .anomaly-count strong { font-size: 20px; }
+.anomaly-summary .anomaly-count small { font-size: 10px; }
+.anomaly-summary .anomaly-summary-track { gap: 5px; }
+.anomaly-summary .anomaly-summary-progress { font-size: 13px; }
+.anomaly-summary .anomaly-open { font-size: 12px; }
 
 .anomaly-detail { display: flex; flex-direction: column; gap: 16px; width: 100%; animation: anomaly-page-in 260ms ease-out both; }
 .anomaly-detail-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
@@ -197,12 +235,25 @@
     font-size: clamp(16px, 2.4vw, 20px);
   }
   .anomaly-overview { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+  .anomaly-identity img { width: 64px; height: 64px; }
+  .anomaly-profile .anomaly-identity img { width: 96px; height: 96px; }
   .anomaly-name { font-size: clamp(19px, 3vw, 24px); }
   .anomaly-subtitle { font-size: clamp(14px, 2.2vw, 17px); }
-  .anomaly-summary-track-label { font-size: clamp(12px, 1.9vw, 15px); }
-  .anomaly-summary-progress, .anomaly-summary-counts { font-size: clamp(15px, 2.3vw, 18px); }
+  .anomaly-summary-progress { font-size: clamp(15px, 2.3vw, 18px); }
+  .anomaly-label { font-size: clamp(12px, 1.9vw, 15px); }
+  .anomaly-kind-name { font-size: clamp(22px, 3.4vw, 28px); }
+  .anomaly-count strong { font-size: clamp(24px, 3.6vw, 30px); }
+  .anomaly-count small { font-size: clamp(11px, 1.7vw, 13px); }
   .anomaly-summary-square { font-size: clamp(7px, 1.2vw, 10px); }
   .anomaly-open { font-size: clamp(13px, 2vw, 16px); }
+  .anomaly-summary .anomaly-identity img { width: 52px; height: 52px; }
+  .anomaly-summary .anomaly-name { font-size: clamp(17px, 2.6vw, 21px); }
+  .anomaly-summary .anomaly-subtitle { font-size: clamp(13px, 2vw, 15px); }
+  .anomaly-summary .anomaly-kind-name { font-size: clamp(18px, 2.8vw, 23px); }
+  .anomaly-summary .anomaly-count strong { font-size: clamp(20px, 3vw, 25px); }
+  .anomaly-summary .anomaly-count small { font-size: clamp(10px, 1.5vw, 12px); }
+  .anomaly-summary .anomaly-summary-progress { font-size: clamp(13px, 2vw, 16px); }
+  .anomaly-summary .anomaly-open { font-size: clamp(12px, 1.8vw, 14px); }
 
   .anomaly-view .anomaly-back, .anomaly-view .anomaly-switch { padding: 11px 18px; font-size: clamp(15px, 2.3vw, 18px); }
   .anomaly-detail-content { grid-template-columns: minmax(0, 1fr); gap: 14px; }

@@ -1,0 +1,14 @@
+# Phone: what a relationship with a bond of 4-8 texts (friendly).
+# One message per line; one is picked at random. Empty lines and lines starting with # are ignored.
+# {agent} is replaced by the agent's name.
+
+Stasera pizza? 🍕
+Hai visto la partita?? 😱
+Mi richiami quando esci dal lavoro?
+Ti ho tenuto da parte una fetta di torta 🎂
+Sabato c’è un compleanno, non dimenticartelo!
+Com’è andata oggi?
+Ho trovato una tua foto di dieci anni fa 😂
+{agent}! Sei vivo/a? Non ti sento da giorni
+Domenica pranzo da noi, niente scuse.
+Che lavoro fai di preciso? Non l’ho mai capito

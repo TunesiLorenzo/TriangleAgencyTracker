@@ -708,7 +708,14 @@ async function downloadCaseArchive(button) {
   button.textContent = 'Preparing...';
   try {
     const response = await fetch('/api/cases/archive');
-    if (!response.ok) throw new Error(`Request failed (${response.status})`);
+    if (!response.ok) {
+      let detail = null;
+      try { detail = (await response.json())?.message; } catch { /* not a JSON API response */ }
+      throw new Error(detail || `Request failed (${response.status})`);
+    }
+    if (!response.headers.get('content-type')?.includes('application/zip')) {
+      throw new Error('The tracker returned an unexpected response instead of a ZIP archive');
+    }
     const blob = await response.blob();
     const stamp = new Date().toISOString().slice(0, 10);
     const url = URL.createObjectURL(blob);
@@ -722,7 +729,10 @@ async function downloadCaseArchive(button) {
     toast('Case archive exported.');
   } catch (error) {
     console.error('Failed to export the case archive', error);
-    toast('The case archive could not be exported. The tracker server must be running.', { kind: 'error', duration: 6000 });
+    const message = error instanceof TypeError
+      ? 'The case archive could not be exported because the tracker server is not reachable.'
+      : `The case archive could not be exported: ${error.message}`;
+    toast(message, { kind: 'error', duration: 7000 });
   } finally {
     button.disabled = false;
     button.textContent = label;

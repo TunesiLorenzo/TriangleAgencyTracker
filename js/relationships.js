@@ -7,13 +7,15 @@
 // sheet of the ARC dossier: name, picture, who plays them, description, a 0-9 track
 // (9 = Network) and a Relationship Bonus with its Active box. The data lives on the agent
 // card (card._realityProgress, card._realityDose, card._relationships), so it is saved,
-// exported and restored together with the rest of the agent.
+// exported and restored together with the rest of the agent. Under the overview sit the
+// Network map, the phone and the HR ticker (relationshipsExtras.js).
 
 import {
   MAX_CONNECTION, MAX_REALITY_DOSE, animateOnce, bindImagePicker, createChoiceSelect,
   getCharElements, loadImageFile, normalizeRelationship
 } from './charSystem.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
+import { createNetworkMap, createPhone, createTicker } from './relationshipsExtras.js';
 import { saveSettings } from './storage.js';
 import { toast } from './ui.js';
 
@@ -26,6 +28,8 @@ const DOCUMENTS = { 1: 'C4', 4: 'L11', 8: 'E2', 10: 'O4', 14: 'T6', 16: 'V2', 20
 let view = null;
 let openCard = null;   // the agent whose page is open; null shows the overview
 let openRelationship = null;   // the relationship shown on its own page, one of openCard's
+let phone = null;    // the lock screen and the HR ticker under the overview, kept across renders
+let ticker = null;
 
 function relationshipsOf(card) {
   if (!Array.isArray(card._relationships)) card._relationships = [];
@@ -739,6 +743,38 @@ function showOverview() {
   view.querySelectorAll('.rel-summary')[getCharElements().indexOf(card)]?.focus();
 }
 
+/** Jump from the Network map or the phone straight to an agent's page, or one of their relationships. */
+function openFromExtras(card, relationship = null) {
+  if (!getCharElements().includes(card)) return;
+  openCard = card;
+  openRelationship = relationship && relationshipsOf(card).includes(relationship) ? relationship : null;
+  navigate();
+}
+
+/** Every relationship of the branch, with the agent it belongs to, for the phone's messages. */
+function relationshipSources() {
+  return getCharElements().flatMap((card, index) =>
+    relationshipsOf(card).map(relationship => ({ card, relationship, agent: agentName(card, index) })));
+}
+
+/** Under the agent columns: the HR ticker, then the Network map. (The phone sits in the columns' row.) */
+function createExtras(cards) {
+  const agents = cards.map((card, index) => ({
+    card,
+    name: agentName(card, index),
+    portrait: portraitOf(card),
+    dead: card.classList.contains('dead'),
+    relationships: relationshipsOf(card)
+  }));
+  const all = agents.flatMap(agent => agent.relationships);
+  ticker.update({ agents: cards.length, relationships: all.length, network: all.filter(inNetwork).length });
+
+  const extras = document.createElement('div');
+  extras.className = 'rel-extras';
+  extras.append(ticker.el, createNetworkMap(agents, openFromExtras));
+  return extras;
+}
+
 /** One level up: relationship page -> agent page -> overview. */
 function goBack() {
   if (!openRelationship) {
@@ -777,13 +813,17 @@ export function renderRelationships({ overview = false, animate = false } = {}) 
   const grid = document.createElement('div');
   grid.className = 'rel-overview';
   const tiles = cards.map(createSummary);
-  grid.append(...tiles);
-  view.replaceChildren(grid);
+  // the phone takes the next column after the agents (the 4th, with the usual 3 agents)
+  grid.append(...tiles, phone.el);
+  phone.start();
+  view.replaceChildren(grid, createExtras(cards));
   if (animate) tiles.forEach(tile => animateOnce(tile, 'entering'));
 }
 
 export function initRelationships() {
   view = document.getElementById('relationshipsView');
+  phone = createPhone({ sources: relationshipSources, open: openFromExtras });
+  ticker = createTicker();
   // Hiring, recalling, removing or sending an agent on sick leave all end in updateTopCharacters().
   document.addEventListener('dashboard-refresh', () => {
     if (!view.hidden) renderRelationships();

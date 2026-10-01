@@ -1,0 +1,8 @@
+# Phone: who texts while no agent has a relationship yet.
+# One message per line; one is picked at random. Empty lines and lines starting with # are ignored.
+# Write the sender, a | and the message:   Sender | Message
+
+Numero sconosciuto | Chiamata persa.
+Numero sconosciuto | So cosa fai di lavoro.
+Palestra Fit&Go | Ci manchi! Il tuo abbonamento è scaduto 7 mesi fa 💪
+Corriere | Il tuo pacco non è stato consegnato. Non eri in casa. Non sei mai in casa.

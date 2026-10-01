@@ -43,6 +43,12 @@ body {
 #backgroundHue .secondary-background { opacity: 0; }
 
 
+/* The shake moves and tilts #pageWrapper a few px every frame. A transformed box counts
+   toward the page's scrollable size, so a page that just fits the window gained and lost
+   a scrollbar frame by frame. Clipping here keeps the shake out of the page size; clip
+   (unlike hidden) is no scroll container, so sticky elements still stick. */
+#pageFrame { overflow: clip; }
+
 /* page wrapper for jitter - keep jitter transforms isolated */
 #pageWrapper {
   min-height: 100svh;
@@ -129,32 +135,39 @@ body:not([data-view="agentsTab"]) .mission-controls { display: none; }
 @media (orientation: portrait) {
   html,
   body {
-    height: 100%;
-    overflow: hidden;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   #pageWrapper,
   .container {
-    height: 100dvh;
-    min-height: 0;
+    height: auto;
+    min-height: 100dvh;
   }
 
   .container {
     display: grid;
-    /* title, view tabs, active view, branch status, mission controls */
-    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(min-content, 1fr) auto auto auto;
     align-items: stretch;
     padding: clamp(8px, 1.2vw, 18px);
-    overflow: hidden;
+    overflow: visible;
+  }
+
+  /* On Agents, cards/tasks size naturally and the 2x2 dashboard takes any spare height. */
+  body[data-view="agentsTab"] .container {
+    grid-template-rows: auto auto auto minmax(min-content, 1fr) auto auto;
   }
 
   .workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
     align-items: stretch;
-    min-height: 0;
+    align-content: start;
+    min-width: 0;
     gap: clamp(8px, 1.4vh, 16px);
-    overflow: hidden;
+    overflow: visible;
   }
 
   /* each group keeps to its half of the top edge and wraps instead of running into the other */

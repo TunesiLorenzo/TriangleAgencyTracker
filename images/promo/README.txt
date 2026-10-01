@@ -1,4 +1,4 @@
-Pictures for the promotional banner at the bottom of the Agency tab.
+Pictures for the promotional banner at the top of the Agency tab.
 Use these file names (see PROMO_SLIDES in js/agencyData.js to add, remove or rename slides):
 
   tazza.jpg  graffetta.jpg  giacca.jpg  armadietto.jpg  skybreaker.jpg

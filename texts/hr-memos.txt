@@ -1,0 +1,17 @@
+# HR ticker: the memos scrolling under the Network map, shown in a random order.
+# One memo per line, all of them scroll by. Empty lines and lines starting with # are ignored.
+# {network} = relationships in the Network, {relationships} = all relationships, {agents} = agents on the branch.
+
+Promemoria RU: le Relazioni con Anomalie vanno dichiarate entro 48 ore.
+Il weekend è un’Anomalia non ancora catalogata. Si prega di non frequentarlo.
+I compleanni dei familiari non costituiscono giustificazione per l’assenza.
+Le Note di Merito non sono convertibili in tempo libero. Abbiamo controllato.
+Il Network personale di un Agente è concesso in comodato d’uso dall’Agenzia.
+Un Agente con troppa Realtà è un Agente distratto. Un Agente distratto è un Agente sospeso.
+Sondaggio interno: il 94% degli Agenti non sente la mancanza della famiglia. Il restante 6% è in Congedo.
+Le telefonate personali sono consentite durante la pausa pranzo di 4 minuti.
+Si ricorda che l’amore non è una Competenza riconosciuta.
+Se una Relazione chiede che lavoro fai, la risposta corretta è: «consulenza».
+Il Manager è sempre disponibile all’ascolto. Il Manager non è disponibile all’ascolto.
+Le foto dei propri cari sulla scrivania non devono guardare direttamente l’osservatore.
+Statistica di filiale: {network} Relazioni nel Network su {agents} Agenti. Le RU stanno monitorando la situazione.

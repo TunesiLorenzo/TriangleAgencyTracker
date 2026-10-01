@@ -355,13 +355,23 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   const demeritFill = document.createElement('div'); demeritFill.className = 'activity-fill demerit';
   activityMeter.append(meritFill, demeritFill);
 
+  // A permanent row for Top Performer / Sotto osservazione. Keeping it in normal flow
+  // prevents either banner from ever sharing space with the score or card controls.
+  const standingRegion = document.createElement('div');
+  standingRegion.className = 'standing-region';
+
   // death UI
   const deathBtn = document.createElement('button');
-  deathBtn.className = 'death-btn'; deathBtn.textContent='✖'; deathBtn.title='Toggle death state';
+  deathBtn.className = 'death-btn';
+  deathBtn.textContent = '☠';
+  deathBtn.title = 'Toggle sick leave';
+  deathBtn.setAttribute('aria-label', 'Toggle sick leave');
+  deathBtn.setAttribute('aria-pressed', String(c.classList.contains('dead')));
   const deathOverlay = document.createElement('div'); deathOverlay.className='death-overlay'; deathOverlay.textContent='SICK LEAVE';
   deathBtn.onclick = () => {
     c.classList.toggle('dead');
     const isNowDead = c.classList.contains('dead');
+    deathBtn.setAttribute('aria-pressed', String(isNowDead));
     playEvent(isNowDead ? 'sickLeave' : 'return');
     saveSettings();
     updateTopCharacters();
@@ -436,7 +446,7 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   portrait.className = 'agency-portrait char-portrait';
   portrait.appendChild(img);
 
-  c.append(removeBtn, flipBtn, portrait, ...statDivs, trackerRow, activityMeter, netIndicator, deathOverlay, deathBtn, backFace);
+  c.append(removeBtn, flipBtn, portrait, ...statDivs, trackerRow, activityMeter, netIndicator, standingRegion, deathOverlay, deathBtn, backFace);
 
   // The Competency fills the back of the card with its Prime Directive and
   // Encouraged Behaviors: empty fields on load, and on every change of Competency.
@@ -492,8 +502,9 @@ export function removeChar(c) {
 /**
  * getAgentStats - read merit/demerit/net for every agent card and flag the
  * unique top-merit, top-demerit and best-net-score agents (ties highlight no one,
- * matching the original single-winner behavior). Shared by updateTopCharacters()
- * and the dashboard panels so both use the exact same "who's winning" logic.
+ * matching the original single-winner behavior). The agent under observation is
+ * excluded from Top Performer. Shared by updateTopCharacters() and the dashboard
+ * panels so both use the exact same "who's winning" logic.
  */
 export function getAgentStats() {
   const chars = getCharElements();
@@ -504,18 +515,23 @@ export function getAgentStats() {
     return { el, name, merit, demerit, net: merit - demerit, dead: el.classList.contains('dead') };
   });
 
-  let maxMerit = -1, maxDemerit = -1, maxNet = -Infinity;
-  let meritCount = 0, demeritCount = 0, netCount = 0;
+  let maxDemerit = -1, maxNet = -Infinity;
+  let demeritCount = 0, netCount = 0;
   stats.forEach(s => {
-    if (s.merit > maxMerit) { maxMerit = s.merit; meritCount = 1; } else if (s.merit === maxMerit) meritCount++;
     if (s.demerit > maxDemerit) { maxDemerit = s.demerit; demeritCount = 1; } else if (s.demerit === maxDemerit) demeritCount++;
     if (s.net > maxNet) { maxNet = s.net; netCount = 1; } else if (s.net === maxNet) netCount++;
   });
 
   stats.forEach(s => {
-    s.isTopMerit = s.merit === maxMerit && meritCount === 1 && maxMerit > 0;
     s.isTopDemerit = s.demerit === maxDemerit && demeritCount === 1 && maxDemerit > 0;
     s.isTopNet = s.net === maxNet && netCount === 1 && stats.length > 1;
+  });
+
+  const topMeritCandidates = stats.filter(s => !s.isTopDemerit);
+  const maxMerit = Math.max(-1, ...topMeritCandidates.map(s => s.merit));
+  const meritCount = topMeritCandidates.filter(s => s.merit === maxMerit).length;
+  stats.forEach(s => {
+    s.isTopMerit = !s.isTopDemerit && s.merit === maxMerit && meritCount === 1 && maxMerit > 0;
   });
 
   return stats;
@@ -548,7 +564,7 @@ export function updateTopCharacters() {
     if (isTopMerit) {
       // The Agency's own recognition: a gold frame, a slow shine and a badge.
       el.classList.add('star','top-merit');
-      el.appendChild(createStanding('thumb', '👑 Top Performer'));
+      el.querySelector('.standing-region')?.appendChild(createStanding('thumb', '👑 Top Performer'));
       const shine = document.createElement('div'); shine.className = 'shine-overlay'; shine.setAttribute('aria-hidden', 'true'); el.appendChild(shine);
     }
 
@@ -556,7 +572,7 @@ export function updateTopCharacters() {
       // ...and its own concern: a crooked card, a flickering edge and a badge.
       el.classList.add('tilt','top-demerit','crooked');
       const vignette = document.createElement('div'); vignette.className = 'vignette-overlay'; vignette.setAttribute('aria-hidden', 'true'); el.appendChild(vignette);
-      el.appendChild(createStanding('warning-badge', '⚠ Sotto osservazione'));
+      el.querySelector('.standing-region')?.appendChild(createStanding('warning-badge', '⚠ Sotto osservazione'));
     }
 
     const netEl = el.querySelector('.net-indicator');

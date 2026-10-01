@@ -1,8 +1,9 @@
 // settings.js
 // The /settings page: assigns sounds to tracker events, viewer buttons (one submenu
 // per viewer tab) and competency cues, tunes the amplifier keep-alive tone, manages
-// the audio library, tunes the visual effects, and sets the room-light cues sent
-// to LightRPG. Every edit updates a local draft,
+// the audio library, tunes the visual effects, sets the room-light cues sent
+// to LightRPG, and sets up the login screen (badge picture, timing of each step).
+// Every edit updates a local draft,
 // previews immediately, and is saved (debounced) to the server, which pushes it to
 // open viewers.
 
@@ -36,13 +37,15 @@ const LIGHT_FIELDS = {
   saturation: { label: 'Saturation', min: 0, max: 100, step: 5, unit: '%' },
   brightness: { label: 'Brightness', min: 1, max: 100, step: 1, unit: '%' },
   temperature: { label: 'Temperature', min: 2500, max: 6500, step: 100, unit: 'K' },
+  led: { label: 'LED colour', min: 0, max: 360, step: 5, unit: '°' },
   seconds: { label: 'Hold', min: 0, max: 30, step: 0.5, unit: 's', zeroLabel: 'keep' }
 };
+// What the bulbs take; the LED strip only ever gets a hue (see stripHue).
 const LIGHT_ACTION_FIELDS = {
   none: [],
   color: ['hue', 'saturation', 'brightness'],
   white: ['temperature', 'brightness'],
-  effect: ['brightness'],
+  effect: [],
   off: []
 };
 
@@ -118,6 +121,28 @@ const EFFECT_GROUPS = [
       { key: 'fadeSeconds', label: 'Crossfade time', min: 0, max: 10, step: 0.5, unit: 's' }
     ]
   }
+];
+
+// The Login tab: seconds for each step of the sign-in (login.js), in the order they play.
+const LOGIN_TIMING_FIELDS = [
+  { key: 'typingStart', label: 'Pause before typing', min: 0, max: 3, step: 0.05, unit: 's' },
+  { key: 'userCharacter', label: 'Username: each character', min: 0.01, max: 0.3, step: 0.005, unit: 's' },
+  { key: 'fieldGap', label: 'Pause between the fields', min: 0, max: 2, step: 0.02, unit: 's' },
+  { key: 'passwordCharacter', label: 'Password: each character', min: 0.01, max: 0.3, step: 0.005, unit: 's' },
+  { key: 'credentialsHold', label: 'Credentials accepted: pause', min: 0, max: 3, step: 0.05, unit: 's' },
+  { key: 'badgeEnter', label: 'Badge drops in on its lanyard', min: 0.2, max: 3, step: 0.02, unit: 's' },
+  { key: 'badgeInsert', label: 'Badge slides into the reader', min: 0.1, max: 2, step: 0.02, unit: 's' },
+  { key: 'badgeRead', label: 'Reader reads the badge', min: 0.2, max: 4, step: 0.05, unit: 's' },
+  { key: 'badgeEject', label: 'Badge pushed back out', min: 0.1, max: 2, step: 0.02, unit: 's' },
+  { key: 'scannerRise', label: 'Retina scanner rises (with the badge pushed out)', min: 0.1, max: 3, step: 0.02, unit: 's' },
+  { key: 'lensOpen', label: 'Lens shutters open', min: 0.1, max: 3, step: 0.02, unit: 's' },
+  { key: 'scanPass', label: 'Scan: each beam sweep', min: 0.2, max: 3, step: 0.05, unit: 's' },
+  { key: 'scanPasses', label: 'Scan: number of sweeps', min: 1, max: 8, step: 1 },
+  { key: 'verifiedHold', label: 'Badge stamped: pause', min: 0, max: 3, step: 0.05, unit: 's' },
+  { key: 'grantedHold', label: 'Access granted: pause', min: 0, max: 5, step: 0.05, unit: 's' },
+  { key: 'exit', label: 'Badge, reader and scanner leave', min: 0.1, max: 2, step: 0.02, unit: 's' },
+  { key: 'windowOpen', label: 'Window opens on the main screen', min: 0.3, max: 5, step: 0.1, unit: 's' },
+  { key: 'windowClose', label: 'Log Out: window closes', min: 0.3, max: 5, step: 0.1, unit: 's' }
 ];
 
 let draft = structuredClone(DEFAULT_CONFIG);
@@ -330,20 +355,40 @@ function renderEffects() {
 }
 
 /* ---------- lights ---------- */
-/** Roughly what the cue looks like, for the round swatch beside it. */
+const usesBulbs = () => draft.lights.target !== 'strip';
+const usesStrip = () => ['all', 'strip'].includes(draft.lights.target);
+
+/**
+ * The hue the LED strip shows for a cue, or null when the cue leaves it alone. The strip
+ * is not a bulb: it has no white and always runs at full saturation and brightness
+ * (lights.py), so a Colour cue shows its own hue and White or a bulb effect the LED colour.
+ */
+function stripHue(cue) {
+  if (!usesStrip()) return null;
+  if (cue.action === 'color') return cue.hue;
+  if (cue.action === 'white' || (cue.action === 'effect' && !cue.effect.startsWith('strip:'))) return cue.led;
+  return null;
+}
+
+/** Roughly what the cue looks like, for the round swatch beside it; a ring is the LED strip. */
 function swatchStyle(cue) {
+  const led = stripHue(cue);
+  const ledColor = led === null ? '' : `hsl(${led} 100% 50%)`;
   const level = 25 + cue.brightness * 0.3;
-  if (cue.action === 'color') return `background: hsl(${cue.hue} ${cue.saturation}% ${level}%)`;
-  if (cue.action === 'white') {
+  let fill = '';
+  if (!usesBulbs()) fill = ledColor || (cue.action === 'effect' ? 'conic-gradient(#f33, #fd0, #3c6, #39f, #c3f, #f33)' : '');
+  else if (cue.action === 'color') fill = `hsl(${cue.hue} ${cue.saturation}% ${level}%)`;
+  else if (cue.action === 'white') {
     const t = (cue.temperature - 2500) / 4000;   // warm amber to cool blue-white
-    return `background: hsl(${35 + t * 185} ${90 - t * 50}% ${level + 15}%)`;
-  }
-  if (cue.action === 'effect') return 'background: conic-gradient(#f33, #fd0, #3c6, #39f, #c3f, #f33)';
-  return '';
+    fill = `hsl(${35 + t * 185} ${90 - t * 50}% ${level + 15}%)`;
+  } else if (cue.action === 'effect') fill = 'conic-gradient(#f33, #fd0, #3c6, #39f, #c3f, #f33)';
+  if (!fill) return '';
+  return `background: ${fill}${ledColor && usesBulbs() ? `; box-shadow: 0 0 0 3px ${ledColor}` : ''}`;
 }
 
 function lightFieldKeys(cue, { hold }) {
-  const keys = cue.action === 'effect' && !cue.effect.startsWith('strip:') ? [] : [...LIGHT_ACTION_FIELDS[cue.action]];
+  const keys = usesBulbs() ? [...LIGHT_ACTION_FIELDS[cue.action]] : cue.action === 'color' ? ['hue'] : [];
+  if (stripHue(cue) !== null && cue.action !== 'color') keys.push('led');
   if (hold && cue.action !== 'none') keys.push('seconds');
   return keys;
 }
@@ -423,6 +468,34 @@ async function testLight(button) {
   setTimeout(() => { button.classList.remove('playing'); refreshLightStatus(); }, 1500);
 }
 
+/* ---------- login ---------- */
+function renderLogin() {
+  const picture = draft.login.badgePicture;
+  $('#badgePreview').innerHTML = picture
+    ? `<img src="/${escapeHtml(picture)}" alt="Manager badge picture">`
+    : '<span>No picture: the badge shows a silhouette</span>';
+  $('#badgeRemove').hidden = !picture;
+  $('#loginTiming').innerHTML = LOGIN_TIMING_FIELDS.map(field => renderField(`login.timing.${field.key}`, field)).join('');
+}
+
+async function uploadBadgePicture(file) {
+  if (!file) return;
+  setStatus('Uploading picture…', 'saving');
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const response = await fetch('/api/badge', { method: 'POST', body: form });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.message);
+    draft.login.badgePicture = data.file;
+    renderLogin();
+    scheduleSave();
+  } catch (error) {
+    console.error('Badge picture upload failed', error);
+    setStatus(error.message || 'Upload failed', 'error');
+  }
+}
+
 function renderAll() {
   renderMaster();
   renderKeepAlive();
@@ -433,6 +506,7 @@ function renderAll() {
   renderLibrary();
   renderEffects();
   renderLights();
+  renderLogin();
 }
 
 /* ---------- editing ---------- */
@@ -440,6 +514,7 @@ function renderAll() {
 function fieldFor(path) {
   if (path.startsWith('sounds.keepAlive.')) return KEEP_ALIVE_FIELDS.find(f => path === `sounds.keepAlive.${f.key}`);
   if (path.startsWith('lights.')) return LIGHT_FIELDS[path.split('.').pop()] || null;
+  if (path.startsWith('login.timing.')) return LOGIN_TIMING_FIELDS.find(f => path === `login.timing.${f.key}`);
   if (!path.startsWith('effects.')) return null;
   const [, groupKey, fieldKey] = path.split('.');
   return EFFECT_GROUPS.find(g => g.key === groupKey)?.fields.find(f => f.key === fieldKey);
@@ -460,8 +535,8 @@ function handleEdit(event) {
   const output = document.querySelector(`output[data-out="${path}"]`);
   if (output) output.textContent = formatValue(fieldFor(path) || { percent: true }, value);
   if (path.startsWith('lights.')) {
-    // A new action or effect shows different sliders; other edits only recolour the swatch.
-    if (/\.(action|effect)$/.test(path)) renderLights();
+    // A new action, effect or target shows different sliders; other edits only recolour the swatch.
+    if (/\.(action|effect)$/.test(path) || path === 'lights.target') renderLights();
     const cuePath = path.slice(0, path.lastIndexOf('.'));
     const swatch = document.querySelector(`[data-swatch="${cuePath}"]`);
     if (swatch) swatch.style.cssText = swatchStyle(getPath(draft, cuePath));
@@ -616,6 +691,29 @@ async function init() {
     event.preventDefault();
     library.classList.remove('drop-target');
     uploadFiles(event.dataTransfer.files);
+  });
+
+  $('#badgeUpload').addEventListener('change', event => {
+    uploadBadgePicture(event.target.files[0]);
+    event.target.value = '';
+  });
+  $('#badgeRemove').addEventListener('click', () => {
+    draft.login.badgePicture = '';
+    renderLogin();
+    scheduleSave();
+  });
+  const badgeCard = $('#badgePreview').closest('.card');
+  badgeCard.addEventListener('dragover', event => { event.preventDefault(); badgeCard.classList.add('drop-target'); });
+  badgeCard.addEventListener('dragleave', () => badgeCard.classList.remove('drop-target'));
+  badgeCard.addEventListener('drop', event => {
+    event.preventDefault();
+    badgeCard.classList.remove('drop-target');
+    uploadBadgePicture(event.dataTransfer.files[0]);
+  });
+  $('#resetLoginTiming').addEventListener('click', () => {
+    draft.login.timing = structuredClone(DEFAULT_CONFIG.login.timing);
+    renderLogin();
+    scheduleSave();
   });
 
   $('#resetAll').addEventListener('click', () => {

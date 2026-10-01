@@ -12,21 +12,184 @@
   <link rel="stylesheet" href="./css/graphs.css">
   <link rel="stylesheet" href="./css/ui.css">
   <link rel="stylesheet" href="./css/relationships.css">
+  <link rel="stylesheet" href="./css/relationshipsExtras.css">
   <link rel="stylesheet" href="./css/anomalies.css">
+  <link rel="stylesheet" href="./css/underground.css">
   <link rel="stylesheet" href="./css/agency.css">
   <link rel="stylesheet" href="./css/previousCases.css">
   <link rel="stylesheet" href="./css/utilities.css">
+  <link rel="stylesheet" href="./css/login.css">
 </head>
 <body>
+  <div id="loginScreen" class="login-screen" data-state="locked" role="dialog" aria-modal="true" aria-label="Triangle Agency sign-in">
+    <div class="login-stage">
+      <canvas class="login-backdrop" aria-hidden="true"></canvas>
+      <div class="login-content">
+        <div class="login-hud" aria-hidden="true">
+          <span>Secure terminal &middot; Local branch</span>
+          <span class="login-clock"></span>
+        </div>
+
+        <div class="login-panel">
+          <div class="login-logo">
+            <svg class="login-logo-mark" viewBox="0 0 200 180" aria-hidden="true">
+              <polygon class="login-logo-frame" points="100,16 12,168.42 188,168.42"/>
+              <polygon class="login-logo-core" points="75.75,103.61 124.25,103.61 100,145.61"/>
+            </svg>
+            <p class="login-wordmark">Triangle Agency</p>
+            <p class="login-tagline">Authorised personnel only</p>
+          </div>
+
+          <div class="login-form">
+            <div class="login-field" data-field="user">
+              <span class="login-label" id="loginUserLabel">Username</span>
+              <div class="login-input" role="textbox" aria-readonly="true" aria-labelledby="loginUserLabel"><span class="login-value"></span><span class="login-caret" aria-hidden="true"></span></div>
+            </div>
+            <div class="login-field" data-field="password">
+              <span class="login-label" id="loginPasswordLabel">Password</span>
+              <div class="login-input" role="textbox" aria-readonly="true" aria-labelledby="loginPasswordLabel"><span class="login-value"></span><span class="login-caret" aria-hidden="true"></span></div>
+            </div>
+          </div>
+
+          <div class="login-prompt">
+            <button type="button" class="login-start"><span>&#9650;</span> Click anywhere to sign in</button>
+            <p class="login-status" aria-live="polite"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="login-rig">
+        <div class="login-reader" aria-hidden="true">
+          <div class="login-reader-top"><span class="login-reader-slit"></span></div>
+          <div class="login-reader-face">
+            <div class="login-reader-screen">
+              <span class="login-reader-msg" data-step="idle">Insert badge <b>&#9660;</b></span>
+              <span class="login-reader-msg" data-step="reading">Reading<span class="login-reader-bar"><span></span></span></span>
+              <span class="login-reader-msg" data-step="ok">ID accepted<small>#56776544 &middot; Level 5</small></span>
+            </div>
+            <div class="login-reader-leds"><i></i><i></i><i></i></div>
+            <div class="login-reader-brand">
+              <svg viewBox="0 0 200 180"><polygon points="100,16 12,168.42 188,168.42"/><polygon points="75.75,103.61 124.25,103.61 100,145.61"/></svg>
+              <span>Access control</span>
+            </div>
+            <span class="login-reader-grille"></span>
+          </div>
+        </div>
+
+        <aside class="login-badge" aria-label="Manager badge">
+          <div class="login-badge-swing">
+            <div class="login-lanyard" aria-hidden="true">
+              <span class="login-lanyard-strap"><span></span></span>
+              <span class="login-lanyard-strap"><span></span></span>
+              <svg class="login-lanyard-clip" viewBox="0 0 60 64">
+                <defs>
+                  <linearGradient id="loginMetal" x1="0" x2="1">
+                    <stop offset="0" stop-color="#6d7277"/><stop offset="0.35" stop-color="#f1f3f5"/>
+                    <stop offset="0.6" stop-color="#a9afb5"/><stop offset="1" stop-color="#55595e"/>
+                  </linearGradient>
+                </defs>
+                <rect x="21" y="23" width="18" height="41" rx="4" fill="rgba(215,225,235,0.32)" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
+                <circle cx="30" cy="19" r="6.5" fill="none" stroke="url(#loginMetal)" stroke-width="3"/>
+                <rect x="14" y="0" width="32" height="13" rx="2.5" fill="url(#loginMetal)"/>
+                <path d="M16 4.5H44M16 8.5H44" stroke="rgba(0,0,0,0.25)" stroke-width="1"/>
+                <circle cx="30" cy="40" r="4" fill="url(#loginMetal)" stroke="rgba(0,0,0,0.35)" stroke-width="0.8"/>
+                <rect x="21" y="58" width="18" height="6" rx="2" fill="rgba(0,0,0,0.45)"/>
+              </svg>
+            </div>
+            <div class="login-badge-card">
+              <span class="login-badge-slot" aria-hidden="true"></span>
+              <div class="login-badge-head">
+                <svg class="login-badge-logo" viewBox="0 0 200 180" aria-hidden="true">
+                  <polygon points="100,16 12,168.42 188,168.42"/>
+                  <polygon points="75.75,103.61 124.25,103.61 100,145.61"/>
+                </svg>
+                <span>Triangle<br>Agency</span>
+                <span class="login-badge-chip" aria-hidden="true"></span>
+              </div>
+              <div class="login-badge-photo" aria-hidden="true">
+                <svg viewBox="0 0 100 125"><circle cx="50" cy="48" r="20"/><path d="M12 125 C12 92 31 78 50 78 C69 78 88 92 88 125 Z"/></svg>
+                <img class="login-badge-picture" alt="">
+              </div>
+              <p class="login-badge-role">Manager</p>
+              <p class="login-badge-id">#56776544</p>
+              <dl class="login-badge-meta">
+                <div><dt>Clearance</dt><dd><span class="login-badge-pips" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="login-sr">Level 5 of 5</span></dd></div>
+                <div><dt>Division</dt><dd>Management</dd></div>
+              </dl>
+              <div class="login-badge-barcode" aria-hidden="true"></div>
+              <p class="login-badge-fine">Property of the Agency &middot; If found, do not investigate</p>
+              <span class="login-badge-stamp" aria-hidden="true">Verified</span>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="login-scanner" role="group" aria-label="Retina scanner">
+        <div class="login-readout login-readout-scan">
+          <span>Retina scan</span>
+          <span class="login-percent">00%</span>
+          <span class="login-progress"><span></span></span>
+        </div>
+        <div class="login-lens-wrap">
+          <div class="login-lens">
+            <div class="login-iris"></div>
+            <div class="login-pupil"></div>
+            <svg class="login-eye-map" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="login-ring login-ring-a" cx="60" cy="60" r="46"/>
+              <circle class="login-ring login-ring-b" cx="60" cy="60" r="53"/>
+              <g class="login-vessels">
+                <circle cx="68" cy="56" r="4"/>
+                <path pathLength="1" d="M68 56 C78 46 88 40 100 38"/>
+                <path pathLength="1" d="M68 56 C82 60 94 66 104 76"/>
+                <path pathLength="1" d="M68 56 C60 44 50 36 34 30"/>
+                <path pathLength="1" d="M68 56 C58 68 46 78 30 84"/>
+                <path pathLength="1" d="M68 56 C72 42 70 28 62 16"/>
+                <path pathLength="1" d="M68 56 C74 72 74 88 66 102"/>
+                <path pathLength="1" d="M84 44 C88 34 94 28 102 24"/>
+                <path pathLength="1" d="M90 64 C96 58 104 56 112 56"/>
+                <path pathLength="1" d="M48 38 C42 30 36 26 26 24"/>
+                <path pathLength="1" d="M46 77 C40 70 30 68 20 70"/>
+                <path pathLength="1" d="M71 31 C64 26 56 22 46 20"/>
+                <path pathLength="1" d="M72 86 C80 94 88 98 98 98"/>
+              </g>
+            </svg>
+            <span class="login-beam" aria-hidden="true"></span>
+            <span class="login-lid login-lid-top" aria-hidden="true"></span>
+            <span class="login-lid login-lid-bottom" aria-hidden="true"></span>
+          </div>
+          <span class="login-reticle" aria-hidden="true"></span>
+        </div>
+        <div class="login-readout login-readout-checks">
+          <ul class="login-checks">
+            <li>Vascular map</li>
+            <li>Iris pattern</li>
+            <li>Pupil response</li>
+            <li>Clearance</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="login-severed" role="alert">
+        <p class="login-severed-title">Secure link severed</p>
+        <p class="login-severed-sub">Connection traced</p>
+        <p class="login-severed-count">Purged in <b class="login-purge-count">4</b></p>
+      </div>
+    </div>
+    <svg class="login-iris-edge" aria-hidden="true"><polygon class="glow"/><polygon class="line"/></svg>
+  </div>
+
   <div id="backgroundHue" aria-hidden="true">
     <video id="bgVideo1" src="./images/bck_calm.mp4" autoplay muted loop playsinline></video>
     <video id="bgVideo2" class="secondary-background" autoplay muted loop playsinline></video>
   </div>
   <div id="chaosVignette" aria-hidden="true"></div>
 
-  <main id="pageWrapper">
+  <!-- Clips the screen shake, so a moving page never adds a scrollbar (layout.css). -->
+  <div id="pageFrame">
+  <!-- inert until signed in; login.js releases it -->
+  <main id="pageWrapper" inert>
     <div class="container">
-      <h1>Welcome, agents of the <br> TRIANGLE AGENCY</h1>
+      <h1>Welcome, to the <br> TRIANGLE AGENCY</h1>
 
       <nav class="top-buttons-left" aria-label="Agent controls">
         <button id="addAgentButton" type="button">Hire Agent</button>
@@ -63,9 +226,9 @@
         <div class="world">
           <div class="sphere-icon">&#127760;</div>
           <label>LOCAL BRANCH: <input type="text" id="branchName"></label>
-          <div class="world-counter">&#128065;&#65039; WITNESSES: <span class="counter" id="witnessCounter">0</span><span class="witness-flash" id="witnessFlash" aria-hidden="true">&#128065;&#65039;</span></div>
-          <div class="world-counter">&#127744; CHAOS: <span class="counter" id="chaosCounter">0</span></div>
-          <div class="world-counter">&#127757; GLOBAL WITNESSES: <span class="counter" id="globalWitnessCounter">0</span></div>
+          <div class="world-counter"><span class="world-label">&#128065;&#65039; WITNESSES</span> <span class="counter" id="witnessCounter">0</span><span class="witness-flash" id="witnessFlash" aria-hidden="true">&#128065;&#65039;</span></div>
+          <div class="world-counter"><span class="world-label">&#127744; CHAOS</span> <span class="counter" id="chaosCounter">0</span></div>
+          <div class="world-counter"><span class="world-label">&#127757; GLOBAL WITNESSES</span> <span class="counter" id="globalWitnessCounter">0</span></div>
           <div class="anomaly-tracker" role="group" aria-label="Anomalies">
             <span class="anomaly-title">ANOMALIES</span>
             <div class="anomaly-counters">
@@ -95,8 +258,15 @@
       <nav class="mission-controls" aria-label="Mission controls">
         <button id="nextMissionButton" type="button" class="modal-btn modal-btn-primary">NEXT MISSION</button>
       </nav>
+      <footer class="session-controls">
+        <button id="logoutButton" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
+          Log Out
+        </button>
+      </footer>
     </div>
   </main>
+  </div>
 
   <div id="scanlineOverlay" aria-hidden="true"></div>
   <div id="crtScanline" aria-hidden="true"></div>

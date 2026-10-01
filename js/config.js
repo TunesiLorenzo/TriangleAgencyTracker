@@ -77,9 +77,13 @@ export const LIGHT_EFFECTS = [
     .map(name => ({ key: `strip:${name}`, label: name.replaceAll('_', ' '), group: 'LED strip' }))
 ];
 
-/** A light cue; `seconds` > 0 returns to the ambient light afterwards. */
-const cue = (action, { hue = 0, saturation = 100, brightness = 100, temperature = 2700, effect = 'bulb:flicker', seconds = 0 } = {}) =>
-  ({ action, hue, saturation, brightness, temperature, effect, seconds });
+/**
+ * A light cue; `seconds` > 0 returns to the ambient light afterwards. `led` is the LED
+ * strip's hue for White and bulb effects (a Colour cue shows its own hue there); the strip
+ * always runs at full saturation and brightness.
+ */
+const cue = (action, { hue = 0, saturation = 100, brightness = 100, temperature = 2700, effect = 'bulb:flicker', led = 30, seconds = 0 } = {}) =>
+  ({ action, hue, saturation, brightness, temperature, effect, led, seconds });
 
 // Every button in the viewer, grouped like the Buttons submenus on /settings: the controls
 // shared by every tab, dialogs, then one group per main tab. A click plays the first entry
@@ -187,12 +191,28 @@ export const BUTTON_GROUPS = [
       { key: 'fileCase', label: '+ File a new case', selector: '.cases-add', sound: 'synth:drawer' },
       { key: 'other', label: 'Other buttons', selector: '#previousCasesView *', sound: 'synth:click', fallback: true }
     ]
+  },
+  {
+    key: 'session', label: 'Log in / out', hint: 'The sign-in sequence on the login screen (login.js plays these in turn) and Log Out at the bottom of every tab.',
+    buttons: [
+      { key: 'typing', label: 'Credentials typed', hint: 'Each character of the username and password', selector: '.login-input', sound: 'synth:typewriter', volume: 0.7 },
+      { key: 'badgeDrop', label: 'Badge drops in on its lanyard', hint: 'As the lanyard catches it', selector: '.login-lanyard', sound: 'synth:clink' },
+      { key: 'badgeInsert', label: 'Badge slides into the reader', selector: '.login-reader-slit', sound: 'synth:cardInsert' },
+      { key: 'badgeRead', label: 'Reader accepts the badge', selector: '.login-reader-screen', sound: 'synth:beep', volume: 0.8 },
+      { key: 'scannerOpen', label: 'Retina scanner rises', hint: 'As the reader pushes the badge back out', selector: '.login-scanner', sound: 'synth:drawer' },
+      { key: 'scan', label: 'Retina scan', hint: 'Each sweep of the scanner beam', selector: '.login-lens', sound: 'synth:scan', volume: 0.8 },
+      { key: 'verified', label: 'Badge verified', hint: 'The stamp on the Manager badge', selector: '.login-badge', sound: 'synth:stamp' },
+      { key: 'granted', label: 'Access granted', selector: '.login-status', sound: 'synth:confirm' },
+      { key: 'enter', label: 'Window opens onto the main screen', selector: '.login-stage', sound: 'synth:open' },
+      { key: 'logout', label: 'Log Out', selector: '#logoutButton', sound: 'synth:close' },
+      { key: 'purgeTick', label: 'Log Out: purge countdown', hint: 'Each second before the server stops', selector: '.login-severed', sound: 'synth:tick' }
+    ]
   }
 ];
 
 // These play their own event, competency or synchronized effect, so the delegated
 // button listener must not add a second sound on top.
-export const EVENT_SOUND_BUTTONS = '.death-btn, .back-action-btn, .cases-vault-trigger, .mission-modal .modal-btn-captured, .mission-modal .modal-btn-killed, .mission-modal .modal-btn-escaped';
+export const EVENT_SOUND_BUTTONS = '.death-btn, .back-action-btn, .cases-vault-trigger, .mission-modal .modal-btn-captured, .mission-modal .modal-btn-killed, .mission-modal .modal-btn-escaped, .login-start';
 
 function competencyDefaults() {
   return Object.fromEntries(COMPETENCIES.map(name => [name, { prime: slot(''), encouraged: slot('') }]));
@@ -243,7 +263,7 @@ export const DEFAULT_CONFIG = {
       sickLeave: cue('effect', { effect: 'bulb:flicker', seconds: 4 }),
       return: cue('color', { hue: 130, saturation: 80, seconds: 3 }),
       witness: cue('color', { hue: 220, saturation: 80, seconds: 1.5 }),
-      chaos: cue('effect', { effect: 'bulb:thunderstorm', seconds: 4 }),
+      chaos: cue('effect', { effect: 'bulb:thunderstorm', led: 220, seconds: 4 }),
       globalWitness: cue('color', { hue: 265, saturation: 80, seconds: 2 }),
       counterDown: cue('none'),
       glitch: cue('none'),
@@ -251,8 +271,8 @@ export const DEFAULT_CONFIG = {
       encouraged: cue('color', { hue: 45, saturation: 85, seconds: 2 }),
       captured: cue('color', { hue: 200, saturation: 70, seconds: 4 }),
       killed: cue('color', { hue: 355, brightness: 40, seconds: 5 }),
-      escaped: cue('effect', { effect: 'bulb:police', seconds: 6 }),
-      vaultOpen: cue('effect', { effect: 'bulb:police', seconds: 8.5 }),
+      escaped: cue('effect', { effect: 'bulb:police', led: 0, seconds: 6 }),
+      vaultOpen: cue('effect', { effect: 'bulb:police', led: 0, seconds: 8.5 }),
       vaultClose: cue('none')
     }
   },
@@ -302,6 +322,29 @@ export const DEFAULT_CONFIG = {
       closeSlamAt: 6,      // ...until the slam, then creep shut
       closeEndAt: 8.5,     // fully closed
       slamShare: 0.8       // how far the doors have travelled at the slam
+    }
+  },
+  login: {
+    badgePicture: '',      // images/badge/<file>, uploaded on /settings; '' shows the silhouette
+    timing: {              // seconds for each step of the sign-in (login.js), in order
+      typingStart: 0.35,   // click to the first character
+      userCharacter: 0.055,
+      fieldGap: 0.18,      // between the username and the password
+      passwordCharacter: 0.04,
+      credentialsHold: 0.6,
+      badgeEnter: 1,       // the badge drops in on its lanyard as the card reader rises
+      badgeInsert: 0.55,   // into the reader's slot
+      badgeRead: 1.1,
+      badgeEject: 0.5,     // pushed back out, as the retina scanner starts to rise
+      scannerRise: 0.46,
+      lensOpen: 0.42,
+      scanPass: 0.8,       // one sweep of the beam
+      scanPasses: 3,
+      verifiedHold: 0.45,  // stamp on the badge, then "access granted"
+      grantedHold: 0.75,
+      exit: 0.42,          // badge, reader and scanner leave
+      windowOpen: 1.3,     // the triangle opening onto the main screen
+      windowClose: 1.3     // Log Out: the same triangle closing
     }
   }
 };

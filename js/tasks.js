@@ -12,6 +12,7 @@ function saveTasksArray(tasks) {
 }
 
 function getPanel() { return document.getElementById('taskPanel'); }
+function getTaskList(panel = getPanel()) { return panel?.querySelector('.task-list'); }
 
 // ---------- init panel ----------
 export function initTaskPanel(opts = {}) {
@@ -20,20 +21,61 @@ export function initTaskPanel(opts = {}) {
 
   container.classList.add('task-panel');
 
-  // Add "Add Task" button (kept as first child)
+  const controls = document.createElement('div');
+  controls.className = 'task-controls';
+
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
-  addBtn.textContent = '+ Add Task';
+  addBtn.textContent = '+';
   addBtn.className = 'add-task-btn';
-  container.appendChild(addBtn);
+  addBtn.title = 'Add task';
+  addBtn.setAttribute('aria-label', 'Add task');
+
+  const gateBtn = document.createElement('button');
+  gateBtn.type = 'button';
+  gateBtn.className = 'task-gate-toggle';
+  const gateIcon = document.createElement('span');
+  gateIcon.className = 'task-gate-toggle-icon';
+  gateIcon.setAttribute('aria-hidden', 'true');
+  gateBtn.appendChild(gateIcon);
+
+  const stage = document.createElement('div');
+  stage.className = 'task-stage';
+  const taskList = document.createElement('div');
+  taskList.className = 'task-list';
+  const gate = document.createElement('div');
+  gate.className = 'task-gate';
+  gate.setAttribute('aria-hidden', 'true');
+  gate.innerHTML = `
+    <span class="task-gate-door task-gate-left"></span>
+    <span class="task-gate-door task-gate-right"></span>
+    <span class="task-gate-seal">TASKS SECURED</span>`;
+
+  controls.append(addBtn, gateBtn);
+  stage.append(taskList, gate);
+  container.append(controls, stage);
 
   // load tasks
   const saved = loadSettings();
   const tasks = Array.isArray(saved?.world?.tasks) ? saved.world.tasks : [];
   container._tasks = tasks;
-  tasks.forEach(t => container.appendChild(renderTaskCard(t)));
+  tasks.forEach(t => taskList.appendChild(renderTaskCard(t)));
+
+  const setGate = closed => {
+    container.classList.toggle('gate-closed', closed);
+    gateBtn.title = closed ? 'Open task gate' : 'Close task gate';
+    gateBtn.setAttribute('aria-label', gateBtn.title);
+    gateBtn.setAttribute('aria-pressed', String(closed));
+    taskList.inert = closed;
+    if (closed) taskList.setAttribute('aria-hidden', 'true');
+    else taskList.removeAttribute('aria-hidden');
+  };
+  // Every launch starts with the list locked behind the gate. Set before the panel is
+  // first drawn, so the doors are simply shut rather than sliding closed.
+  setGate(true);
 
   addBtn.addEventListener('click', () => openTaskForm(taskObj => addTask(taskObj)));
+  gateBtn.addEventListener('click', () => setGate(!container.classList.contains('gate-closed')));
 
   // delegate clicks: pick an agent for that task (deletion handled on its own button)
   container.addEventListener('click', async ev => {
@@ -183,10 +225,7 @@ export function resetTasks() {
   taskGeneration++;
   const panel = getPanel();
   if (!panel) return;
-  // keep the add button (first child) if present, remove others
-  const addBtn = panel.querySelector('.add-task-btn');
-  panel.innerHTML = '';
-  if (addBtn) panel.appendChild(addBtn);
+  getTaskList(panel)?.replaceChildren();
   panel._tasks = [];
   saveTasksArray([]);
 }
@@ -247,6 +286,6 @@ export function addTask(taskObj) {
   const card = renderTaskCard(taskObj);
   card.classList.add('entering');
   card.addEventListener('animationend', () => card.classList.remove('entering'), { once: true });
-  panel.appendChild(card);
+  getTaskList(panel)?.appendChild(card);
   card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }

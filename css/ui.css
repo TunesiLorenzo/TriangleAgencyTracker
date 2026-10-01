@@ -101,11 +101,26 @@
   transform: scale(1.1);
 }
 .char .death-btn {
-  margin-top: 12px;   /* clear of the net score pill above */
+  position: absolute;
+  top: 5px;
+  left: 34px;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.32);
+  border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
   transition: transform 150ms ease, background 150ms ease;
 }
-.char .death-btn:hover { transform: scale(1.1); }
+.char .death-btn:hover { background: rgba(255,59,48,0.55); transform: scale(1.1); }
 
 /* World counters are clickable */
 .counter {
@@ -401,6 +416,104 @@
   cursor: pointer;
   transition: background 150ms ease, border-color 150ms ease;
 }
+.task-controls { position: relative; z-index: 6; }
+.task-controls .add-task-btn,
+.task-controls .task-gate-toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  flex: none;
+}
+.task-controls .add-task-btn { font-size: 25px; line-height: 1; }
+.task-gate-toggle {
+  border: 1px solid rgba(255,214,10,0.55);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #39351d, #201e13);
+  color: #ffe86b;
+  cursor: pointer;
+  transition: background 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+}
+.task-gate-toggle:hover { background: linear-gradient(180deg, #514a24, #2b2817); box-shadow: 0 0 12px rgba(255,214,10,0.22); }
+.task-gate-toggle:active { transform: scale(0.97); }
+.task-gate-toggle:focus-visible { outline: 2px solid #ffe86b; outline-offset: 2px; }
+.task-gate-toggle-icon {
+  display: flex;
+  justify-content: space-between;
+  width: 22px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+.task-gate-toggle-icon::before,
+.task-gate-toggle-icon::after {
+  content: '';
+  width: 7px;
+  height: 100%;
+  background: repeating-linear-gradient(0deg, currentColor 0 2px, transparent 2px 4px);
+  transition: transform 250ms ease;
+}
+#taskPanel.gate-closed .task-gate-toggle-icon::before { transform: translateX(2px); }
+#taskPanel.gate-closed .task-gate-toggle-icon::after { transform: translateX(-2px); }
+
+.task-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.task-gate-door {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50.5%;
+  border: 1px solid #596064;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 12px, rgba(255,255,255,0.08) 12px 14px),
+    linear-gradient(90deg, #171a1c, #4d5559 48%, #24292c);
+  box-shadow: inset 0 0 18px #050607, 0 0 18px rgba(0,0,0,0.8);
+  transition: transform 720ms cubic-bezier(.72,0,.2,1);
+}
+.task-gate-door::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border: 2px solid rgba(0,0,0,0.55);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.09);
+}
+.task-gate-left { left: 0; border-right: 4px solid #0b0d0e; transform: translateX(-103%); }
+.task-gate-right { right: 0; border-left: 4px solid #0b0d0e; transform: translateX(103%); }
+.task-gate-seal {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  padding: 4px 10px;
+  border: 2px solid #ffd60a;
+  border-radius: 4px;
+  background: #19170d;
+  color: #ffd60a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.75);
+  transition: opacity 180ms ease, transform 220ms ease;
+}
+#taskPanel.gate-closed .task-gate-left,
+#taskPanel.gate-closed .task-gate-right { transform: translateX(0); }
+#taskPanel.gate-closed .task-gate-seal {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  transition-delay: 480ms;
+}
+#taskPanel.gate-closed .task-list { pointer-events: none; }
 .add-task-btn:hover {
   background: rgba(255,255,255,0.06);
   border-color: rgba(255,255,255,0.5);
@@ -443,6 +556,11 @@
 .task-del:hover { opacity: 1; background: rgba(255,59,48,0.6); }
 @media (hover: none) {
   .task-del { opacity: 0.6; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-gate-door,
+  .task-gate-seal,
+  #taskPanel.gate-closed .task-gate-seal { transition-duration: 1ms; transition-delay: 0ms; }
 }
 @keyframes task-in {
   from { opacity: 0; transform: translateX(-12px); }

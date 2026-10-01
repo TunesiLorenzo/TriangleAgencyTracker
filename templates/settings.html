@@ -26,6 +26,7 @@
       <button class="tab" type="button" role="tab" data-tab="competencies">Competencies</button>
       <button class="tab" type="button" role="tab" data-tab="effects">Effects</button>
       <button class="tab" type="button" role="tab" data-tab="lights">Lights</button>
+      <button class="tab" type="button" role="tab" data-tab="login">Login</button>
     </nav>
 
     <p class="live-note">Changes save automatically and apply to every open viewer within a couple of seconds.</p>
@@ -114,7 +115,9 @@
         </div>
         <p class="hint">The Tapo bulbs and the LED strip are driven by LightRPG, which runs next to the tracker in its own window.
           Set up and assign the bulbs and connect the strip on the LightRPG page once; the tracker then sends it a cue for each event below.
-          Cues don't depend on a viewer's mute button.</p>
+          Cues don't depend on a viewer's mute button.
+          The LED strip always runs at full saturation and brightness: a Colour cue shows its hue on it, White and bulb effects
+          show their LED colour (the ring around each swatch).</p>
         <div id="lightGeneral" class="fields"></div>
         <div class="light-actions">
           <button id="startLightRPG" type="button" class="secondary small">Start LightRPG</button>
@@ -147,6 +150,31 @@
         <p class="hint">"Hold" returns to the ambient light after that many seconds; "keep" leaves the cue on until the next one.
           Bulbs take a moment per change, so a new cue replaces one still waiting.</p>
         <div id="lightSlots" class="slot-list"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-tab-panel="login">
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">LOGIN SCREEN</span><h2>Manager badge</h2></div>
+          <label class="button upload-button">Upload picture<input id="badgeUpload" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden></label>
+        </div>
+        <p class="hint">The photo on the badge that drops in on its lanyard and goes through the card reader, cropped to a portrait frame.
+          Without one the badge shows a silhouette. You can also drop a picture here.</p>
+        <div class="badge-picture">
+          <div id="badgePreview" class="badge-preview"></div>
+          <button id="badgeRemove" type="button" class="secondary small">Use the silhouette</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">LOGIN SCREEN</span><h2>Sign-in timing</h2></div>
+          <button id="resetLoginTiming" type="button" class="secondary small">Reset</button>
+        </div>
+        <p class="hint">Seconds for each step, in the order they play after the click. A sign-in uses the values saved when it starts;
+          the last one is the window closing on Log Out. With reduced motion turned on in the system, every step is kept short.</p>
+        <div id="loginTiming" class="fields"></div>
       </div>
     </section>
 

@@ -9,7 +9,12 @@ A cue is what one tracker event does to the lights:
     {"action": "none" | "color" | "white" | "effect" | "off",
      "hue": 0-360, "saturation": 0-100, "brightness": 1-100,
      "temperature": 2500-6500, "effect": "bulb:<name>" | "strip:<name>",
+     "led": 0-360, the LED strip's hue for "white" and bulb effects,
      "seconds": 0 = keep it, else return to the ambient cue after that long}
+
+The LED strip is not a bulb: it has no white and dimmed or pastel colours look wrong
+on it, so it always runs at 100% saturation and brightness. A colour cue shows its hue
+on it; white and bulb effects show the cue's "led" hue; strip effects run at full power.
 
 Tapo bulbs need a few hundred milliseconds per command, so cues run one at a
 time on a worker thread and only the newest waiting cue is kept: a burst of
@@ -66,6 +71,11 @@ def call(method, path, payload=None, timeout=REQUEST_TIMEOUT):
         raise LightRPGError(message or f"LightRPG answered HTTP {error.code}") from error
     except (urllib.error.URLError, OSError, ValueError) as error:
         raise LightRPGError(f"LightRPG is not reachable at {LIGHTRPG_URL}") from error
+
+
+def strip_color(hue):
+    """The LED strip in one colour, always at full saturation and brightness."""
+    call("POST", "/api/color", {"hue": hue, "saturation": 100, "brightness": 100, "target": "strip"})
 
 
 class LightBridge:
@@ -184,29 +194,34 @@ class LightBridge:
             raise LightRPGError("No connected light for this target; set them up on the LightRPG page")
 
         brightness = round(clamp(cue.get("brightness"), 1, 100, 100))
+        hue = round(clamp(cue.get("hue"), 0, 360, 0))
+        led = round(clamp(cue.get("led"), 0, 360, 30))
         if action == "color":
-            color = {"hue": round(clamp(cue.get("hue"), 0, 360, 0)),
-                     "saturation": round(clamp(cue.get("saturation"), 0, 100, 100)),
-                     "brightness": brightness}
             if bulbs:
-                call("POST", "/api/color", {**color, "targets": bulbs})
+                call("POST", "/api/color", {"hue": hue, "saturation": round(clamp(cue.get("saturation"), 0, 100, 100)),
+                                            "brightness": brightness, "targets": bulbs})
             if strip:
-                call("POST", "/api/color", {**color, "target": "strip"})
+                strip_color(hue)
         elif action == "white":
-            temperature = round(clamp(cue.get("temperature"), 2500, 6500, 2700))
             if bulbs:
+                temperature = round(clamp(cue.get("temperature"), 2500, 6500, 2700))
                 call("POST", "/api/bulb/white", {"temperature": temperature, "brightness": brightness, "targets": bulbs})
-            if strip:   # the strip has no white channel: a warm tint is the closest match
-                call("POST", "/api/color", {"hue": 30, "saturation": 35, "brightness": brightness, "target": "strip"})
+            if strip:   # the strip has no white channel: it shows the cue's LED colour instead
+                strip_color(led)
         elif action == "off":
             if bulbs:
                 call("POST", "/api/bulb/power", {"on": False, "targets": bulbs})
         elif action == "effect":
             kind, _, name = str(cue.get("effect", "")).partition(":")
-            if kind == "bulb" and bulbs:
+            if kind == "bulb":
                 if name not in BULB_EFFECTS:
                     raise ValueError(f"Unknown bulb effect {name!r}")
-                call("POST", "/api/bulb/effect", {"effect": name, "targets": bulbs, "sound": False})
+                # The strip first: a colour stops LightRPG's Room Wave, so it must not follow the effect.
+                if strip:
+                    strip_color(led)
+                if bulbs:
+                    call("POST", "/api/bulb/effect", {"effect": name, "targets": bulbs, "sound": False})
             elif kind == "strip" and strip:
+                # Its brightness setting outlasts the effect, so anything below 100 would dim every later colour.
                 call("POST", "/api/strip/effect", {"effect": name, "speed": round(clamp(cue.get("speed"), 0, 100, 50)),
-                                                   "brightness": brightness})
+                                                   "brightness": 100})

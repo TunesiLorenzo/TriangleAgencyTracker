@@ -1,7 +1,7 @@
 // agency.js
 // Responsibilities: the Agency tab, in three levels like the other tabs. The overview has a
-// tile per agent (Qualifica in Agenzia, the Competenza track at a glance, the items they
-// hold), the drop-down list of every item of the branch and a promotional banner. Clicking
+// promotional banner on top, a tile per agent (Qualifica in Agenzia, the Competenza track at
+// a glance, the items they hold) and the drop-down list of every item of the branch. Clicking
 // an agent opens their page: the Competenza track of the Agenda Vita-Lavoro (ARC_Dossier
 // page 8), every rank of the career and their inventory. Clicking an item, anywhere, opens
 // it on its own page with its owner (an agent or the Team), holder, description and icon.
@@ -155,12 +155,18 @@ function decorateAgentCards() {
     Object.entries(DISTINCTIONS).forEach(([kind, distinction]) => {
       const holds = holders[kind] === card._id;
       portrait.classList.toggle(kind, holds);
-      if (!holds) return;
-      portrait.append(el('span', `agency-portrait-badge ${kind}`, distinction.icon));
-      if (kind === 'suspended') portrait.append(el('span', 'agency-portrait-stamp', 'Sospeso'));
-      ribbons.append(el('span', `agency-ribbon ${kind}`, `${distinction.icon} ${distinction.ribbon}`));
+      const ribbon = el('span', `agency-ribbon ${kind}`, `${distinction.icon} ${distinction.ribbon}`);
+      ribbon.classList.toggle('empty', !holds);
+      if (!holds) ribbon.setAttribute('aria-hidden', 'true');
+      ribbons.append(ribbon);
+      if (holds) {
+        portrait.append(el('span', `agency-portrait-badge ${kind}`, distinction.icon));
+        if (kind === 'suspended') portrait.append(el('span', 'agency-portrait-stamp', 'Sospeso'));
+      }
     });
-    if (ribbons.childElementCount) portrait.after(ribbons);
+    // Both rows stay in the layout even when an agent holds neither Distinzione. This keeps
+    // every field on adjacent cards aligned as the awards move between agents.
+    portrait.after(ribbons);
   });
 }
 
@@ -821,12 +827,12 @@ export function renderAgency() {
   if (!item) openItem = null;
 
   if (item) view.replaceChildren(createItemPage(item, cards));
-  else if (openCard) view.replaceChildren(createAgentPage(openCard, cards), promo);
+  else if (openCard) view.replaceChildren(promo, createAgentPage(openCard, cards));
   else {
     const overview = el('div', 'agency-overview');
     if (!cards.length) overview.append(el('p', 'rel-empty', 'Nessun agente. Aggiungi un agente con Hire Agent.'));
     overview.append(...cards.map(createSummary));
-    view.replaceChildren(overview, createTeamItems(cards), promo);
+    view.replaceChildren(promo, overview, createTeamItems(cards));
   }
   view.scrollTop = scrollTop;
 }

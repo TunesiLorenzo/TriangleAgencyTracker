@@ -29,11 +29,14 @@ function persistTimeline() {
 }
 
 /* ---------- crisp canvases on HiDPI screens ----------
-   The width/height attributes in index.html are the logical drawing size.
-   The backing store is scaled by devicePixelRatio and the context transformed,
-   so all drawing code keeps working in logical units. */
+   Draw at the canvas's actual layout size, which changes with the dashboard
+   grid, then scale the backing store for the display's pixel density. */
 function setupCanvas(canvas) {
-  const logical = { w: canvas.width, h: canvas.height };
+  const bounds = canvas.getBoundingClientRect();
+  const logical = {
+    w: Math.max(1, Math.round(bounds.width || canvas.width)),
+    h: Math.max(1, Math.round(bounds.height || canvas.height))
+  };
   const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
   canvas.style.setProperty('--canvas-w', `${logical.w}px`);
   canvas.width = Math.round(logical.w * dpr);
@@ -138,8 +141,8 @@ function renderAgentPerformance() {
   const rows = Math.max(5, stats.length);
   const headerH = 16;
   const rowH = (h - headerH) / rows;
-  const fontPx = Math.max(8, Math.min(12, Math.floor(rowH * 0.55)));
-  const nameW = 72;
+  const fontPx = Math.max(10, Math.min(13, Math.floor(rowH * 0.55)));
+  const nameW = Math.min(150, Math.max(56, Math.round(w * 0.29)));
   const netW = 38;
   const markerW = 14;                                 // room for the crown / warning past a full bar
   const midX = nameW + (w - nameW - netW) / 2;
@@ -407,6 +410,38 @@ export function initDashboard() {
   renderAgentPerformance();
   renderTimeline();
   renderRisk();
+
+  // Refit the drawing surface when the viewport or active tab changes. CSS
+  // makes the charts full width; without this, their 300px bitmap is stretched.
+  if (window.ResizeObserver) {
+    let resizeFrame = 0;
+    const canvases = [
+      { element: line, key: 'line' },
+      { element: hist, key: 'hist' },
+      { element: pie, key: 'pie' }
+    ];
+    const observer = new ResizeObserver(() => {
+      if (resizeFrame) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        let changed = false;
+        canvases.forEach(({ element, key }) => {
+          const { width, height } = element.getBoundingClientRect();
+          if (width < 1 || height < 1) return;
+          if (els[key].w === Math.round(width) && els[key].h === Math.round(height)) return;
+          els[key] = setupCanvas(element);
+          changed = true;
+        });
+        if (changed) {
+          renderAgentPerformance();
+          renderTimeline();
+          renderRisk();
+        }
+      });
+    });
+    canvases.forEach(({ element }) => observer.observe(element));
+    els.resizeObserver = observer;
+  }
 
   document.addEventListener('triangle-action', e => {
     const { type, element, delta = 1 } = e.detail;

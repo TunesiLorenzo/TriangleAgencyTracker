@@ -3,6 +3,7 @@ import { normalizeAbilityState } from './anomalyState.js';
 import { getCharElements } from './charSystem.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { saveSettings } from './storage.js';
+import { createUnderground } from './underground.js';
 import { openModal, toast } from './ui.js';
 
 // ARC_Dossier page 8: the bottom row continues from right to left.
@@ -10,6 +11,7 @@ const DOCUMENTS = { 1: 'H4', 2: 'H3', 5: 'U2', 7: 'X2', 11: 'N1', 13: 'Q2', 17: 
 let view;
 let expanded = null;
 let openCard = null;
+let refreshCounts = () => {};   // the counters on the open agent's page
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -60,7 +62,7 @@ function agentName(card, index) {
 
 function trackSummary(card) {
   const section = el('section', 'anomaly-summary-track');
-  section.append(el('span', 'anomaly-summary-track-label', 'Tracciato Anomalia'));
+  section.append(el('span', 'anomaly-label', 'Tracciato Anomalia'));
   const count = el('strong', 'anomaly-summary-progress', `${card._anomalyState.progress} / ${TRACK_LENGTH}`);
   const squares = el('span', 'anomaly-summary-squares');
   for (let n = 1; n <= TRACK_LENGTH; n++) {
@@ -143,6 +145,7 @@ function usedToggle(ability, state) {
     state.used = !state.used;
     used.setAttribute('aria-pressed', String(state.used));
     saveSettings();
+    refreshCounts();
   });
   used.setAttribute('aria-label', `Usata? ${ability.name}`);
   used.setAttribute('aria-pressed', String(state.used));
@@ -221,19 +224,57 @@ function createAbilityNav(card, entries, backLabel) {
   return nav;
 }
 
+/** How many abilities the agent has (their Anomalia's plus their own) and how many are marked Usata?. */
+function abilityCounts(card) {
+  const anomaly = statOf(card, 'anomaly');
+  const entries = abilityEntries(card, anomaly);
+  const used = entries.filter(({ ability, key, custom }) => (custom ? ability.state : card._anomalyState.abilities[key])?.used).length;
+  return { unlocked: entries.length, used };
+}
+
+/** "Anomalia" over the agent's Anomalia, in blue (like the rank on the Agency tab). */
+function anomalyBlock(card) {
+  const anomaly = statOf(card, 'anomaly');
+  const box = el('span', 'anomaly-kind');
+  box.classList.toggle('unset', !anomaly);
+  box.append(el('span', 'anomaly-label', 'Anomalia'), el('strong', 'anomaly-kind-name', anomaly || '—'));
+  return box;
+}
+
+/** A number over its caption; a `lit` box glows while its number is above zero. */
+function countBox(caption, lit) {
+  const box = el('span', 'anomaly-count');
+  const value = el('strong', '');
+  box.append(value, el('small', '', caption));
+  return { box, set: n => { value.textContent = String(n); if (lit) box.classList.toggle('lit', n > 0); } };
+}
+
+/** Abilità + Usate boxes; `update()` re-reads them from the agent. */
+function createCounts(card) {
+  const counts = el('span', 'anomaly-counts');
+  const unlocked = countBox('Abilità', false);
+  const used = countBox('Usate', true);
+  counts.append(unlocked.box, used.box);
+  const update = () => {
+    const n = abilityCounts(card);
+    unlocked.set(n.unlocked);
+    used.set(n.used);
+  };
+  update();
+  return { counts, update };
+}
+
 function createSummary(card, index) {
   const anomaly = statOf(card, 'anomaly');
-  const baseAbilities = ANOMALY_ABILITIES[anomaly] || [];
-  const abilityCount = baseAbilities.length + card._anomalyState.custom.length;
-  const usedCount = baseAbilities.filter((_, index) => card._anomalyState.abilities[`${anomaly}:${index}`]?.used).length
-    + card._anomalyState.custom.filter(ability => ability.state.used).length;
+  const { unlocked, used } = abilityCounts(card);
   const summary = button('', 'anomaly-summary', () => openAgent(card));
   summary.classList.toggle('dead', card.classList.contains('dead'));
-  summary.setAttribute('aria-label', `${agentName(card, index)}. Anomalia: ${anomaly || 'nessuna'}. Tracciato ${card._anomalyState.progress} di ${TRACK_LENGTH}.`);
+  summary.setAttribute('aria-label', `${agentName(card, index)}. Anomalia: ${anomaly || 'nessuna'}. ${unlocked} abilità, ${used} usate. Tracciato ${card._anomalyState.progress} di ${TRACK_LENGTH}.`);
   summary.append(
     identity(card, index),
+    anomalyBlock(card),
+    createCounts(card).counts,
     trackSummary(card),
-    el('span', 'anomaly-summary-counts', `${usedCount}/${abilityCount} abilità usate`),
     el('span', 'anomaly-open', 'Apri ›')
   );
   return summary;
@@ -253,17 +294,16 @@ function createAgentNav(cards) {
   return nav;
 }
 
-/** Portrait, name, and player · Anomalia under it (overview tiles and the agent's page). */
+/** Portrait, name, and the player (plus Sick leave) under it (overview tiles and the agent's page). */
 function identity(card, index) {
   const box = el('span', 'anomaly-identity');
   const portrait = el('img', '');
   portrait.src = card.querySelector('img')?.src || './images/pfp.jpg';
   portrait.alt = '';
+  const subtitle = el('span', 'anomaly-subtitle', statOf(card, 'player'));
+  if (card.classList.contains('dead')) subtitle.append(el('span', 'anomaly-sick', subtitle.textContent ? ' · Sick leave' : 'Sick leave'));
   const text = el('span', 'anomaly-identity-text');
-  text.append(
-    el('strong', 'anomaly-name', agentName(card, index)),
-    el('span', 'anomaly-subtitle', [statOf(card, 'player'), statOf(card, 'anomaly')].filter(Boolean).join(' · '))
-  );
+  text.append(el('strong', 'anomaly-name', agentName(card, index)), subtitle);
   box.append(portrait, text);
   return box;
 }
@@ -274,6 +314,7 @@ function createDetail(card, cards) {
   const entries = abilityEntries(card, anomaly);
   const openEntry = expanded?.card === card ? entries.find(entry => entry.key === expanded.key) : null;
   if (!openEntry) expanded = null;
+  refreshCounts = () => {};
 
   const detail = el('section', 'anomaly-detail');
   // an open ability gets the whole view, like an item on the Agency tab
@@ -288,7 +329,9 @@ function createDetail(card, cards) {
 
   const profile = el('div', 'anomaly-profile');
   profile.classList.toggle('dead', card.classList.contains('dead'));
-  profile.append(identity(card, index), track(card));
+  const { counts, update } = createCounts(card);
+  refreshCounts = update;
+  profile.append(identity(card, index), anomalyBlock(card), counts, track(card));
 
   const abilityList = el('div', 'anomaly-abilities');
   abilityList.append(el('h3', 'anomaly-abilities-title', 'Abilità Anomale'));
@@ -350,7 +393,7 @@ export function renderAnomalies({ overview = false } = {}) {
   }
   const overviewGrid = el('div', 'anomaly-overview');
   overviewGrid.append(...cards.map(createSummary));
-  view.replaceChildren(overviewGrid);
+  view.replaceChildren(overviewGrid, createUnderground(cards.map(card => ({ progress: card._anomalyState.progress }))));
 }
 
 export function initAnomalies() {

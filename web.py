@@ -12,6 +12,7 @@ Previous cases (HD scans of each mission's Rapporto) are too big for that, so th
 live in cases/ next to this file, indexed by cases/cases.json. A team file carries the
 case index only; /api/cases/archive exports and restores the whole archive, scans
 included, as one .zip so it can move between terminals.
+The Manager's badge picture on the login screen is uploaded to images/badge/.
 Room lights go through LightRPG, which runs beside the tracker (see lights.py);
 /api/lights/* forwards cues to it, so phones never need to reach it directly.
 """
@@ -38,8 +39,10 @@ UPLOAD_FOLDERS = {"uploads": AUDIO_DIR / "uploads", "Competencies": AUDIO_DIR / 
 CONFIG_FILE = BASE_DIR / "tracker_config.json"
 CASES_DIR = BASE_DIR / "cases"
 CASES_FILE = CASES_DIR / "cases.json"
+BADGE_DIR = BASE_DIR / "images" / "badge"   # the Manager's photo on the login screen badge
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".webm"}
+BADGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 CASE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}   # what a browser can display
 CASE_OUTCOMES = {"contained", "killed", "escaped"}
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -336,7 +339,7 @@ def settings():
     return render_template("settings.html")
 
 
-for folder in ("css", "js", "audio", "images", "various", "cases", "Materiale"):
+for folder in ("css", "js", "audio", "images", "various", "cases", "Materiale", "texts"):
     app.add_url_rule(
         f"/{folder}/<path:filename>",
         endpoint=f"asset_{folder}",
@@ -396,6 +399,26 @@ def upload_sound():
         "file": target.relative_to(AUDIO_DIR).as_posix(),
         "sounds": list_sounds(),
     })
+
+
+@app.post("/api/badge")
+def upload_badge_picture():
+    """The Manager's photo for the login screen badge. Only the newest picture is kept;
+    /settings then saves its path as login.badgePicture."""
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        raise ValueError("Choose a picture to upload")
+    suffix = os.path.splitext(upload.filename)[1].casefold()
+    if suffix not in BADGE_EXTENSIONS:
+        raise ValueError("Upload a picture: " + ", ".join(sorted(BADGE_EXTENSIONS)))
+    BADGE_DIR.mkdir(parents=True, exist_ok=True)
+    # A new name each time, so open viewers load the new picture instead of a cached one.
+    target = BADGE_DIR / f"manager-{secrets.token_hex(4)}{suffix}"
+    upload.save(target)
+    for old in BADGE_DIR.iterdir():
+        if old.is_file() and old != target:
+            old.unlink(missing_ok=True)
+    return jsonify({"ok": True, "file": target.relative_to(BASE_DIR).as_posix()})
 
 
 @app.get("/api/cases")
@@ -728,6 +751,28 @@ def lights_cue():
     if target not in lights.TARGETS:
         raise ValueError("Unknown light target")
     light_bridge.submit(cue, ambient, target)
+    return jsonify({"ok": True})
+
+
+# -----------------------------
+# SHUTDOWN
+# -----------------------------
+SHUTDOWN_DELAY = 3   # seconds between the Log Out window closing and the server stopping
+
+
+@app.post("/api/shutdown")
+def shutdown():
+    """Log Out on the viewer stops the server.
+
+    The viewer calls this once its closing animation has finished; answering first and
+    exiting a few seconds later lets the reply reach the browser. LightRPG runs in its own
+    window and keeps going.
+    """
+    def stop():
+        print("Logged out - Triangle Agency Tracker stopped.", flush=True)
+        os._exit(0)   # Flask's development server has no stop call; the OS frees the port and lock
+
+    threading.Timer(SHUTDOWN_DELAY, stop).start()
     return jsonify({"ok": True})
 
 

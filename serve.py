@@ -8,10 +8,41 @@ any phone on the same Wi-Fi can open it at http://<this-PC-IP>:<port>/settings.
 """
 
 import argparse
+import os
+import tempfile
 import threading
 import webbrowser
+from pathlib import Path
 
 from web import app, autostart_lights
+
+
+def acquire_instance_lock(port):
+    """Keep two tracker servers from sharing a port on Windows.
+
+    Werkzeug's reusable development-server socket can let several processes listen on the
+    same Windows port. Requests then land on whichever version happens to receive them. A
+    small OS-held file lock is released automatically when the process exits, including
+    after a crash.
+    """
+    lock_path = Path(tempfile.gettempdir()) / f"triangle-agency-tracker-{port}.lock"
+    lock_file = open(lock_path, "a+b")
+    if lock_file.seek(0, os.SEEK_END) == 0:
+        lock_file.write(b"\0")
+        lock_file.flush()
+    lock_file.seek(0)
+
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        lock_file.close()
+        return None
+    return lock_file
 
 
 def main():
@@ -22,11 +53,19 @@ def main():
     parser.add_argument("--no-browser", action="store_true", help="do not open a browser window")
     args = parser.parse_args()
 
+    # Keep this handle alive for the lifetime of the server. The operating system releases
+    # the lock automatically on exit, so an unclean shutdown cannot strand it.
+    instance_lock = acquire_instance_lock(args.port)
+    if instance_lock is None:
+        print(f"Triangle Agency Tracker is already running on port {args.port}.")
+        print(f"Open http://localhost:{args.port}/ instead of starting another copy.")
+        return
+
     url = "http://localhost:{}/".format(args.port)
     print("Triangle Agency Tracker")
     print("  Viewer:   {}".format(url))
     print("  Settings: {}settings".format(url))
-    print("Bound to {}:{} - other devices on the LAN can open it too. Ctrl+C to stop.".format(args.host, args.port))
+    print("Bound to {}:{} - other devices on the LAN can open it too. Ctrl+C or Log Out to stop.".format(args.host, args.port))
 
     lights_message = autostart_lights()
     if lights_message:
