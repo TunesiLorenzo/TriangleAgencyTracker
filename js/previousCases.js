@@ -120,7 +120,21 @@ function scanUrl(file) {
 }
 
 function isPdf(file) {
-  return file.file.toLowerCase().endsWith('.pdf');
+  return (file.file || '').toLowerCase().endsWith('.pdf');
+}
+
+/**
+ * Stand in for a page whose scan is not on this machine: the case came from a team file,
+ * which carries the archive index but not the scans themselves.
+ */
+function missingScanNotice(file) {
+  const notice = el('div', 'case-page-missing');
+  notice.appendChild(el('p', 'case-page-missing-title', file.name || 'Scan not on this machine'));
+  notice.appendChild(el('p', 'case-page-missing-note',
+    file.file
+      ? `${file.file} was filed on another terminal. Copy the cases folder across to see this page.`
+      : 'This case was imported from a team file, which carries case details but not the scans.'));
+  return notice;
 }
 
 function caseNumber(entry, { short = false } = {}) {
@@ -300,7 +314,11 @@ function showRapporto(entry, onClose) {
     void stack.offsetWidth;
     if (direction) stack.classList.add(direction > 0 ? 'shuffle-forward' : 'shuffle-backward');
 
-    if (isPdf(file)) {
+    if (!file.file) {
+      stack.style.setProperty('--page-ratio', '0.707');
+      surface.appendChild(missingScanNotice(file));
+      settingsButton.hidden = true;
+    } else if (isPdf(file)) {
       stack.style.setProperty('--page-ratio', '0.707');
       const pdf = el('iframe');
       pdf.src = scanUrl(file);
@@ -317,6 +335,11 @@ function showRapporto(entry, onClose) {
         if (img.naturalWidth && img.naturalHeight) {
           stack.style.setProperty('--page-ratio', String(img.naturalWidth / img.naturalHeight));
         }
+      }, { once: true });
+      img.addEventListener('error', () => {
+        stack.style.setProperty('--page-ratio', '0.707');
+        img.replaceWith(missingScanNotice(file));
+        settingsButton.hidden = true;
       }, { once: true });
       img.addEventListener('click', event => {
         const rect = img.getBoundingClientRect();
@@ -672,6 +695,90 @@ function openCaseForm() {
   });
 }
 
+// ---------- archive transfer ----------
+/**
+ * Download the whole archive as one .zip (index plus every scan).
+ *
+ * The bundle is built server-side and can be large, so the button reports progress and the
+ * download goes through a blob rather than navigating away from the tracker.
+ */
+async function downloadCaseArchive(button) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Preparing...';
+  try {
+    const response = await fetch('/api/cases/archive');
+    if (!response.ok) throw new Error(`Request failed (${response.status})`);
+    const blob = await response.blob();
+    const stamp = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(blob);
+    const link = el('a');
+    link.href = url;
+    link.download = `case-archive-${stamp}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Case archive exported.');
+  } catch (error) {
+    console.error('Failed to export the case archive', error);
+    toast('The case archive could not be exported. The tracker server must be running.', { kind: 'error', duration: 6000 });
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+/** Pick an exported .zip and restore it, asking first how it should meet the local archive. */
+function uploadCaseArchive(localCount) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.zip,application/zip';
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const mode = await askArchiveMode(file.name, localCount);
+    if (!mode) return;
+
+    const body = new FormData();
+    body.append('archive', file);
+    body.append('mode', mode);
+    try {
+      const result = await api('/api/cases/archive', { method: 'POST', body });
+      await renderPreviousCases();
+      const scans = result.scans || 0;
+      toast(result.added
+        ? `Restored ${result.added} ${result.added === 1 ? 'case' : 'cases'} and ${scans} ${scans === 1 ? 'scan' : 'scans'}.`
+        : 'Every case in that archive was already filed here.');
+    } catch (error) {
+      console.error('Failed to load the case archive', error);
+      toast(error.message || 'That archive could not be loaded. The cases already here are unchanged.', { kind: 'error', duration: 7000 });
+    }
+  });
+  input.click();
+}
+
+/** Merge or replace, before anything is written. Resolves to null when dismissed. */
+function askArchiveMode(filename, localCount) {
+  return new Promise(resolve => {
+    const body = el('p', 'modal-message', localCount
+      ? `${filename} will be restored into an archive that already holds ${localCount} ${localCount === 1 ? 'case' : 'cases'}. Merging adds the cases that are missing here; replacing makes the archive match the file. Scans already on this terminal are kept either way.`
+      : `${filename} will be restored into this terminal's archive, scans included.`);
+    let choice = null;
+    openModal({
+      title: 'Load case archive',
+      content: body,
+      closeLabel: 'Cancel',
+      actions: [
+        ...(localCount ? [{ label: 'Replace Archive', variant: 'danger', onClick: () => { choice = 'replace'; } }] : []),
+        { label: localCount ? 'Merge' : 'Load Archive', variant: 'primary', onClick: () => { choice = 'merge'; } }
+      ],
+      onClose: () => resolve(choice)
+    });
+  });
+}
+
 // ---------- view ----------
 function renderArchive(cases, highlight) {
   const desk = el('div', 'cases-desk');
@@ -800,6 +907,20 @@ function renderArchive(cases, highlight) {
   add.addEventListener('click', openCaseForm);
   desk.appendChild(add);
 
+  // Moving the whole archive between terminals: one .zip with the index and every scan.
+  const transfer = el('div', 'cases-transfer');
+  const exportButton = el('button', 'cases-transfer-button', 'Export Archive');
+  exportButton.type = 'button';
+  exportButton.title = 'Download every filed case and its scans as one .zip';
+  exportButton.disabled = !cases.length;
+  exportButton.addEventListener('click', () => downloadCaseArchive(exportButton));
+  const loadButton = el('button', 'cases-transfer-button', 'Load Archive');
+  loadButton.type = 'button';
+  loadButton.title = 'Restore cases and scans from an exported .zip';
+  loadButton.addEventListener('click', () => uploadCaseArchive(cases.length));
+  transfer.append(exportButton, loadButton);
+  desk.appendChild(transfer);
+
   const vault = el('section', 'cases-vault');
   vault.setAttribute('aria-label', 'Previous cases secure archive');
   vault.appendChild(desk);
@@ -874,6 +995,56 @@ function renderArchive(cases, highlight) {
   if (highlight) view.querySelector('.case-envelope.filed')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
+/**
+ * The case archive as it travels in a team file: metadata only.
+ *
+ * The scans themselves stay on the machine that filed them (they are far too big for browser
+ * storage), so each page carries its name, filename and brightness. Copy cases/ across as
+ * well and the pages line up again by filename.
+ */
+export async function exportCaseArchive() {
+  const { cases } = await api('/api/cases');
+  return (cases || []).map(entry => ({
+    id: entry.id,
+    number: entry.number,
+    name: entry.name,
+    code: entry.code || '',
+    date: entry.date,
+    score: entry.score,
+    outcome: entry.outcome,
+    added: entry.added,
+    files: (entry.files || []).map(file => ({
+      id: file.id,
+      file: file.file,
+      name: file.name,
+      brightness: file.brightness
+    }))
+  }));
+}
+
+/**
+ * Bring a team file's case archive into this machine's archive.
+ * mode: 'merge' keeps what is filed here, 'replace' mirrors the team file exactly.
+ */
+export async function importCaseArchive(cases, mode = 'merge') {
+  const result = await api('/api/cases/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, cases })
+  });
+  return { added: result.added || 0, kept: result.kept || 0 };
+}
+
+/**
+ * Called after every change to the archive so the team file keeps the current index.
+ * Set by app.js; absent until then, and a no-op when nothing is listening.
+ */
+let onArchiveChanged = null;
+
+export function setArchiveChangeHandler(handler) {
+  onArchiveChanged = handler;
+}
+
 /** Fetch the archive and lay the envelopes out again (they drop in every time the tab opens). */
 export async function renderPreviousCases({ highlight } = {}) {
   if (!view) return;
@@ -882,6 +1053,8 @@ export async function renderPreviousCases({ highlight } = {}) {
     const { cases } = await api('/api/cases');
     if (current !== request) return;
     renderArchive(cases, highlight);
+    // The save file tracks the archive, so a filed, edited or deleted case lands in it too.
+    onArchiveChanged?.();
   } catch (error) {
     if (current !== request) return;
     console.error('Failed to load previous cases', error);

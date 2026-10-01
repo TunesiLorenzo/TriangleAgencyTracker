@@ -8,7 +8,7 @@
 // The track lives on the agent card (card._competencyProgress); the items belong to the
 // branch (world.items) and name agents by card._id, so an item can change hands.
 
-import { ACQUISITIONS, DEFAULT_ICON, ITEM_ICONS, PROMO_DIR, PROMO_SLIDES, STANDARD_KIT } from './agencyData.js';
+import { ACQUISITIONS, DEFAULT_ICON, ITEM_ICONS, PROMO_DIR, PROMO_SHUFFLE, PROMO_SLIDES, STANDARD_KIT } from './agencyData.js';
 import { animateOnce, getCharElements } from './charSystem.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { loadSettings, saveSettings, updateSettings } from './storage.js';
@@ -721,10 +721,18 @@ function createPromo() {
   promo.setAttribute('aria-roledescription', 'carousel');
   promo.setAttribute('aria-label', 'Comunicazioni aziendali');
 
-  const slides = PROMO_SLIDES.map((data, index) => {
+  const order = [...PROMO_SLIDES];
+  if (PROMO_SHUFFLE) {
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+  }
+
+  const slides = order.map((data, index) => {
     const slide = el('article', `promo-slide${data.poster ? ' poster' : ''}`);
     slide.setAttribute('aria-roledescription', 'slide');
-    slide.setAttribute('aria-label', `${index + 1} di ${PROMO_SLIDES.length}: ${data.title}`);
+    slide.setAttribute('aria-label', `${index + 1} di ${order.length}: ${data.title}`);
 
     // Poster art made from the icon, covered by the picture once there is one.
     const art = el('div', 'promo-art');

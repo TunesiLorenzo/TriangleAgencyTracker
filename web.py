@@ -9,20 +9,25 @@ Settings live in tracker_config.json next to this file. The viewer polls
 phone on the same network) shows up on the display without a reload.
 Tracker data (agents, tasks, counters) stays in the viewer's browser storage.
 Previous cases (HD scans of each mission's Rapporto) are too big for that, so they
-live in cases/ next to this file, indexed by cases/cases.json.
+live in cases/ next to this file, indexed by cases/cases.json. A team file carries the
+case index only; /api/cases/archive exports and restores the whole archive, scans
+included, as one .zip so it can move between terminals.
 Room lights go through LightRPG, which runs beside the tracker (see lights.py);
 /api/lights/* forwards cues to it, so phones never need to reach it directly.
 """
 
 import datetime
+import io
 import json
 import os
 import re
 import secrets
+import shutil
 import threading
+import zipfile
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 import lights
@@ -40,6 +45,8 @@ CASE_OUTCOMES = {"contained", "killed", "escaped"}
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_CASE_BYTES = 100 * 1024 * 1024
 MAX_CONFIG_BYTES = 512 * 1024
+MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024   # a whole archive of HD scans
+ARCHIVE_INDEX_NAME = "cases.json"            # the index inside an archive bundle
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
@@ -195,6 +202,59 @@ def case_files(case):
     return records
 
 
+def imported_case_pages(value):
+    """Page records from a team file: metadata only, since scans stay on the machine that filed them."""
+    pages = []
+    for index, item in enumerate(value if isinstance(value, list) else [], start=1):
+        if not isinstance(item, dict):
+            continue
+        page_id = re.sub(r"[^A-Za-z0-9_-]", "", str(item.get("id") or "")) or f"page-{index:03d}"
+        try:
+            brightness = case_brightness(item.get("brightness", 100))
+        except ValueError:
+            brightness = 100
+        # The scan filename is kept so the page lines up again if cases/ is copied across too.
+        filename = os.path.basename(str(item.get("file") or ""))
+        pages.append({
+            "id": page_id,
+            "kind": "page",
+            "file": filename,
+            "name": str(item.get("name") or filename or f"Page {index}")[:120],
+            "brightness": brightness,
+        })
+    return pages
+
+
+def imported_case(case, number):
+    """Validate one case record from a team file. Raises ValueError on anything unusable."""
+    if not isinstance(case, dict):
+        raise ValueError("A case in the team file is not a record")
+    name = str(case.get("name") or "").strip()[:80]
+    if not name:
+        raise ValueError("A case in the team file has no name")
+    case_id = re.sub(r"[^A-Za-z0-9_-]", "", str(case.get("id") or ""))
+    if not case_id:
+        case_id = f"case-{number:03d}-{secrets.token_hex(3)}"
+    date = str(case.get("date") or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        date = datetime.date.today().isoformat()
+    try:
+        case_number = int(case.get("number") or number)
+    except (TypeError, ValueError):
+        case_number = number
+    return {
+        "id": case_id,
+        "number": case_number,
+        "name": name,
+        "code": str(case.get("code") or "").strip()[:12],
+        "date": date,
+        "score": case_score(case.get("score")),
+        "outcome": case_outcome(case.get("outcome")),
+        "files": imported_case_pages(case.get("files")),
+        "added": str(case.get("added") or datetime.datetime.now().isoformat(timespec="seconds"))[:40],
+    }
+
+
 def attach_case_files(case):
     """Attach the normalized page collection used by the current client."""
     files = case_files(case)
@@ -342,6 +402,166 @@ def upload_sound():
 def get_cases():
     with cases_lock:
         return jsonify({"ok": True, "cases": [attach_case_files(case) for case in load_cases()]})
+
+
+@app.get("/api/cases/archive")
+def export_case_archive():
+    """The whole archive as one .zip: the index plus every scan.
+
+    Unlike the metadata a team file carries, this bundle is self-contained, so it can rebuild
+    the archive on another terminal. Built in memory and sent as a download.
+    """
+    with cases_lock:
+        cases = [attach_case_files(case) for case in load_cases()]
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as bundle:
+            bundle.writestr(
+                ARCHIVE_INDEX_NAME,
+                json.dumps({"cases": cases}, indent=2, ensure_ascii=False),
+            )
+            # One entry per scan actually on disk; a missing file is skipped, not fatal.
+            for case in cases:
+                for page in case.get("files") or []:
+                    scan = CASES_DIR / page["file"] if page.get("file") else None
+                    if scan and scan.is_file():
+                        bundle.write(scan, f"scans/{page['file']}")
+    buffer.seek(0)
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    return send_file(
+        buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"case-archive-{stamp}.zip",
+    )
+
+
+def archive_scan_name(name):
+    """The scan filename for a bundle entry, or None if the entry is not a usable scan.
+
+    Entry names are attacker-controlled, so only a plain filename directly under scans/ is
+    accepted: anything with a path separator, a drive or a parent reference is dropped.
+    """
+    if not name.startswith("scans/"):
+        return None
+    relative = name[len("scans/"):]
+    if not relative or relative != os.path.basename(relative):
+        return None
+    if os.path.splitext(relative)[1].casefold() not in CASE_EXTENSIONS:
+        return None
+    return relative
+
+
+@app.post("/api/cases/archive")
+def import_case_archive():
+    """Rebuild the archive from a .zip produced by the export above.
+
+    Scans are unpacked into cases/ and the index is merged exactly as a team-file import is,
+    so merge keeps what is filed here and replace mirrors the bundle.
+    """
+    request.max_content_length = MAX_ARCHIVE_BYTES
+    upload = request.files.get("archive")
+    if upload is None or not upload.filename:
+        raise ValueError("Choose a case archive .zip")
+    mode = (request.form.get("mode") or "merge").strip().casefold()
+    if mode not in {"merge", "replace"}:
+        raise ValueError("Choose merge or replace")
+
+    try:
+        bundle = zipfile.ZipFile(upload.stream)
+    except zipfile.BadZipFile:
+        raise ValueError("That file is not a readable .zip archive") from None
+
+    with bundle:
+        try:
+            index = json.loads(bundle.read(ARCHIVE_INDEX_NAME).decode("utf-8"))
+        except KeyError:
+            raise ValueError("The archive has no cases.json index") from None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError("The archive index is not readable JSON") from None
+        incoming = index.get("cases") if isinstance(index, dict) else None
+        if not isinstance(incoming, list):
+            raise ValueError("The archive index holds no cases")
+
+        with cases_lock:
+            existing = load_cases()
+            by_id = {case.get("id"): case for case in existing}
+            highest = max((int(case.get("number") or 0) for case in existing), default=0)
+            merged = [] if mode == "replace" else list(existing)
+            added = 0
+            kept = 0
+            wanted = set()
+            for case in incoming:
+                highest += 1
+                record = imported_case(case, highest)
+                if mode == "merge" and record["id"] in by_id:
+                    kept += 1
+                    continue
+                merged.append(record)
+                added += 1
+                wanted.update(page["file"] for page in record["files"] if page.get("file"))
+
+            # Unpack only the scans the accepted cases refer to, and only safe names.
+            CASES_DIR.mkdir(parents=True, exist_ok=True)
+            restored = 0
+            for entry in bundle.infolist():
+                if entry.is_dir():
+                    continue
+                scan = archive_scan_name(entry.filename)
+                if scan is None or scan not in wanted:
+                    continue
+                target = CASES_DIR / scan
+                # The index is authoritative for names, so an existing scan is left in place.
+                if target.exists():
+                    continue
+                with bundle.open(entry) as source, open(target, "wb") as handle:
+                    shutil.copyfileobj(source, handle)
+                restored += 1
+
+            write_json_file(CASES_FILE, {"cases": merged})
+            cases = [attach_case_files(case) for case in merged]
+
+    return jsonify({"ok": True, "cases": cases, "added": added, "kept": kept, "scans": restored})
+
+
+@app.post("/api/cases/import")
+def import_cases():
+    """Take case metadata from a team file. Scans are not carried: only the archive index.
+
+    mode=merge keeps cases already filed here and adds the ones that are missing (matched by
+    id); mode=replace makes the archive exactly what the team file holds. Scan files on disk
+    are never deleted, so a replace that drops a case leaves its pages recoverable.
+    """
+    payload = request.get_json(silent=True) or {}
+    mode = (payload.get("mode") or "merge").strip().casefold()
+    if mode not in {"merge", "replace"}:
+        raise ValueError("Choose merge or replace")
+    incoming = payload.get("cases")
+    if not isinstance(incoming, list):
+        raise ValueError("The team file has no case archive")
+
+    with cases_lock:
+        existing = load_cases()
+        by_id = {case.get("id"): case for case in existing}
+        highest = max((int(case.get("number") or 0) for case in existing), default=0)
+        added = 0
+        kept = 0
+        merged = [] if mode == "replace" else list(existing)
+        for case in incoming:
+            highest += 1
+            record = imported_case(case, highest)
+            current = by_id.get(record["id"])
+            if mode == "merge" and current is not None:
+                kept += 1          # already filed here: the local copy and its scans win
+                continue
+            # A local case keeps its own scan records when the file only carries metadata.
+            if current is not None and not record["files"]:
+                record["files"] = case_files(current)
+            merged.append(record)
+            added += 1
+        CASES_DIR.mkdir(parents=True, exist_ok=True)   # first import on a fresh install
+        write_json_file(CASES_FILE, {"cases": merged})
+        cases = [attach_case_files(case) for case in merged]
+    return jsonify({"ok": True, "cases": cases, "added": added, "kept": kept})
 
 
 @app.post("/api/cases")

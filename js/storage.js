@@ -1,4 +1,4 @@
-import { toast } from './ui.js';
+import { confirmDialog, openModal, toast } from './ui.js';
 import { normalizeAnomalyState } from './anomalyState.js';
 
 const STORAGE_KEY = 'rpgSettings';
@@ -15,6 +15,9 @@ let fileWriteChain = Promise.resolve();
 // Set once a loaded team file is in storage and the page is reloading, so the save that runs
 // when the page is left can't overwrite that file with the agents still on screen.
 let savesSuspended = false;
+// Supplied by app.js: reads the case archive off the server so it can ride along in the
+// save file. Injected rather than imported to keep storage.js free of a circular import.
+let readCaseArchive = null;
 
 function isEditableElement(element) {
   return element instanceof HTMLInputElement
@@ -69,6 +72,18 @@ async function readStoredFileHandle() {
   });
 }
 
+/**
+ * Remember the handle for the next session. Best effort: if IndexedDB is unavailable the
+ * file still works for this session, so a failure here must not abort connecting.
+ */
+async function rememberFileHandle(handle) {
+  try {
+    await storeFileHandle(handle);
+  } catch (error) {
+    console.error('Failed to remember the automatic save file for next time', error);
+  }
+}
+
 async function storeFileHandle(handle) {
   const database = await openHandleDatabase();
   return new Promise((resolve, reject) => {
@@ -97,6 +112,42 @@ async function deleteStoredFileHandle() {
 
 function showAutomaticFileOn(handle) {
   setAutomaticFileStatus('File Save: On', `Automatically saving to ${handle.name}. Click to unlink it.`);
+}
+
+/**
+ * Read a handle's current contents.
+ * Returns the parsed settings object, null for an empty/new file, or throws when the
+ * file holds something that is not a settings object (so we never silently clobber it).
+ */
+async function readSettingsFromHandle(handle) {
+  const file = await handle.getFile();
+  const text = (await file.text()).trim();
+  if (!text) return null;
+  const data = JSON.parse(text);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Not a team settings file');
+  }
+  return data;
+}
+
+/** Describe what a save file holds, for the import prompt. */
+function describeSettings(data) {
+  const agents = Array.isArray(data.chars) ? data.chars.length : 0;
+  const branch = typeof data.world?.branchName === 'string' ? data.world.branchName.trim() : '';
+  const parts = [`${agents} ${agents === 1 ? 'agent' : 'agents'}`];
+  if (branch) parts.push(`branch “${branch}”`);
+  return parts.join(', ');
+}
+
+/**
+ * Take the file's contents as the current state: store them, then reload so every module
+ * renders from the loaded data. Saves are suspended first so the pagehide flush on the way
+ * out can't write the still-on-screen agents back over the file we just adopted.
+ */
+function adoptSettings(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  savesSuspended = true;
+  location.reload();
 }
 
 async function writeSettingsToAutomaticFile() {
@@ -138,6 +189,30 @@ function writeAutomaticFileNow() {
   window.clearTimeout(pendingFileSave);
   pendingFileSave = 0;
   fileWriteChain = fileWriteChain.then(writeSettingsToAutomaticFile);
+}
+
+/** Register the case-archive reader used to keep `cases` in the saved state current. */
+export function setCaseArchiveSource(read) {
+  readCaseArchive = read;
+}
+
+/**
+ * Refresh the case archive held in the saved state, then save.
+ *
+ * The archive lives on the server, so reading it is async and cannot happen inside the
+ * synchronous updateSettings path. Callers await this at the points where the archive may
+ * have changed; a server that is unreachable leaves the stored copy alone.
+ */
+export async function syncCaseArchive() {
+  if (!readCaseArchive || savesSuspended) return false;
+  try {
+    const cases = await readCaseArchive();
+    if (!Array.isArray(cases)) return false;
+    return updateSettings(settings => { settings.cases = cases; });
+  } catch (error) {
+    console.error('Failed to read the case archive for the save file', error);
+    return false;
+  }
 }
 
 export function getCharacterData(character) {
@@ -312,7 +387,7 @@ export function initLocalStorage() {
 export async function initAutomaticFileSave(button) {
   automaticFileButton = button;
 
-  if (!('showSaveFilePicker' in window) || !('indexedDB' in window)) {
+  if (!('showSaveFilePicker' in window) || !('showOpenFilePicker' in window) || !('indexedDB' in window)) {
     setAutomaticFileStatus('File Save Unsupported', 'Use Team CV to download a manual backup in this browser.');
     if (automaticFileButton) automaticFileButton.disabled = true;
     return false;
@@ -343,6 +418,7 @@ export async function initAutomaticFileSave(button) {
 /** Stop keeping the connected file updated. The data saved in this browser is untouched. */
 async function unlinkAutomaticSaveFile() {
   const handle = automaticFileHandle;
+  if (!handle) return;
   window.clearTimeout(pendingFileSave);
   pendingFileSave = 0;
   automaticFileHandle = null;
@@ -369,12 +445,106 @@ async function unlinkAutomaticSaveFile() {
   });
 }
 
+const FILE_TYPES = [{
+  description: 'Triangle Agency team data',
+  accept: { 'application/json': ['.json'] }
+}];
+
 /**
- * The save-file button: connects a file (asking once, then keeping it synchronized),
- * restores permission to a remembered one, or, while saving, unlinks it.
+ * Ask whether to connect a new save file or link an existing one. Resolves to
+ * 'new', 'existing', or null when the dialog is dismissed.
+ */
+function askConnectMode() {
+  return new Promise(resolve => {
+    const body = document.createElement('p');
+    body.className = 'modal-message';
+    body.textContent = 'A new file starts from the agents currently on screen. An existing file is loaded first, replacing what is on screen, and is then kept up to date.';
+    let choice = null;
+    openModal({
+      title: 'Connect save file',
+      content: body,
+      closeLabel: 'Cancel',
+      actions: [
+        { label: 'Open Existing File', onClick: () => { choice = 'existing'; } },
+        { label: 'Create New File', variant: 'primary', onClick: () => { choice = 'new'; } }
+      ],
+      onClose: () => resolve(choice)
+    });
+  });
+}
+
+/**
+ * Link an existing save file: its contents are imported before any write, so connecting
+ * never destroys a team. An empty file is treated as a new one.
+ */
+async function linkExistingSaveFile() {
+  const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES, multiple: false });
+
+  // Opening grants read access; writing needs readwrite, which is asked for while the
+  // click that opened the picker still counts as a user gesture.
+  if (await handle.queryPermission({ mode: 'readwrite' }) !== 'granted'
+    && await handle.requestPermission({ mode: 'readwrite' }) !== 'granted') {
+    toast('That file can be read but not updated. Grant write permission to keep it in sync.', { kind: 'warn', duration: 6000 });
+    return false;
+  }
+
+  let data;
+  try {
+    data = await readSettingsFromHandle(handle);
+  } catch (error) {
+    console.error('Failed to read the selected save file', error);
+    toast(`${handle.name} is not a readable team save file. Nothing was changed.`, { kind: 'error', duration: 7000 });
+    return false;
+  }
+
+  automaticFileHandle = handle;
+  automaticFileReady = true;
+  await rememberFileHandle(handle);
+
+  // Empty file: nothing to import, so it behaves like a newly created one.
+  if (!data) {
+    await writeSettingsToAutomaticFile();
+    return true;
+  }
+
+  const importConfirmed = await confirmDialog({
+    title: `Load ${handle.name}?`,
+    message: `This file holds ${describeSettings(data)}. Loading it replaces the agents currently on screen, then keeps the file updated. Export a Team CV first if you need the current team.`,
+    confirmLabel: 'Load File'
+  });
+
+  if (!importConfirmed) {
+    // Keep it linked but don't write: the user declined replacing the on-screen team, and
+    // writing now would overwrite the file they just chose to keep.
+    automaticFileReady = false;
+    warnFileNotSyncing(`${handle.name} is linked but not being updated. Reconnect it to start saving to it.`);
+    return false;
+  }
+
+  showAutomaticFileOn(handle);
+  adoptSettings(data);
+  return true;
+}
+
+/** Create or overwrite a save file, seeded with the state currently on screen. */
+async function createNewSaveFile() {
+  automaticFileHandle = await window.showSaveFilePicker({
+    suggestedName: 'triangle-agency-team.json',
+    types: FILE_TYPES
+  });
+  automaticFileReady = true;
+  await rememberFileHandle(automaticFileHandle);
+  await writeSettingsToAutomaticFile();
+  return true;
+}
+
+/**
+ * The save-file button: reconnects a remembered file, otherwise asks whether to create a
+ * new one (seeded from the current state) or open an existing one (imported first).
+ * While saving, it unlinks instead.
  */
 export async function connectAutomaticSaveFile() {
-  if (!('showSaveFilePicker' in window)) return false;
+  if (!('showSaveFilePicker' in window) || !('showOpenFilePicker' in window)) return false;
 
   if (automaticFileReady) {
     await unlinkAutomaticSaveFile();
@@ -382,25 +552,20 @@ export async function connectAutomaticSaveFile() {
   }
 
   try {
+    // A file we already know: restoring permission is enough, and the state in this browser
+    // is the newer one (it was kept while the file was unreachable), so it is written out.
     if (automaticFileHandle) {
-      const permission = await automaticFileHandle.requestPermission({ mode: 'readwrite' });
-      automaticFileReady = permission === 'granted';
+      automaticFileReady = await automaticFileHandle.requestPermission({ mode: 'readwrite' }) === 'granted';
+      if (automaticFileReady) {
+        await rememberFileHandle(automaticFileHandle);
+        await writeSettingsToAutomaticFile();
+      }
+      return automaticFileReady;
     }
 
-    if (!automaticFileReady) {
-      automaticFileHandle = await window.showSaveFilePicker({
-        suggestedName: 'triangle-agency-team.json',
-        types: [{
-          description: 'Triangle Agency team data',
-          accept: { 'application/json': ['.json'] }
-        }]
-      });
-      automaticFileReady = true;
-    }
-
-    await storeFileHandle(automaticFileHandle);
-    await writeSettingsToAutomaticFile();
-    return automaticFileReady;
+    const mode = await askConnectMode();
+    if (!mode) return false;
+    return mode === 'existing' ? await linkExistingSaveFile() : await createNewSaveFile();
   } catch (error) {
     if (error?.name !== 'AbortError') {
       console.error('Failed to connect the automatic save file', error);

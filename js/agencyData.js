@@ -72,6 +72,8 @@ export const ITEM_ICONS = ['💼', '🔫', '☕', '📎', '🗄️', '🍽️', 
 // under these names (any size; posters can be portrait): a slide whose picture is missing
 // shows its icon on the Agency's own poster art instead.
 export const PROMO_DIR = './images/promo/';
+// false: the slides play in the order listed below; true: in a new random order each load.
+export const PROMO_SHUFFLE = false;
 export const PROMO_SLIDES = [
   { kind: 'Acquisizione del mese', title: 'Tazza Ufficiale di Triangle Agency', tagline: 'Il caffè è Realtà. La tazza è Agenzia.', price: 'da 3 Note di Merito', icon: '☕', image: 'tazza.jpg' },
   { kind: 'Poster motivazionale', title: 'Eccellenza', tagline: 'Un’Anomalia catturata vale più di mille rapporti.', icon: '▲', image: 'poster-eccellenza.jpg', poster: true },

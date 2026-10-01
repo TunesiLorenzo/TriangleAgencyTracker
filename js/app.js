@@ -9,19 +9,76 @@ import {
   loadSettingsFile,
   saveCharacterToFile,
   saveSettings,
-  saveSettingsFile
+  saveSettingsFile,
+  setCaseArchiveSource,
+  syncCaseArchive
 } from './storage.js';
 import { initTaskPanel, resetTasks } from './tasks.js';
 import { isServerAvailable, startConfigSync } from './config.js';
 import { initRelationships, renderRelationships } from './relationships.js';
 import { initAnomalies, renderAnomalies } from './anomalies.js';
 import { awardMissionDistinctions, initAgency, renderAgency, resetAgency } from './agency.js';
-import { closePreviousCases, initPreviousCases, renderPreviousCases } from './previousCases.js';
+import { closePreviousCases, exportCaseArchive, importCaseArchive, initPreviousCases, renderPreviousCases, setArchiveChangeHandler } from './previousCases.js';
 import { initButtonSounds, initKeepAlive, isMuted, playEvent, setMuted } from './soundEffects.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
 
 const VIEW_KEY = 'ta-view';
+
+/**
+ * Ask how a team file's case archive should meet this machine's archive.
+ * Resolves to 'merge', 'replace', or null to leave the local archive alone.
+ */
+function askCaseImportMode(incoming, local) {
+  return new Promise(resolve => {
+    const body = document.createElement('p');
+    body.className = 'modal-message';
+    body.textContent = local
+      ? `The team file holds ${incoming} ${incoming === 1 ? 'case' : 'cases'} and this terminal has ${local}. Merging keeps what is filed here and adds the rest; replacing makes the archive match the team file. Scans stay on the terminal that filed them, so imported pages show a placeholder until the cases folder is copied across.`
+      : `The team file holds ${incoming} ${incoming === 1 ? 'case' : 'cases'}. Scans stay on the terminal that filed them, so imported pages show a placeholder until the cases folder is copied across.`;
+    let choice = null;
+    openModal({
+      title: 'Case archive',
+      content: body,
+      closeLabel: 'Skip',
+      actions: [
+        ...(local ? [{ label: 'Replace Archive', variant: 'danger', onClick: () => { choice = 'replace'; } }] : []),
+        { label: local ? 'Merge' : 'Import Cases', variant: 'primary', onClick: () => { choice = 'merge'; } }
+      ],
+      onClose: () => resolve(choice)
+    });
+  });
+}
+
+/**
+ * Bring the case archive in a loaded team file into this terminal's archive.
+ *
+ * The archive is server-side, so this runs after the agents are on screen and only when the
+ * file actually carries cases. Nothing is imported without the user picking merge or replace.
+ */
+async function importCasesFromSettings(saved) {
+  const incoming = Array.isArray(saved?.cases) ? saved.cases : [];
+  if (!incoming.length || !isServerAvailable()) return;
+
+  // Every case in the file is already filed here: nothing to ask about.
+  const localCases = await exportCaseArchive();
+  const localIds = new Set(localCases.map(entry => entry.id));
+  if (incoming.every(entry => localIds.has(entry.id))) return;
+
+  const mode = await askCaseImportMode(incoming.length, localCases.length);
+  if (!mode) return;
+
+  try {
+    const { added, kept } = await importCaseArchive(incoming, mode);
+    await renderPreviousCases();
+    toast(added
+      ? `Filed ${added} ${added === 1 ? 'case' : 'cases'} from the team file${kept ? `, kept ${kept} already here` : ''}.`
+      : 'The case archive was already up to date.');
+  } catch (error) {
+    console.error('Failed to import the case archive', error);
+    toast('The case archive could not be imported. The cases already here are unchanged.', { kind: 'error', duration: 6000 });
+  }
+}
 
 let missionDialogOpen = false;
 
@@ -198,6 +255,16 @@ async function init() {
   initDashboard();
 
   saveSettings();
+
+  // Cases live on the server, so they are handled after the rest of the state is on screen.
+  setCaseArchiveSource(exportCaseArchive);
+  // Any case filed, edited or deleted during the session goes into the save file too.
+  setArchiveChangeHandler(() => { syncCaseArchive(); });
+  if (isServerAvailable()) {
+    await importCasesFromSettings(saved);
+    // Keep the saved copy current, including cases filed only on this terminal.
+    await syncCaseArchive();
+  }
 }
 
 init();
