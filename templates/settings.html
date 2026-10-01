@@ -178,6 +178,18 @@
       </div>
     </section>
 
+    <section class="card settings-file-card" aria-labelledby="settingsFileTitle">
+      <div class="section-heading">
+        <div><span class="eyebrow">PORTABLE BACKUP</span><h2 id="settingsFileTitle">Settings file</h2></div>
+        <div class="settings-file-actions">
+          <button id="saveSettingsFile" type="button">Save JSON file</button>
+          <button id="loadSettingsButton" class="secondary" type="button">Load JSON file</button>
+          <input id="loadSettingsFile" type="file" accept="application/json,.json" hidden>
+        </div>
+      </div>
+      <p class="hint">Save sound assignments, volumes, delays, effects, lights, and login options in a separate file you can sync with your drive. Loading a file replaces the current settings. Uploaded sound files and the badge picture are not embedded in the JSON.</p>
+    </section>
+
     <footer>
       <button id="resetAll" class="secondary danger" type="button">Reset all settings to defaults</button>
     </footer>

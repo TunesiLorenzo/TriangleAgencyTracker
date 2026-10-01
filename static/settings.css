@@ -124,6 +124,8 @@ code { font-size: 0.85em; color: var(--text); }
   gap: 12px;
   margin-bottom: 10px;
 }
+.settings-file-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.settings-file-card .hint { margin-bottom: 0; }
 
 /* ---------- controls ---------- */
 button, .button {
@@ -373,6 +375,9 @@ footer { display: flex; justify-content: center; padding-top: 10px; }
 /* ---------- phones ---------- */
 @media (max-width: 720px) {
   h1 { font-size: 1.6rem; }
+  .settings-file-card .section-heading { align-items: stretch; flex-direction: column; }
+  .settings-file-actions { justify-content: stretch; }
+  .settings-file-actions > * { flex: 1; }
   .tabs { flex-wrap: wrap; }
   .tab { padding: 10px 6px; font-size: 0.8rem; }
   .competency-list, #effectGroups, .library { grid-template-columns: minmax(0, 1fr); }

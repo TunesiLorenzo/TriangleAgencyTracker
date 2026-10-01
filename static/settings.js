@@ -10,7 +10,7 @@
 import {
   BUTTON_GROUPS, COMPETENCIES, DEFAULT_CONFIG, LIGHT_ACTIONS, LIGHT_EFFECTS, LIGHT_EVENTS,
   LIGHT_TARGETS, RISK_LEVELS, SOUND_EVENTS, competencyFile, getConfig, isCompetencyFolderFile,
-  onConfigChange, saveConfig, setLocalConfig, setSoundFiles, startConfigSync
+  mergeConfig, onConfigChange, saveConfig, setLocalConfig, setSoundFiles, startConfigSync
 } from '/js/config.js';
 import { sendLightCue } from '/js/lights.js';
 import { playSlot, resolveSlot } from '/js/soundEffects.js';
@@ -19,6 +19,9 @@ import { COMPETENCY_INFO } from '/js/competencies.js';
 
 const TAB_KEY = 'ta-settings-tab';
 const BUTTON_GROUP_KEY = 'ta-settings-button-group';
+const SETTINGS_FILE_FORMAT = 'triangle-agency-tracker-settings';
+const SETTINGS_FILE_VERSION = 1;
+const MAX_SETTINGS_FILE_BYTES = 512 * 1024;
 
 const KEEP_ALIVE_FIELDS = [
   { key: 'enabled', label: 'Drone on', type: 'toggle' },
@@ -149,6 +152,7 @@ let draft = structuredClone(DEFAULT_CONFIG);
 let sounds = [];
 let saveTimer = 0;
 let saving = false;
+let savePromise = null;
 let buttonGroup = BUTTON_GROUPS[0].key;   // the Buttons submenu on show
 
 const $ = selector => document.querySelector(selector);
@@ -168,23 +172,125 @@ function setStatus(text, state) {
   status.dataset.state = state;
 }
 
+function persistConfig(config) {
+  // Keep saves in order. A slider edit may schedule another save while the previous
+  // request is still in flight, and a loaded file must always be written last.
+  const previous = savePromise;
+  const request = (previous ? previous.catch(() => {}) : Promise.resolve())
+    .then(() => saveConfig(config));
+  savePromise = request;
+  saving = true;
+  return request.finally(() => {
+    if (savePromise === request) {
+      savePromise = null;
+      saving = false;
+    }
+  });
+}
+
 function scheduleSave() {
   setLocalConfig(draft);
   setStatus('Saving…', 'saving');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     saveTimer = 0;
-    saving = true;
     try {
-      await saveConfig(structuredClone(draft));
-      setStatus('Saved', 'saved');
+      await persistConfig(structuredClone(draft));
+      if (!savePromise) setStatus('Saved', 'saved');
     } catch (error) {
       console.error(error);
-      setStatus('Not saved — is the server running?', 'error');
-    } finally {
-      saving = false;
+      if (!savePromise) setStatus('Not saved — is the server running?', 'error');
     }
   }, 350);
+}
+
+/* ---------- portable settings file ---------- */
+async function saveSettingsToFile() {
+  const payload = {
+    format: SETTINGS_FILE_FORMAT,
+    version: SETTINGS_FILE_VERSION,
+    exportedAt: new Date().toISOString(),
+    config: structuredClone(draft)
+  };
+  const contents = JSON.stringify(payload, null, 2);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filename = `triangle-agency-settings-${stamp}.json`;
+
+  // Chromium-based browsers can save straight into a synced Drive folder. Other
+  // browsers fall back to a normal JSON download.
+  if ('showSaveFilePicker' in window) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'JSON settings file', accept: { 'application/json': ['.json'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+      setStatus(`Saved ${handle.name}`, 'saved');
+      return;
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      throw error;
+    }
+  }
+
+  const blob = new Blob([contents], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 0);
+  setStatus('Settings file downloaded', 'saved');
+}
+
+function configFromSettingsFile(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('That JSON file does not contain settings.');
+  }
+  if (payload.format && payload.format !== SETTINGS_FILE_FORMAT) {
+    throw new Error('That JSON file belongs to a different application.');
+  }
+  if (payload.version && payload.version > SETTINGS_FILE_VERSION) {
+    throw new Error('This settings file was made by a newer tracker version.');
+  }
+
+  // Accept both files exported here and the server's existing tracker_config.json.
+  const candidate = payload.config && typeof payload.config === 'object' && !Array.isArray(payload.config)
+    ? payload.config
+    : payload;
+  const knownSections = Object.keys(DEFAULT_CONFIG);
+  if (!knownSections.some(key => Object.hasOwn(candidate, key))) {
+    throw new Error('That JSON file has no recognised tracker settings.');
+  }
+  return mergeConfig(DEFAULT_CONFIG, candidate);
+}
+
+async function loadSettingsFromFile(file) {
+  if (!file) return;
+  if (file.size > MAX_SETTINGS_FILE_BYTES) {
+    throw new Error('That settings file is too large.');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch {
+    throw new Error('That file is not valid JSON.');
+  }
+  const imported = configFromSettingsFile(payload);
+  if (!confirm(`Load settings from ${file.name}? This replaces the current settings.`)) return;
+
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  if (savePromise) await savePromise.catch(() => {});
+  setStatus('Loading settings file…', 'saving');
+  await persistConfig(imported);
+  draft = structuredClone(imported);
+  renderAll();
+  setStatus('Settings file loaded', 'saved');
 }
 
 /* ---------- source pickers ---------- */
@@ -714,6 +820,27 @@ async function init() {
     draft.login.timing = structuredClone(DEFAULT_CONFIG.login.timing);
     renderLogin();
     scheduleSave();
+  });
+
+  $('#saveSettingsFile').addEventListener('click', async () => {
+    try {
+      await saveSettingsToFile();
+    } catch (error) {
+      console.error('Settings file could not be saved', error);
+      setStatus(error.message || 'Settings file could not be saved', 'error');
+    }
+  });
+  $('#loadSettingsButton').addEventListener('click', () => $('#loadSettingsFile').click());
+  $('#loadSettingsFile').addEventListener('change', async event => {
+    const input = event.target;
+    try {
+      await loadSettingsFromFile(input.files[0]);
+    } catch (error) {
+      console.error('Settings file could not be loaded', error);
+      setStatus(error.message || 'Settings file could not be loaded', 'error');
+    } finally {
+      input.value = '';
+    }
   });
 
   $('#resetAll').addEventListener('click', () => {
