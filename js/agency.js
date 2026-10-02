@@ -13,6 +13,7 @@ import { animateOnce, getCharElements } from './charSystem.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { loadSettings, saveSettings, updateSettings } from './storage.js';
 import { openModal, toast } from './ui.js';
+import { createUuid } from './uuid.js';
 
 const TEAM = 'team';   // owner or holder of a communal item
 const ITEMS_OPEN_KEY = 'ta-agency-items-open';
@@ -96,7 +97,7 @@ function partyName(id, cards) {
 function normalizeItem(data) {
   const item = data && typeof data === 'object' ? data : {};
   return {
-    id: String(item.id || crypto.randomUUID()),
+    id: String(item.id || createUuid()),
     name: String(item.name ?? ''),
     description: String(item.description ?? ''),
     icon: String(item.icon ?? ''),   // '' = the catalog icon for its name

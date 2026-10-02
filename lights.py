@@ -21,6 +21,7 @@ time on a worker thread and only the newest waiting cue is kept: a burst of
 events never builds a backlog, and a new cue cuts short a timed one.
 """
 
+import ipaddress
 import json
 import os
 import subprocess
@@ -28,6 +29,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -44,6 +46,24 @@ STATUS_TTL = 5            # seconds a status reply is reused
 
 class LightRPGError(RuntimeError):
     pass
+
+
+def is_local_url(url):
+    """Return whether a LightRPG URL points back to this computer.
+
+    Only loopback addresses are locally startable. A LAN hostname may resolve
+    to another computer (and change address through DHCP), so an outage there
+    must not make the tracker launch a second LightRPG process locally.
+    """
+    try:
+        host = urllib.parse.urlsplit(url).hostname
+        if not host:
+            return False
+        if host.casefold() == "localhost":
+            return True
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def clamp(value, low, high, default):
@@ -106,10 +126,14 @@ class LightBridge:
         return result
 
     def report(self):
+        installed = (LIGHTRPG_DIR / "web.py").is_file()
+        local = is_local_url(LIGHTRPG_URL)
         return {
             **self.status(fresh=True),
             "url": LIGHTRPG_URL,
-            "installed": (LIGHTRPG_DIR / "web.py").is_file(),
+            "local": local,
+            "installed": installed,
+            "startable": local and installed,
             "starting": self.process is not None and self.process.poll() is None,
             "lastError": self.last_error,
         }
@@ -118,6 +142,10 @@ class LightBridge:
         """Launch LightRPG's web mode in its own console window, unless it already answers."""
         if self.status(fresh=True)["reachable"]:
             return "LightRPG is already running"
+        if not is_local_url(LIGHTRPG_URL):
+            raise LightRPGError(
+                f"LightRPG is configured on another computer at {LIGHTRPG_URL}; start it there"
+            )
         if self.process is not None and self.process.poll() is None:
             return "LightRPG is starting"
         script = LIGHTRPG_DIR / "web.py"

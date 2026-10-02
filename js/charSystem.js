@@ -9,6 +9,7 @@ import { normalizeAnomalyState } from './anomalyState.js';
 import { TRACK_LENGTH } from './lifeWorkTrack.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 import { COMPETENCY_INFO, competencyText, isGeneratedText } from './competencies.js';
+import { createUuid } from './uuid.js';
 
 export const MAX_CHARS = 5;
 export const MAX_CONNECTION = 9;    // a relationship at the top of its track is in the agent's Network
@@ -266,7 +267,7 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   // Agency items name their owner and holder by this id, so it survives renames, exports and undo.
   // A second copy of an agent already on the branch gets its own.
   const takenIds = new Set(getCharElements().map(card => card._id));
-  c._id = data?.id && !takenIds.has(String(data.id)) ? String(data.id) : crypto.randomUUID();
+  c._id = data?.id && !takenIds.has(String(data.id)) ? String(data.id) : createUuid();
 
   // remove button
   const removeBtn = document.createElement('button');

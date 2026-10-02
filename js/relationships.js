@@ -30,6 +30,7 @@ let openCard = null;   // the agent whose page is open; null shows the overview
 let openRelationship = null;   // the relationship shown on its own page, one of openCard's
 let phone = null;    // the lock screen and the HR ticker under the overview, kept across renders
 let ticker = null;
+const portrait = matchMedia('(orientation: portrait)');   // two columns: the ticker stacks beside the phone
 
 function relationshipsOf(card) {
   if (!Array.isArray(card._relationships)) card._relationships = [];
@@ -757,7 +758,7 @@ function relationshipSources() {
     relationshipsOf(card).map(relationship => ({ card, relationship, agent: agentName(card, index) })));
 }
 
-/** Under the agent columns: the HR ticker, then the Network map. (The phone sits in the columns' row.) */
+/** Under the agent columns: the HR ticker (unless it's stacked beside the phone), then the Network map. */
 function createExtras(cards) {
   const agents = cards.map((card, index) => ({
     card,
@@ -771,7 +772,7 @@ function createExtras(cards) {
 
   const extras = document.createElement('div');
   extras.className = 'rel-extras';
-  extras.append(ticker.el, createNetworkMap(agents, openFromExtras));
+  extras.append(...(portrait.matches ? [] : [ticker.el]), createNetworkMap(agents, openFromExtras));
   return extras;
 }
 
@@ -813,8 +814,16 @@ export function renderRelationships({ overview = false, animate = false } = {}) 
   const grid = document.createElement('div');
   grid.className = 'rel-overview';
   const tiles = cards.map(createSummary);
-  // the phone takes the next column after the agents (the 4th, with the usual 3 agents)
-  grid.append(...tiles, phone.el);
+  // The phone takes the next column after the agents (the 4th, with the usual 3 agents). In
+  // portrait's two columns it shares a row with the last agent when there's an odd number of
+  // them, so the HR ticker stacks under that agent to fill down to the phone's bottom edge.
+  if (portrait.matches) {
+    const side = document.createElement('div');
+    side.className = 'rel-phone-side';
+    const paired = tiles.length % 2 ? tiles.slice(-1) : [];
+    side.append(...paired, ticker.el);
+    grid.append(...tiles.slice(0, tiles.length - paired.length), side, phone.el);
+  } else grid.append(...tiles, phone.el);
   phone.start();
   view.replaceChildren(grid, createExtras(cards));
   if (animate) tiles.forEach(tile => animateOnce(tile, 'entering'));
@@ -824,6 +833,9 @@ export function initRelationships() {
   view = document.getElementById('relationshipsView');
   phone = createPhone({ sources: relationshipSources, open: openFromExtras });
   ticker = createTicker();
+  portrait.addEventListener('change', () => {
+    if (!view.hidden && !openCard) renderRelationships();
+  });
   // Hiring, recalling, removing or sending an agent on sick leave all end in updateTopCharacters().
   document.addEventListener('dashboard-refresh', () => {
     if (!view.hidden) renderRelationships();

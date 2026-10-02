@@ -142,10 +142,33 @@ function scrawl() {
   return svg;
 }
 
+/** A poster as the Agency printed it, with its graffiti and the Agency's stamp ready to show. */
+function createPoster(poster) {
+  const figure = el('figure', 'defaced');
+  figure.setAttribute('aria-label', poster.title);
+  const art = el('div', 'defaced-art');
+  art.append(el('span', 'defaced-icon', poster.icon));
+  if (poster.image) {
+    const image = el('img', 'defaced-image');
+    image.alt = '';
+    image.addEventListener('error', () => image.remove());
+    image.src = PROMO_DIR + poster.image;
+    art.append(image);
+  }
+  art.append(scrawl(), el('span', 'defaced-stamp', 'Expunged'));
+  const copy = el('figcaption', 'defaced-copy');
+  copy.append(el('span', 'defaced-title', poster.title), el('span', 'defaced-tagline', poster.slogan), el('span', 'defaced-brand', '▲ Triangle Agency'));
+  // the marker is sprayed over the printed text, so a tagged poster keeps its size
+  const graffiti = el('span', 'defaced-graffiti');
+  graffiti.append(el('span', 'defaced-rewrite', poster.newTitle), el('span', 'defaced-tag', poster.newSlogan));
+  figure.append(el('span', 'defaced-tape'), art, copy, graffiti, el('span', 'defaced-flash'));
+  return figure;
+}
+
 /**
  * One poster at a time, picked at random. Each stays up as the Agency printed it; some get
  * tagged (static, then the blue marker) and a few seconds later expunged (a red flash and
- * the Agency's stamp) before the next one comes up. Hovering holds the current phase.
+ * the Agency's stamp). Then the next one crossfades in over it. Hovering holds the current phase.
  */
 function createPosterFeed() {
   const root = el('section', 'poster-feed');
@@ -155,52 +178,25 @@ function createPosterFeed() {
   root.addEventListener('pointerleave', () => { hovered = false; });
   const later = scheduler(root, () => hovered);
 
-  const figure = el('figure', 'defaced');
-  const icon = el('span', 'defaced-icon');
-  const art = el('div', 'defaced-art');
-  art.append(icon, scrawl(), el('span', 'defaced-stamp', 'Expunged'));
-  const title = el('span', 'defaced-title');
-  const slogan = el('span', 'defaced-tagline');
-  const copy = el('figcaption', 'defaced-copy');
-  copy.append(title, slogan, el('span', 'defaced-brand', '▲ Triangle Agency'));
-  // the marker sits over the printed text, so a tagged poster keeps its size
-  const rewrite = el('span', 'defaced-rewrite');
-  const tag = el('span', 'defaced-tag');
-  const graffiti = el('span', 'defaced-graffiti');
-  graffiti.append(rewrite, tag);
-  figure.append(el('span', 'defaced-tape'), art, copy, graffiti, el('span', 'defaced-flash'));
-  root.append(figure);
-
   let posters = [];
   let current = -1;
-  const quick = () => reducedMotion?.matches;
+  let figure = null;
   const setPhase = phase => { figure.dataset.phase = phase; };
 
-  function fill(poster) {
-    icon.textContent = poster.icon;
-    art.querySelector('.defaced-image')?.remove();
-    if (poster.image) {
-      const image = el('img', 'defaced-image');
-      image.alt = '';
-      image.addEventListener('error', () => image.remove());
-      image.src = PROMO_DIR + poster.image;
-      icon.after(image);
-    }
-    title.textContent = poster.title;
-    slogan.textContent = poster.slogan;
-    rewrite.textContent = poster.newTitle;
-    tag.textContent = poster.newSlogan;
-    figure.setAttribute('aria-label', poster.title);
-  }
-
-  /** A random poster, never the one just shown. */
+  /** A random poster, never the one just shown, fading in while the last one fades out. */
   function next() {
     const step = posters.length > 1 ? 1 + Math.floor(Math.random() * (posters.length - 1)) : 0;
     current = (current + step) % posters.length;
-    fill(posters[current]);
-    figure.classList.remove('expunged');
+    const previous = figure;
+    if (previous) {
+      previous.classList.toggle('expunged', previous.dataset.phase === 'expunging');   // the stamp stays on the way out
+      previous.dataset.phase = 'leaving';
+      setTimeout(() => previous.remove(), 1000);
+    }
+    figure = createPoster(posters[current]);
     setPhase('clean');
-    later(() => (posters[current].newTitle && Math.random() < CORRUPT_CHANCE ? corrupt() : leave()), POSTER_TIME);
+    root.append(figure);
+    later(() => (posters[current].newTitle && Math.random() < CORRUPT_CHANCE ? corrupt() : next()), POSTER_TIME);
   }
   function corrupt() {
     setPhase('corrupting');
@@ -208,17 +204,12 @@ function createPosterFeed() {
     later(() => {
       setPhase('corrupted');
       later(expunge, TAGGED_TIME);
-    }, quick() ? 0 : 900);
+    }, reducedMotion?.matches ? 0 : 900);
   }
   function expunge() {
     setPhase('expunging');
     figure.setAttribute('aria-label', `${posters[current].title}: expunged`);
-    later(leave, 2200);
-  }
-  function leave() {
-    figure.classList.toggle('expunged', figure.dataset.phase === 'expunging');   // the stamp stays on the way out
-    setPhase('leaving');
-    later(next, quick() ? 0 : 500);
+    later(next, 2200);
   }
 
   fetch(POSTERS_FILE, { cache: 'no-cache' })

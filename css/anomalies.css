@@ -229,6 +229,7 @@
   .anomaly-view {
     min-height: 0;
     height: 100%;
+    overflow-x: hidden;   /* a scrolling box scrolls sideways too: a nudged poster or a tilted card would add a bar */
     overflow-y: auto;
     align-content: start;
     padding: 2px 2px 14px;

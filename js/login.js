@@ -15,6 +15,7 @@ import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { playButton, soundStartDelay } from './soundEffects.js';
 
+const READER_ZOOM = 2;     // the close-up on the badge going through the card reader
 const PURGE_SECONDS = 4;   // Log Out: the countdown before the server stops and the page reloads
 const USERNAME = 'Manager#56776544';
 const PASSWORD = '*'.repeat(14);
@@ -171,6 +172,21 @@ function shiftPanel() {
   els.panel.style.setProperty('--shift', `${shift}px`);
 }
 
+/**
+ * The close-up while the badge goes through the reader: the whole rig at READER_ZOOM times
+ * its size, its slot in the middle of the screen (wide screens; login.css applies it).
+ */
+function frameReader() {
+  if (!window.matchMedia('(min-width: 901px)').matches) return;
+  const { rig, slit } = els;
+  let slotY = slit.offsetHeight / 2;
+  for (let node = slit; node && node !== rig; node = node.offsetParent) slotY += node.offsetTop;
+  const box = rig.getBoundingClientRect();
+  const x = window.innerWidth / 2 - box.left - READER_ZOOM * box.width / 2;
+  const y = window.innerHeight * 0.52 - box.top - READER_ZOOM * slotY;
+  rig.style.setProperty('--zoom', `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${READER_ZOOM})`);
+}
+
 /** Move the logo and form up just enough to clear the scanner rising from the bottom edge. */
 function liftPanel() {
   const panel = els.panel.getBoundingClientRect();
@@ -300,6 +316,7 @@ async function signIn() {
 
   // The reader rises beside the form while the badge drops in on its lanyard...
   shiftPanel();
+  frameReader();
   screen.classList.add('is-badge-shown');
   badge.drop(t.badgeEnter, { onCatch: () => playButton('session', 'badgeDrop') });
   await wait(t.badgeEnter);
@@ -362,12 +379,15 @@ async function signOut() {
   location.reload();
 }
 
-/** "Secure link severed": counts down to 0, one real second at a time (reduced motion too). */
+/**
+ * "Secure link severed": counts down to 0, one real second at a time (reduced motion too).
+ * The purge sound already holds every beep of the countdown, so it plays once, at the start.
+ */
 async function purgeCountdown() {
   if (backdrop) backdrop.heat = 0.4;
+  playButton('session', 'purgeTick');
   for (let left = PURGE_SECONDS; left > 0; left--) {
     els.purgeCount.textContent = String(left);
-    playButton('session', 'purgeTick');
     backdrop?.ring();
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
@@ -411,6 +431,7 @@ export function initLogin() {
     panel: screen.querySelector('.login-panel'),
     logoMark: screen.querySelector('.login-logo-mark'),
     rig: screen.querySelector('.login-rig'),
+    slit: screen.querySelector('.login-reader-slit'),
     core: screen.querySelector('.login-logo-core'),
     clock: screen.querySelector('.login-clock'),
     fields: [...screen.querySelectorAll('.login-field')],

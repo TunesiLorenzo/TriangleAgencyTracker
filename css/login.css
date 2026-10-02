@@ -284,7 +284,8 @@ html:not([data-session="open"]) body { overflow: hidden; }
   padding: 24px 16px;
   background:
     radial-gradient(ellipse 70% 55% at 50% 50%, rgba(90,0,0,0.55), transparent 75%),
-    rgba(5,0,0,0.82);
+    rgba(5,0,0,0.92);
+  backdrop-filter: blur(8px);
   color: #ff5a4f;
   text-align: center;
   text-transform: uppercase;
@@ -591,7 +592,18 @@ html:not([data-session="open"]) body { overflow: hidden; }
   right: calc(var(--badge-w) * 0.17 + clamp(16px, 3vw, 64px));
   width: var(--badge-w);
   pointer-events: none;
+  transform-origin: 0 0;
+  /* zooming back out as the reader sinks away and the retina scanner rises */
+  transition: transform var(--login-scanner-rise, 460ms) cubic-bezier(.4,0,.2,1);
 }
+/* The close-up while the badge goes through the reader (--zoom, login.js), with the form faded behind it. */
+.login-screen.is-badge-shown:not(.is-reader-done) .login-rig {
+  transform: var(--zoom, none);
+  transition-duration: var(--login-badge-enter, 1s);
+}
+.login-logo,
+.login-form { transition: opacity 500ms ease; }
+.login-screen.is-badge-shown:not(.is-reader-done) :is(.login-logo, .login-form) { opacity: 0.12; }
 
 /* A kiosk that rises from the bottom edge, like the retina scanner; the card goes into the slot on top. */
 .login-reader {
@@ -1063,6 +1075,8 @@ html:not([data-session="open"]) body { overflow: hidden; }
   .login-scanner { opacity: 0; transform: translate(-50%, 0); transition: opacity 200ms ease; }
   .login-screen.is-scanner-open .login-scanner { opacity: 1; }
   /* the badge and the reader appear in place (loginBadge.js puts the badge straight where it goes) */
+  .login-rig,
+  .login-screen.is-badge-shown:not(.is-reader-done) .login-rig { transition: none; }
   .login-reader,
   .login-screen.is-badge-shown .login-reader,
   .login-screen.is-badge-leaving .login-reader,

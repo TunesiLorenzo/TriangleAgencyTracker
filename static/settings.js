@@ -529,25 +529,46 @@ function renderLights() {
     lightCueRow(`lights.events.${key}`, draft.lights.events[key], { label, hint })).join('');
   $('#lightSlots').innerHTML = LIGHT_EVENTS.filter(({ key }) => !outcomeEvents.has(key)).map(({ key, label, hint }) =>
     lightCueRow(`lights.events.${key}`, draft.lights.events[key], { label, hint })).join('');
-  $('#openLightRPG').href = `${location.protocol}//${location.hostname}:5000/`;
 }
 
 let lightStatusTimer = 0;
+
+/** Apply the configured address; a loopback target lives on the tracker, not this browser. */
+function setLightRPGLink(rawUrl, local) {
+  const link = $('#openLightRPG');
+  try {
+    const url = new URL(rawUrl);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported protocol');
+    if (local) url.hostname = location.hostname;
+    link.href = url.href;
+    link.hidden = false;
+    return url.host;
+  } catch {
+    link.removeAttribute('href');
+    link.hidden = true;
+    return 'the configured address';
+  }
+}
 
 async function refreshLightStatus() {
   const status = $('#lightStatus');
   try {
     const data = await (await fetch('/api/lights/status', { cache: 'no-store' })).json();
+    const address = setLightRPGLink(data.url, data.local);
     const bulbs = Object.values(data.bulbs || {}).filter(Boolean).length;
     if (data.reachable) {
       const parts = [`${bulbs} bulb${bulbs === 1 ? '' : 's'}`, data.strip ? 'LED strip' : 'no strip'];
-      status.textContent = data.lastError ? `Last cue failed: ${data.lastError}` : `Connected · ${parts.join(' · ')}`;
+      status.textContent = data.lastError ? `Last cue failed: ${data.lastError}` : `Connected to ${address} · ${parts.join(' · ')}`;
       status.dataset.state = data.lastError ? 'error' : 'saved';
     } else {
-      status.textContent = !data.installed ? 'LightRPG folder not found' : data.starting ? 'LightRPG is starting…' : 'LightRPG is not running';
+      status.textContent = !data.local
+        ? `LightRPG is not reachable at ${address}`
+        : !data.installed
+          ? 'LightRPG folder not found'
+          : data.starting ? 'LightRPG is starting…' : 'LightRPG is not running';
       status.dataset.state = data.starting ? 'saving' : 'error';
     }
-    $('#startLightRPG').hidden = data.reachable || !data.installed;
+    $('#startLightRPG').hidden = data.reachable || !data.startable;
   } catch {
     status.textContent = 'Tracker server not reachable';
     status.dataset.state = 'error';

@@ -5,6 +5,7 @@ import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack
 import { saveSettings } from './storage.js';
 import { createUnderground } from './underground.js';
 import { openModal, toast } from './ui.js';
+import { createUuid } from './uuid.js';
 
 // ARC_Dossier page 8: the bottom row continues from right to left.
 const DOCUMENTS = { 1: 'H4', 2: 'H3', 5: 'U2', 7: 'X2', 11: 'N1', 13: 'Q2', 17: 'L10', 19: 'G8', 23: 'A7' };
@@ -131,7 +132,7 @@ function editAbility(card, ability) {
       };
       if (ability) Object.assign(ability, updated);
       else {
-        ability = { ...updated, id: crypto.randomUUID(), state: normalizeAbilityState() };
+        ability = { ...updated, id: createUuid(), state: normalizeAbilityState() };
         card._anomalyState.custom.push(ability);
       }
       expanded = { card, key: `custom:${ability.id}` };

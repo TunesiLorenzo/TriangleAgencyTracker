@@ -381,7 +381,7 @@ export function createPhone({ sources, open }) {
     setInterval(tickClock, 10000);
     textsReady.then(() => {
       const now = Date.now();
-      [95, 27, 4].forEach(minutes => push(now - minutes * 60000, false, 0));
+      [180, 95, 27, 4].forEach(minutes => push(now - minutes * 60000, false, 0));
       schedule();
     });
   };

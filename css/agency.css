@@ -851,6 +851,7 @@ select.agency-input { cursor: pointer; }
   .agency-view {
     height: 100%;
     min-height: 0;
+    overflow-x: hidden;   /* a scrolling box scrolls sideways too: a nudged poster or a tilted card would add a bar */
     overflow-y: auto;
     gap: 14px;
     padding: 2px 2px 14px;
