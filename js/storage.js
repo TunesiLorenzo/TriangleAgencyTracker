@@ -5,6 +5,7 @@ const STORAGE_KEY = 'rpgSettings';
 const HANDLE_DB_NAME = 'triangleAgencyTracker';
 const HANDLE_STORE_NAME = 'fileHandles';
 const TEAM_FILE_HANDLE_KEY = 'teamSaveFile';
+const SERVER_SAVE_STATE_KEY = 'triangleAgencyServerSave';
 let pendingSave = 0;
 let pendingFileSave = 0;
 let automaticFileHandle = null;
@@ -12,6 +13,9 @@ let automaticFileReady = false;
 let automaticFileButton = null;
 let fileSaveAnnounced = false;
 let fileWriteChain = Promise.resolve();
+let automaticSaveBackend = 'native';
+let serverSaveReady = false;
+let serverSaveState = { linked: false, version: null, dirty: false };
 // Set once a loaded team file is in storage and the page is reloading, so the save that runs
 // when the page is left can't overwrite that file with the agents still on screen.
 let savesSuspended = false;
@@ -31,7 +35,7 @@ function setAutomaticFileStatus(status, title = '') {
   automaticFileButton.textContent = status;
   automaticFileButton.title = title;
   // Pulses while the file is linked but not being written, so a paused sync can't go unnoticed.
-  automaticFileButton.classList.toggle('needs-attention', status.startsWith('Reconnect'));
+  automaticFileButton.classList.toggle('needs-attention', /^(Reconnect|Resolve)/.test(status));
 }
 
 /**
@@ -114,6 +118,81 @@ function showAutomaticFileOn(handle) {
   setAutomaticFileStatus('File Save: On', `Automatically saving to ${handle.name}. Click to unlink it.`);
 }
 
+function showServerSaveOn() {
+  setAutomaticFileStatus('Desktop Save: On', 'Automatically saving the team on the tracker computer. Click to disconnect.');
+}
+
+function loadServerSaveState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SERVER_SAVE_STATE_KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      return {
+        linked: saved.linked === true,
+        version: typeof saved.version === 'string' ? saved.version : null,
+        dirty: saved.dirty === true
+      };
+    }
+  } catch { /* start disconnected if the small metadata record is damaged */ }
+  return { linked: false, version: null, dirty: false };
+}
+
+function storeServerSaveState() {
+  localStorage.setItem(SERVER_SAVE_STATE_KEY, JSON.stringify(serverSaveState));
+}
+
+async function fetchServerSave() {
+  const response = await fetch('/api/team-save', { cache: 'no-store' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
+  return data;
+}
+
+async function putServerSave({ overwrite = false } = {}) {
+  const team = loadSettings() || {};
+  const response = await fetch('/api/team-save', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedVersion: serverSaveState.version, overwrite, team })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 409 || data.conflict) {
+    const error = new Error(data.message || 'The desktop copy changed');
+    error.name = 'SaveConflictError';
+    error.version = data.version ?? null;
+    throw error;
+  }
+  if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
+  serverSaveState.version = data.version;
+  serverSaveState.dirty = false;
+  serverSaveReady = true;
+  storeServerSaveState();
+  showServerSaveOn();
+  if (!fileSaveAnnounced) toast('Auto-saving on the tracker computer');
+  fileSaveAnnounced = true;
+  return true;
+}
+
+async function writeSettingsToServer() {
+  if (!serverSaveState.linked || !serverSaveReady) return false;
+  try {
+    return await putServerSave();
+  } catch (error) {
+    serverSaveReady = false;
+    serverSaveState.dirty = true;
+    storeServerSaveState();
+    fileSaveAnnounced = false;
+    if (error.name === 'SaveConflictError') {
+      setAutomaticFileStatus('Resolve Desktop Save', 'The desktop copy changed elsewhere. Click to choose which copy to keep.');
+      toast('The desktop save changed in another viewer. Nothing was overwritten; click Resolve Desktop Save.', { kind: 'warn', duration: 12000 });
+    } else {
+      setAutomaticFileStatus('Reconnect Desktop Save', 'The tracker computer could not be reached. Click to retry.');
+      toast('The desktop save is temporarily offline. Changes are safe in this browser and will wait for reconnect.', { kind: 'warn', duration: 10000 });
+    }
+    console.error('Failed to save the team on the tracker computer', error);
+    return false;
+  }
+}
+
 /**
  * Read a handle's current contents.
  * Returns the parsed settings object, null for an empty/new file, or throws when the
@@ -175,20 +254,31 @@ async function writeSettingsToAutomaticFile() {
 }
 
 function queueAutomaticFileSave(delay = 300) {
-  if (!automaticFileReady) return;
+  if (automaticSaveBackend === 'server') {
+    if (!serverSaveState.linked) return;
+    serverSaveState.dirty = true;
+    storeServerSaveState();
+    if (!serverSaveReady) return;
+  } else if (!automaticFileReady) return;
   window.clearTimeout(pendingFileSave);
   pendingFileSave = window.setTimeout(() => {
     pendingFileSave = 0;
-    fileWriteChain = fileWriteChain.then(writeSettingsToAutomaticFile);
+    fileWriteChain = fileWriteChain.then(
+      automaticSaveBackend === 'server' ? writeSettingsToServer : writeSettingsToAutomaticFile
+    );
   }, delay);
 }
 
 /** Start the save file write at once (page being hidden or closed), dropping any queued one. */
 function writeAutomaticFileNow() {
-  if (!automaticFileReady) return;
+  if (automaticSaveBackend === 'server') {
+    if (!serverSaveState.linked || !serverSaveReady) return;
+  } else if (!automaticFileReady) return;
   window.clearTimeout(pendingFileSave);
   pendingFileSave = 0;
-  fileWriteChain = fileWriteChain.then(writeSettingsToAutomaticFile);
+  fileWriteChain = fileWriteChain.then(
+    automaticSaveBackend === 'server' ? writeSettingsToServer : writeSettingsToAutomaticFile
+  );
 }
 
 /** Register the case-archive reader used to keep `cases` in the saved state current. */
@@ -383,15 +473,53 @@ export function initLocalStorage() {
   });
 }
 
-/** Restore a previously approved team file without prompting the user. */
+async function initServerSave() {
+  automaticSaveBackend = 'server';
+  serverSaveState = loadServerSaveState();
+  if (!serverSaveState.linked) {
+    setAutomaticFileStatus('Connect Desktop Save', 'Keep an automatic team save on the tracker computer.');
+    return false;
+  }
+
+  try {
+    const remote = await fetchServerSave();
+    if (serverSaveState.dirty) {
+      if (remote.version !== serverSaveState.version) {
+        serverSaveReady = false;
+        setAutomaticFileStatus('Resolve Desktop Save', 'Both this browser and the desktop copy changed. Click to choose which one to keep.');
+        return false;
+      }
+      serverSaveReady = true;
+      return putServerSave();
+    }
+
+    if (remote.exists && remote.version !== serverSaveState.version) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(remote.team));
+    }
+    serverSaveState.version = remote.version ?? null;
+    serverSaveState.dirty = false;
+    serverSaveReady = true;
+    storeServerSaveState();
+    showServerSaveOn();
+    return true;
+  } catch (error) {
+    serverSaveReady = false;
+    setAutomaticFileStatus('Reconnect Desktop Save', 'Could not reach the team save on the tracker computer. Click to retry.');
+    console.error('Failed to restore the desktop team save', error);
+    return false;
+  }
+}
+
+/** Restore a previously approved team file or the LAN-safe save on the tracker computer. */
 export async function initAutomaticFileSave(button) {
   automaticFileButton = button;
 
-  if (!('showSaveFilePicker' in window) || !('showOpenFilePicker' in window) || !('indexedDB' in window)) {
-    setAutomaticFileStatus('File Save Unsupported', 'Use Team CV to download a manual backup in this browser.');
-    if (automaticFileButton) automaticFileButton.disabled = true;
-    return false;
-  }
+  const nativeFileAccess = window.isSecureContext
+    && 'showSaveFilePicker' in window
+    && 'showOpenFilePicker' in window
+    && 'indexedDB' in window;
+  if (!nativeFileAccess) return initServerSave();
+  automaticSaveBackend = 'native';
 
   try {
     automaticFileHandle = await readStoredFileHandle();
@@ -415,8 +543,96 @@ export async function initAutomaticFileSave(button) {
   }
 }
 
+function askServerSaveChoice(remote) {
+  return new Promise(resolve => {
+    const body = document.createElement('p');
+    body.className = 'modal-message';
+    body.textContent = `The tracker computer already holds ${describeSettings(remote.team)}. Load that copy, or explicitly replace it with the team currently in this browser.`;
+    let choice = null;
+    openModal({
+      title: 'Desktop save conflict',
+      content: body,
+      closeLabel: 'Cancel',
+      actions: [
+        { label: 'Replace Desktop Copy', onClick: () => { choice = 'browser'; } },
+        { label: 'Load Desktop Copy', variant: 'primary', onClick: () => { choice = 'desktop'; } }
+      ],
+      onClose: () => resolve(choice)
+    });
+  });
+}
+
+async function connectServerSave() {
+  if (serverSaveState.linked && serverSaveReady && !serverSaveState.dirty) {
+    return unlinkAutomaticSaveFile();
+  }
+
+  try {
+    const remote = await fetchServerSave();
+
+    if (serverSaveState.linked && serverSaveState.dirty && remote.version === serverSaveState.version) {
+      serverSaveReady = true;
+      return putServerSave();
+    }
+
+    if (serverSaveState.linked && !serverSaveState.dirty) {
+      serverSaveReady = true;
+      serverSaveState.version = remote.version ?? null;
+      storeServerSaveState();
+      if (remote.exists) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(remote.team));
+        savesSuspended = true;
+        location.reload();
+      } else {
+        showServerSaveOn();
+      }
+      return true;
+    }
+
+    if (remote.exists) {
+      const choice = await askServerSaveChoice(remote);
+      if (!choice) return false;
+      serverSaveState.linked = true;
+      serverSaveState.version = remote.version;
+      if (choice === 'desktop') {
+        serverSaveState.dirty = false;
+        storeServerSaveState();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(remote.team));
+        savesSuspended = true;
+        location.reload();
+        return true;
+      }
+      serverSaveState.dirty = true;
+      serverSaveReady = true;
+      storeServerSaveState();
+      return putServerSave({ overwrite: true });
+    }
+
+    serverSaveState = { linked: true, version: null, dirty: true };
+    serverSaveReady = true;
+    storeServerSaveState();
+    return putServerSave();
+  } catch (error) {
+    serverSaveReady = false;
+    setAutomaticFileStatus('Reconnect Desktop Save', 'Could not reach the tracker computer. Click to retry.');
+    toast('Could not connect the desktop team save. Your browser-local data is unchanged.', { kind: 'error', duration: 7000 });
+    console.error('Failed to connect the desktop team save', error);
+    return false;
+  }
+}
+
 /** Stop keeping the connected file updated. The data saved in this browser is untouched. */
 async function unlinkAutomaticSaveFile() {
+  if (automaticSaveBackend === 'server') {
+    serverSaveState = { linked: false, version: null, dirty: false };
+    serverSaveReady = false;
+    fileSaveAnnounced = false;
+    storeServerSaveState();
+    setAutomaticFileStatus('Connect Desktop Save', 'Keep an automatic team save on the tracker computer.');
+    toast('Disconnected the desktop save. The desktop copy and this browser copy were both kept.', { duration: 6000 });
+    return false;
+  }
+
   const handle = automaticFileHandle;
   if (!handle) return;
   window.clearTimeout(pendingFileSave);
@@ -544,6 +760,7 @@ async function createNewSaveFile() {
  * While saving, it unlinks instead.
  */
 export async function connectAutomaticSaveFile() {
+  if (automaticSaveBackend === 'server') return connectServerSave();
   if (!('showSaveFilePicker' in window) || !('showOpenFilePicker' in window)) return false;
 
   if (automaticFileReady) {
@@ -599,6 +816,10 @@ export function loadSettingsFile() {
   chooseJsonFile(data => {
     if (!data || typeof data !== 'object') throw new Error('Invalid settings file');
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    if (automaticSaveBackend === 'server' && serverSaveState.linked) {
+      serverSaveState.dirty = true;
+      storeServerSaveState();
+    }
     savesSuspended = true;
     location.reload();
   }, 'Failed to load settings file: invalid JSON or structure.');

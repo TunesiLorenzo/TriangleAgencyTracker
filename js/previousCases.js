@@ -7,6 +7,7 @@
 import { confirmDialog, openModal, toast } from './ui.js';
 import { playButton, soundStartDelay } from './soundEffects.js';
 import { getConfig } from './config.js';
+import { motionAllowed } from './motion.js';
 
 const MAX_SCAN_BYTES = 100 * 1024 * 1024;   // mirrors MAX_CASE_BYTES in web.py
 const SCAN_TYPES = '.jpg,.jpeg,.png,.webp,.pdf';
@@ -68,7 +69,7 @@ function gateTimes() {
 }
 
 function reducedMotion() {
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  return !motionAllowed();
 }
 
 function wait(ms) {

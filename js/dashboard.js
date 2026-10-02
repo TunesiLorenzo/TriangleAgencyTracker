@@ -5,6 +5,7 @@
 
 import { getAgentStats } from './charSystem.js';
 import { loadSettings, updateSettings } from './storage.js';
+import { motionAllowed } from './motion.js';
 
 const MAX_TIMELINE = 150;
 const MAX_VISIBLE_TIMELINE = 40;
@@ -76,7 +77,7 @@ function pushEvent({ label, isTask = false, witnessMarker = false } = {}) {
 /** A "+1" (or "−1") rising from the triangle that was clicked. */
 function floatScore(triangle, type, delta) {
   const card = triangle?.closest('.char');
-  if (!card || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  if (!card || !motionAllowed()) return;
   const from = triangle.getBoundingClientRect();
   const box = card.getBoundingClientRect();
   const label = document.createElement('span');

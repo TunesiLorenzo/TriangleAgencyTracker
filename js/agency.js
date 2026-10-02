@@ -14,6 +14,7 @@ import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack
 import { loadSettings, saveSettings, updateSettings } from './storage.js';
 import { openModal, toast } from './ui.js';
 import { createUuid } from './uuid.js';
+import { motionAllowed } from './motion.js';
 
 const TEAM = 'team';   // owner or holder of a communal item
 const ITEMS_OPEN_KEY = 'ta-agency-items-open';
@@ -210,7 +211,7 @@ export function awardMissionDistinctions({ mvp = null, suspended = null } = {}) 
 
 /** Confetti for a new MVP, the stamp coming down on a new Sospeso. */
 function celebrate(portrait, kind) {
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  if (!motionAllowed()) return;
   portrait.classList.add(`celebrate-${kind}`);
   if (kind === 'mvp') {
     for (let i = 0; i < 20; i++) {

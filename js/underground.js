@@ -5,12 +5,12 @@
 import { PROMO_DIR } from './agencyData.js';
 import { TRACK_LENGTH } from './lifeWorkTrack.js';
 import { AGENCY_LINES, PIRATE_LINES, SIGNAL_RESTORED } from './undergroundData.js';
+import { motionAllowed } from './motion.js';
 
 const POSTERS_FILE = './texts/anomaly-posters.txt';
 const POSTER_TIME = 4000;     // each poster stays up this long as the Agency printed it
 const CORRUPT_CHANCE = 0.3;   // then it may get tagged...
 const TAGGED_TIME = 3000;     // ...and stays tagged this long before it is expunged
-const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 let breach = 0;
 let broadcast = null;   // both kept across renders, so their timers and current state carry on
 let posterFeed = null;
@@ -75,7 +75,7 @@ function createBroadcast() {
 
   function type(text) {
     clearInterval(typing);
-    if (reducedMotion?.matches) { hijackLine.textContent = text; return; }
+    if (!motionAllowed()) { hijackLine.textContent = text; return; }
     let shown = 0;
     hijackLine.textContent = '';
     typing = setInterval(() => {
@@ -100,7 +100,7 @@ function createBroadcast() {
       setState('jammed');
       type(pirateOrder[pirateIndex++ % pirateOrder.length]);
       later(restore, 6500);
-    }, reducedMotion?.matches ? 0 : 500);
+    }, motionAllowed() ? 500 : 0);
   }
   function restore() {
     setState('restored');
@@ -204,7 +204,7 @@ function createPosterFeed() {
     later(() => {
       setPhase('corrupted');
       later(expunge, TAGGED_TIME);
-    }, reducedMotion?.matches ? 0 : 900);
+    }, motionAllowed() ? 900 : 0);
   }
   function expunge() {
     setPhase('expunging');

@@ -23,6 +23,9 @@ import { initLogin, whenSignedIn } from './login.js';
 import { initButtonSounds, initKeepAlive, isMuted, playEvent, setMuted } from './soundEffects.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
+import { initMotionPreference } from './motion.js';
+
+initMotionPreference();
 
 const VIEW_KEY = 'ta-view';
 
@@ -249,7 +252,8 @@ async function init() {
   if (!isServerAvailable()) document.getElementById('settingsLink').hidden = true;
 
   initLocalStorage();
-  initAutomaticFileSave(document.getElementById('autoSaveFileButton'));
+  // On LAN HTTP this may load the desktop-hosted team save before anything is rendered.
+  await initAutomaticFileSave(document.getElementById('autoSaveFileButton'));
   bindControls();
   initWorld();
 

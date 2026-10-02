@@ -132,11 +132,10 @@ if errorlevel 1 goto :failed
 call :wait_for_tracker
 if errorlevel 1 (
     echo WARNING: Triangle did not answer within 30 seconds.
-) else (
-    start "" "http://localhost:5002/"
 )
 echo.
 echo Other LAN devices can use http://%COMPUTERNAME%:5002/
+echo The tracker browser is left closed on this server PC; use the room laptop as the viewer.
 goto :done
 
 :start_local_lights
@@ -169,11 +168,20 @@ exit /b 0
 
 :start_local_tracker
 call :is_tracker_running
+if errorlevel 1 goto :tracker_not_running
+call :is_tracker_target
 if not errorlevel 1 (
     echo Triangle Agency Tracker is already running locally on port 5002.
-    echo NOTE: An existing server keeps the LightRPG address it started with.
     exit /b 0
 )
+echo Restarting Triangle Agency Tracker because it is using the wrong LightRPG address...
+powershell.exe -NoProfile -Command "try { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:5002/api/shutdown' -TimeoutSec 3 ^| Out-Null } catch {}; for ($i = 0; $i -lt 20; $i++) { try { Invoke-RestMethod -Uri 'http://127.0.0.1:5002/api/config' -TimeoutSec 1 ^| Out-Null } catch { exit 0 }; Start-Sleep -Milliseconds 500 }; exit 1" >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: The old tracker server did not stop. Close its window and run this launcher again.
+    exit /b 1
+)
+
+:tracker_not_running
 call :is_local_port_open 5002
 if not errorlevel 1 (
     echo Port 5002 already has a local listener, so another tracker will not be started.
@@ -221,6 +229,10 @@ exit /b %errorlevel%
 
 :is_tracker_running
 powershell.exe -NoProfile -Command "try { $reply = Invoke-RestMethod -Uri 'http://127.0.0.1:5002/api/config' -TimeoutSec 2; if ($reply.ok -eq $true) { exit 0 } } catch {}; exit 1" >nul 2>&1
+exit /b %errorlevel%
+
+:is_tracker_target
+powershell.exe -NoProfile -Command "try { $reply = Invoke-RestMethod -Uri 'http://127.0.0.1:5002/api/lights/status' -TimeoutSec 4; if ($reply.url -eq '%LIGHTRPG_URL%') { exit 0 } } catch {}; exit 1" >nul 2>&1
 exit /b %errorlevel%
 
 :is_remote_lights_running

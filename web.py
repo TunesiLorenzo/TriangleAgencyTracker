@@ -7,7 +7,8 @@ Two front-ends share one local Flask server (same layout as MTG_Table):
 Settings live in tracker_config.json next to this file. The viewer polls
 /api/config and applies changes live, so tuning on /settings (from this PC or a
 phone on the same network) shows up on the display without a reload.
-Tracker data (agents, tasks, counters) stays in the viewer's browser storage.
+Tracker data (agents, tasks, counters) stays in the viewer's browser storage and can
+also be mirrored atomically to team_save.json by LAN viewers that connect Desktop Save.
 Previous cases (HD scans of each mission's Rapporto) are too big for that, so they
 live in cases/ next to this file, indexed by cases/cases.json. A team file carries the
 case index only; /api/cases/archive exports and restores the whole archive, scans
@@ -18,6 +19,7 @@ Room lights go through LightRPG, which runs beside the tracker (see lights.py);
 """
 
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -37,6 +39,7 @@ BASE_DIR = Path(__file__).resolve().parent
 AUDIO_DIR = BASE_DIR / "audio"
 UPLOAD_FOLDERS = {"uploads": AUDIO_DIR / "uploads", "Competencies": AUDIO_DIR / "Competencies"}
 CONFIG_FILE = BASE_DIR / "tracker_config.json"
+TEAM_SAVE_FILE = BASE_DIR / "team_save.json"
 CASES_DIR = BASE_DIR / "cases"
 CASES_FILE = CASES_DIR / "cases.json"
 BADGE_DIR = BASE_DIR / "images" / "badge"   # the Manager's photo on the login screen badge
@@ -48,6 +51,7 @@ CASE_OUTCOMES = {"contained", "killed", "escaped"}
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_CASE_BYTES = 100 * 1024 * 1024
 MAX_CONFIG_BYTES = 512 * 1024
+MAX_TEAM_SAVE_BYTES = 25 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024   # a whole archive of HD scans
 ARCHIVE_INDEX_NAME = "cases.json"            # the index inside an archive bundle
 
@@ -59,6 +63,7 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 config_lock = threading.Lock()
 config_state = {"revision": 0, "config": {}}
+team_save_lock = threading.Lock()
 cases_lock = threading.Lock()
 
 
@@ -86,6 +91,22 @@ def load_config():
     if isinstance(saved, dict) and isinstance(saved.get("config"), dict):
         config_state["config"] = saved["config"]
         config_state["revision"] = int(saved.get("revision") or 0)
+
+
+def team_save_version(team):
+    """Stable content version used to prevent two viewers overwriting each other."""
+    encoded = json.dumps(team, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def load_team_save():
+    try:
+        team = json.loads(TEAM_SAVE_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    if not isinstance(team, dict):
+        raise ValueError("The desktop team save is not a settings object")
+    return team
 
 
 # -----------------------------
@@ -370,6 +391,48 @@ def set_config():
         config_state["revision"] += 1
         write_json_file(CONFIG_FILE, config_state)
         return jsonify({"ok": True, "revision": config_state["revision"]})
+
+
+# -----------------------------
+# TEAM SAVE (LAN-safe automatic persistence)
+# -----------------------------
+@app.get("/api/team-save")
+def get_team_save():
+    """Return the desktop-hosted team save used when LAN HTTP cannot open local files."""
+    with team_save_lock:
+        team = load_team_save()
+        if team is None:
+            return jsonify({"ok": True, "exists": False, "version": None, "team": None})
+        return jsonify({"ok": True, "exists": True, "version": team_save_version(team), "team": team})
+
+
+@app.put("/api/team-save")
+def put_team_save():
+    """Atomically update the team save, rejecting stale viewers unless overwrite is explicit."""
+    if (request.content_length or 0) > MAX_TEAM_SAVE_BYTES:
+        return jsonify({"ok": False, "message": "The team save is too large"}), 413
+    payload = request.get_json(silent=True) or {}
+    team = payload.get("team")
+    expected = payload.get("expectedVersion")
+    overwrite = payload.get("overwrite") is True
+    if not isinstance(team, dict):
+        raise ValueError("Expected a team settings object")
+    if expected is not None and not isinstance(expected, str):
+        raise ValueError("Invalid team save version")
+
+    with team_save_lock:
+        current = load_team_save()
+        current_version = team_save_version(current) if current is not None else None
+        if not overwrite and expected != current_version:
+            return jsonify({
+                "ok": False,
+                "conflict": True,
+                "exists": current is not None,
+                "version": current_version,
+                "message": "The desktop team save changed in another viewer",
+            }), 409
+        write_json_file(TEAM_SAVE_FILE, team)
+        return jsonify({"ok": True, "version": team_save_version(team)})
 
 
 @app.get("/api/sounds")

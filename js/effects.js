@@ -8,6 +8,7 @@
 // All tuning comes from /settings (config.effects); one loop runs for the page.
 
 import { DEFAULT_CONFIG, RISK_LEVELS, onConfigChange } from './config.js';
+import { motionAllowed } from './motion.js';
 import { noise } from './noise.js';
 import { playEvent } from './soundEffects.js';
 
@@ -31,7 +32,6 @@ const jitter = { x: 0, y: 0, r: 0, tx: 0, ty: 0, tr: 0, nextRetarget: 0, burstUn
 
 const rand = () => Math.random() * 2 - 1;
 const easeFactor = (dt, tau) => 1 - Math.exp(-dt / Math.max(0.001, tau));
-const motionAllowed = () => !reducedMotion?.matches;
 
 function glitchActive() {
   const glitch = tuning.glitch;

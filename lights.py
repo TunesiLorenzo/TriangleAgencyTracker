@@ -33,7 +33,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-LIGHTRPG_URL = os.environ.get("LIGHTRPG_URL", "http://127.0.0.1:5000").rstrip("/")
+# The standard two-computer layout keeps LightRPG beside the room display. The
+# launcher overrides this with loopback when both services intentionally share a PC.
+LIGHTRPG_URL = os.environ.get("LIGHTRPG_URL", "http://Laptop-Lorenzo:5000").rstrip("/")
 LIGHTRPG_DIR = Path(os.environ.get("LIGHTRPG_DIR", Path(__file__).resolve().parent.parent / "LightRPG"))
 
 BULB_IDS = ("top_left", "center", "bottom_right")

@@ -14,14 +14,13 @@ import { getConfig, onConfigChange } from './config.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { playButton, soundStartDelay } from './soundEffects.js';
+import { motionAllowed } from './motion.js';
 
 const READER_ZOOM = 2;     // the close-up on the badge going through the card reader
 const PURGE_SECONDS = 4;   // Log Out: the countdown before the server stops and the page reloads
 const USERNAME = 'Manager#56776544';
 const PASSWORD = '*'.repeat(14);
 
-const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-const motionAllowed = () => !reducedMotion?.matches;
 // Without motion every beat is short: the steps still show, nothing travels.
 const wait = ms => new Promise(resolve => setTimeout(resolve, motionAllowed() ? ms : Math.min(ms, 150)));
 const canClipWindow = window.CSS?.supports?.('clip-path', 'path(evenodd, "M0 0H1V1Z")') ?? false;
