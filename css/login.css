@@ -7,8 +7,7 @@
   --login-ok: #30d158;
 }
 
-/* Signed in (login.js): the main screen alone. Normal page loads start signed out;
-   a settings-triggered G.R.A. reload can preserve an already-open display once. */
+/* Signed in (login.js): the main screen alone. Page loads start signed out. */
 html[data-session="open"] .login-screen { display: none; }
 html:not([data-session="open"]) body { overflow: hidden; }
 
@@ -267,6 +266,13 @@ html:not([data-session="open"]) body { overflow: hidden; }
   animation: login-pulse 1.8s ease-in-out infinite;
 }
 .login-start span { color: var(--login-red); }
+.login-shortcut {
+  display: block;
+  margin-top: 6px;
+  color: rgba(255,255,255,0.55);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
 .login-start:focus-visible { outline: 2px solid rgba(255,255,255,0.7); outline-offset: 4px; }
 .login-screen:not([data-state="locked"]) .login-start { visibility: hidden; }
 .login-status { color: rgba(255,255,255,0.7); transition: color 200ms ease; }
@@ -292,7 +298,7 @@ html:not([data-session="open"]) body { overflow: hidden; }
   text-transform: uppercase;
   animation: login-severed-in 400ms ease-out both;
 }
-.login-screen[data-state="severed"] .login-severed { display: flex; }
+.login-screen:is([data-state="severed"], [data-state="powering-off"]) .login-severed { display: flex; }
 /* warning bands above and below the message */
 .login-severed::before,
 .login-severed::after {
@@ -333,6 +339,56 @@ html:not([data-session="open"]) body { overflow: hidden; }
   text-shadow: 0 0 16px #ff3b30, 0 0 60px rgba(255,59,48,0.85);
   animation: login-severed-glow 1s ease-in-out infinite;
 }
+
+/* At zero: squeeze the image into a bright centre line, then extinguish it.
+   The screen itself stays full-size and black so the tracker cannot show through. */
+.login-screen:is([data-state="powering-off"], [data-state="off"]) {
+  background: #000;
+  cursor: none;
+}
+.login-screen[data-state="powering-off"] .login-stage {
+  transform-origin: center;
+  animation: login-crt-collapse var(--login-power-off, 1100ms) linear both;
+}
+.login-screen[data-state="powering-off"]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px #fff, 0 0 22px rgba(195,225,255,.8);
+  transform-origin: center;
+  pointer-events: none;
+  animation: login-crt-line var(--login-power-off, 1100ms) linear both;
+}
+.login-screen:is([data-state="powering-off"], [data-state="off"]) .login-iris-edge { display: none; }
+.login-screen[data-state="off"] .login-stage { visibility: hidden; }
+
+@keyframes login-crt-collapse {
+  0% { transform: scale(1, 1); filter: none; opacity: 1; }
+  15% { transform: scale(1.035, .82); filter: brightness(1.2); opacity: 1; }
+  45% { transform: scale(1, .004); filter: brightness(4) blur(1px); opacity: 1; }
+  60% { transform: scale(.7, .003); filter: brightness(6) blur(1px); opacity: .8; }
+  85%, 100% { transform: scale(0, 0); filter: brightness(0); opacity: 0; }
+}
+@keyframes login-crt-line {
+  0%, 32% { transform: scaleX(1); opacity: 0; }
+  45% { transform: scaleX(1); opacity: 1; }
+  60% { transform: scaleX(.7); opacity: 1; }
+  85% { transform: scaleX(.008); opacity: .8; }
+  100% { transform: scaleX(0); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-screen[data-state="powering-off"] .login-stage {
+    animation: login-crt-fade var(--login-power-off, 150ms) linear both;
+  }
+  .login-screen[data-state="powering-off"]::after { display: none; }
+}
+@keyframes login-crt-fade { to { opacity: 0; } }
 
 /* ---------- Retina scanner ---------- */
 .login-scanner {

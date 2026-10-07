@@ -16,6 +16,13 @@ export const REALITIES = ['Custode', 'Stacanovista', 'Fuggitivo', 'Star', 'Squat
 
 export const RISK_LEVELS = ['controlled', 'unstable', 'compromised', 'critical', 'catastrophic'];
 
+// What the Chaos counter drives while the G.R.A. takeover holds a display (effects.graTakeover.chaosEffects).
+export const GRA_CHAOS_EFFECTS = [
+  { key: 'both', label: 'G.R.A. incidents + usual chaos effects' },
+  { key: 'gra', label: 'G.R.A. incidents only' },
+  { key: 'default', label: 'Usual chaos effects only' }
+];
+
 const slot = (source, volume = 1, next = '') => ({ source, volume, next });
 
 export const SOUND_EVENTS = [
@@ -118,11 +125,12 @@ export const BUTTON_GROUPS = [
     ]
   },
   {
-    key: 'agents', label: 'Agents', hint: 'Sick leave, Prime Directive and Encouraged Behavior keep their Event / Competency sounds.',
+    key: 'agents', label: 'Agents', hint: 'Sick leave, Prime Directive and Encouraged Behavior keep their Event / Competency sounds. The key on the task panel plays the reveal sound set on the Effects tab.',
     buttons: [
       { key: 'addTask', label: '+ Add Task', selector: '#taskPanel .add-task-btn', sound: 'synth:pop' },
       { key: 'applyTask', label: 'Task', hint: 'Opens the agent picker', selector: '#taskPanel .task', sound: 'synth:tap' },
       { key: 'deleteTask', label: 'Delete task', selector: '#taskPanel .task-del', sound: 'synth:trash' },
+      { key: 'lockMerits', label: 'Lock merit / demerit counts', hint: 'Padlock on the task panel', selector: '#taskPanel .merit-lock-btn', sound: 'synth:lock' },
       { key: 'flipCard', label: 'Flip agent card', selector: '.char .flip-btn', sound: 'synth:paper' },
       { key: 'exportAgent', label: 'Export agent (on the card)', selector: '.char .export-btn', sound: 'synth:typewriter' },
       { key: 'removeAgent', label: 'Remove agent', selector: '.char .remove-btn', sound: 'synth:trash' },
@@ -205,14 +213,15 @@ export const BUTTON_GROUPS = [
       { key: 'granted', label: 'Access granted', selector: '.login-status', sound: 'synth:confirm' },
       { key: 'enter', label: 'Window opens onto the main screen', selector: '.login-stage', sound: 'synth:open' },
       { key: 'logout', label: 'Log Out', selector: '#logoutButton', sound: 'synth:close' },
-      { key: 'purgeTick', label: 'Log Out: purge countdown', hint: 'Each second before the server stops', selector: '.login-severed', sound: 'synth:tick' }
+      { key: 'purgeTick', label: 'Log Out: purge countdown', hint: 'Countdown before the screen switches off', selector: '.login-severed', sound: 'synth:tick' },
+      { key: 'powerOff', label: 'Log Out: CRT power off', hint: 'Once, when the purge countdown reaches zero', selector: '.login-screen[data-state="powering-off"]', sound: 'file:Off.mp3' }
     ]
   }
 ];
 
 // These play their own event, competency or synchronized effect, so the delegated
 // button listener must not add a second sound on top.
-export const EVENT_SOUND_BUTTONS = '.death-btn, .back-action-btn, .cases-vault-trigger, .mission-modal .modal-btn-captured, .mission-modal .modal-btn-killed, .mission-modal .modal-btn-escaped, .login-start';
+export const EVENT_SOUND_BUTTONS = '.death-btn, .back-action-btn, .merit-key-btn, .cases-vault-trigger, .mission-modal .modal-btn-captured, .mission-modal .modal-btn-killed, .mission-modal .modal-btn-escaped, .login-start';
 
 function competencyDefaults() {
   return Object.fromEntries(COMPETENCIES.map(name => [name, { prime: slot(''), encouraged: slot('') }]));
@@ -278,7 +287,25 @@ export const DEFAULT_CONFIG = {
   },
   effects: {
     graTakeover: {
-      enabled: false       // remote display takeover, controlled from /settings
+      enabled: false,      // remote display takeover, controlled from /settings
+      chaosEffects: 'both', // what chaos does on a taken-over display: 'gra' incidents, the 'default' atmosphere, or 'both'
+      coverAt: 3,          // seconds into the transition sound: the toll barrier covers the screen...
+      openAt: 10,          // ...and lifts; the scene dissolves as the sound ends (graTakeover.js)
+      sound: slot('none')  // played once per mode switch, with the viewer's mute/volume
+    },
+    graIncidents: {        // random events while the takeover is on (graIncidents.js)
+      baseStrength: 0.4,   // their strength (0..1) with no chaos on the counter...
+      chaosStrength: 0.6,  // ...and what full chaos intensity (atmosphere.maxChaos) adds to it
+      // Times a minute at full strength; 0 = never. Strength also makes breakdowns heavier and longer.
+      carsPerMinute: 2,    // traffic driving across the screen
+      popupsPerMinute: 3,  // Autoverrox navigation pop-ups
+      glitchesPerMinute: 1, // the tracker breaking down for 3.5 to 10 seconds
+      trafficSpeed: 1,     // 1 = about the pace of the pass-by recordings (cars cross in 1.75-3 s)
+      trafficVolume: 0.8   // pass-by recordings from audio/GRA (car*, truck*)
+    },
+    meritLock: {
+      enabled: false,      // agent cards show a padlock instead of this mission's merit and demerit counts
+      sound: slot('synth:fanfare')  // played on every viewer when the counts are revealed
     },
     atmosphere: {
       maxChaos: 16,        // chaos at which everything is fully intense
@@ -481,4 +508,15 @@ export async function saveConfig(config) {
   apply(config, data.revision);
   channel?.postMessage({ config, revision: data.revision });
   return data.revision;
+}
+
+/**
+ * Change settings from the viewer (the task panel's lock and key). The saved settings are
+ * read first, so an edit made on /settings a moment ago is not sent back out of date.
+ */
+export async function updateConfig(mutate) {
+  const data = await fetchConfig();
+  const config = mergeConfig(DEFAULT_CONFIG, data.config);
+  mutate(config);
+  return saveConfig(config);
 }

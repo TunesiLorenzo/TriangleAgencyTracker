@@ -4,30 +4,30 @@
 // in the Manager's credentials; the Manager badge drops in on its lanyard and goes through
 // the card reader; the retina scanner rises and scans; then a triangular window opens out
 // of the logo onto the main screen. Log Out runs that window in reverse, counts down
-// "Secure link severed", stops the tracker server and reloads onto the browser's own
-// "can't reach this page". Purely theatrical: nothing is checked, and the main screen keeps running
+// "Secure link severed", collapses the screen like a CRT powering off, then stops the server.
+// The page stays black until manually refreshed. Purely theatrical: nothing is checked, and the main screen keeps running
 // underneath. Behind it all, the moving contour lines of loginBackdrop.js. Its sounds are
 // the "Log in / out" buttons on /settings; the timing of every step and the badge picture
-// are on the Login tab there.
+// are on the Login tab there. Ctrl + left-click skips the sequence and opens the tracker.
 
 import { getConfig, onConfigChange } from './config.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
-import { playButton, soundStartDelay } from './soundEffects.js';
+import { playButton, powerOffAudio, soundStartDelay } from './soundEffects.js';
 import { motionAllowed } from './motion.js';
 
 const READER_ZOOM = 2;     // the close-up on the badge going through the card reader
-const PURGE_SECONDS = 4;   // Log Out: the countdown before the server stops and the page reloads
+const PURGE_SECONDS = 4;   // Log Out: the countdown before the CRT switches off
+const POWER_OFF_MS = 1100;
 const USERNAME = 'Manager#56776544';
 const PASSWORD = '*'.repeat(14);
-const GRA_RELOAD_SESSION_KEY = 'ta-gra-preserve-open-session';
 
 // Without motion every beat is short: the steps still show, nothing travels.
 const wait = ms => new Promise(resolve => setTimeout(resolve, motionAllowed() ? ms : Math.min(ms, 150)));
 const canClipWindow = window.CSS?.supports?.('clip-path', 'path(evenodd, "M0 0H1V1Z")') ?? false;
 
 const els = {};
-let state = 'locked';     // 'locked' | 'authenticating' | 'open' | 'closing' | 'severed' (Log Out countdown)
+let state = 'locked';     // locked | authenticating | open | closing | severed | powering-off | off
 let signedInWaiters = [];
 let clockTimer = 0;
 let backdrop = null;      // the moving background; null without WebGL
@@ -37,16 +37,18 @@ function setState(next) {
   state = next;
   els.screen.dataset.state = next;
   const open = next === 'open';
+  const poweredOff = next === 'powering-off' || next === 'off';
+  els.screen.inert = poweredOff;
   // Signed in: login.css hides the screen.
   if (open) document.documentElement.dataset.session = 'open';
   else delete document.documentElement.dataset.session;
   els.main.inert = !open;
 
-  if (open) {
+  if (open || poweredOff) {
     clearInterval(clockTimer);
     clockTimer = 0;
     backdrop?.stop();
-    signedInWaiters.splice(0).forEach(resolve => resolve());
+    if (open) signedInWaiters.splice(0).forEach(resolve => resolve());
   } else {
     backdrop?.start();
     if (!clockTimer) {
@@ -297,8 +299,13 @@ function iris(direction, duration) {
   });
 }
 
-async function signIn() {
-  if (state !== 'locked') return;
+async function signIn(event) {
+  if (state !== 'locked' || (event?.button !== undefined && event.button !== 0)) return;
+  if (event?.ctrlKey) {
+    event.preventDefault();
+    setState('open');
+    return;
+  }
   setState('authenticating');
   const t = applyTiming();
   const { screen, fields } = els;
@@ -375,8 +382,8 @@ async function signOut() {
   // Not 'locked': a click during the countdown must not start a sign-in.
   setState('severed');
   await purgeCountdown();
+  await powerOff();
   await stopServer();
-  location.reload();
 }
 
 /**
@@ -394,26 +401,23 @@ async function purgeCountdown() {
   els.purgeCount.textContent = '0';
 }
 
-/**
- * Log Out stops the tracker server, and the page reloads once it has gone, so the browser
- * shows that the page can no longer be reached. web.py exits a few seconds after it answers.
- */
+/** Collapse the countdown image into a line, then keep an opaque black screen. */
+async function powerOff() {
+  const duration = motionAllowed() ? POWER_OFF_MS : 150;
+  els.screen.style.setProperty('--login-power-off', `${duration}ms`);
+  setState('powering-off');
+  const sound = powerOffAudio();
+  await new Promise(resolve => setTimeout(resolve, duration));
+  setState('off');
+  // Keep the server available until the audio has finished loading and playing.
+  await sound;
+}
+
+/** Stop the server after the picture and sound finish, leaving this page black. */
 async function stopServer() {
   try {
-    const response = await fetch('/api/shutdown', { method: 'POST' });
-    if (!response.ok) return;   // not the tracker server (a plain static server): just start over
-  } catch {
-    return;                     // already stopped
-  }
-  const deadline = performance.now() + 10000;
-  while (performance.now() < deadline) {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    try {
-      await fetch('/api/config', { cache: 'no-store' });
-    } catch {
-      return;                   // gone
-    }
-  }
+    await fetch('/api/shutdown', { method: 'POST' });
+  } catch { /* already stopped or served without the tracker backend */ }
 }
 
 /** Resolves once the Manager is signed in (at once if they already are). */
@@ -466,13 +470,5 @@ export function initLogin() {
   screen.addEventListener('click', signIn);
   document.getElementById('logoutButton').addEventListener('click', signOut);
 
-  // A settings-triggered G.R.A. reload may preserve an already-open display once.
-  // The marker lives in this tab only and is consumed immediately; normal reloads
-  // and displays that were locked still begin at the sign-in screen.
-  let preserveOpenSession = false;
-  try {
-    preserveOpenSession = sessionStorage.getItem(GRA_RELOAD_SESSION_KEY) === '1';
-    sessionStorage.removeItem(GRA_RELOAD_SESSION_KEY);
-  } catch { /* storage unavailable */ }
-  setState(preserveOpenSession ? 'open' : 'locked');
+  setState('locked');
 }

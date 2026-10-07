@@ -8,7 +8,7 @@
 // open viewers.
 
 import {
-  BUTTON_GROUPS, COMPETENCIES, DEFAULT_CONFIG, LIGHT_ACTIONS, LIGHT_EFFECTS, LIGHT_EVENTS,
+  BUTTON_GROUPS, COMPETENCIES, DEFAULT_CONFIG, GRA_CHAOS_EFFECTS, LIGHT_ACTIONS, LIGHT_EFFECTS, LIGHT_EVENTS,
   LIGHT_TARGETS, RISK_LEVELS, SOUND_EVENTS, competencyFile, getConfig, isCompetencyFolderFile,
   mergeConfig, onConfigChange, saveConfig, setLocalConfig, setSoundFiles, startConfigSync
 } from '/js/config.js';
@@ -52,14 +52,40 @@ const LIGHT_ACTION_FIELDS = {
   off: []
 };
 
-// Slider/toggle definitions for the Effects tab.
+// Slider/toggle definitions for the Effects tab. A group with `sound` also gets a sound
+// slot, saved as effects.<group>.sound.
 const EFFECT_GROUPS = [
   {
     key: 'graTakeover', title: 'G.R.A. takeover', eyebrow: 'DISPLAY OVERRIDE',
-    hint: 'Let the anomaly seize every open viewer. Switching this on or off saves immediately and reloads the displays; an already signed-in display stays signed in.',
+    hint: 'Let the anomaly seize every open viewer. Switching this on or off saves immediately and starts the transition sound, while the display stays signed in. The two marks are seconds into that sound: the toll barrier covers the screen and the new mode loads behind it, then the barriers lift. The scene dissolves as the sound ends, or about 2.5 s after the barriers lift when there is no sound or it is shorter. Choose a built-in sound or a file from the Sounds library. "Chaos effects" picks what a taken-over display does with chaos: the G.R.A. incidents (next card), the usual tracker effects (shake, grain, scanlines, critical glitch), or both.',
     fields: [
-      { key: 'enabled', label: 'Take over viewer displays', type: 'toggle' }
+      { key: 'enabled', label: 'Take over viewer displays', type: 'toggle' },
+      { key: 'chaosEffects', label: 'Chaos effects while taken over', type: 'select', options: GRA_CHAOS_EFFECTS },
+      { key: 'coverAt', label: 'Toll barrier covers the screen at', min: 0, max: 30, step: 0.1, unit: 's' },
+      { key: 'openAt', label: 'Barriers lift at', min: 0, max: 60, step: 0.1, unit: 's' }
+    ],
+    sound: { label: 'Barrier transition sound', hint: 'Starts the transition, in either direction' }
+  },
+  {
+    key: 'graIncidents', title: 'G.R.A. incidents', eyebrow: 'WHILE THE TAKEOVER IS ON',
+    hint: 'Things that happen at random on a taken-over viewer, unless the takeover is set to the usual chaos effects only. Strength is the first slider plus the share of the second that the Chaos counter has reached (see "Chaos for full intensity" on the Chaos atmosphere card), up to 100%. The three rates are times a minute at full strength; less strength means fewer incidents and milder, shorter breakdowns (3.5 to 10 seconds, one at a time). Vehicles play a recording from <code>audio/GRA</code>, a file with "truck" in its name for lorries and one with "car" for the rest, pitched to their speed: at 100% traffic speed they pass at about the pace of the recordings. None of this touches the tracker\'s data.',
+    fields: [
+      { key: 'baseStrength', label: 'Strength with no chaos', min: 0, max: 1, step: 0.05, percent: true },
+      { key: 'chaosStrength', label: 'Added at full chaos', min: 0, max: 1, step: 0.05, percent: true },
+      { key: 'carsPerMinute', label: 'Traffic', min: 0, max: 12, step: 0.5, unit: '/min', zeroLabel: 'off' },
+      { key: 'popupsPerMinute', label: 'Autoverrox pop-ups', min: 0, max: 12, step: 0.5, unit: '/min', zeroLabel: 'off' },
+      { key: 'glitchesPerMinute', label: 'Breakdowns', min: 0, max: 12, step: 0.5, unit: '/min', zeroLabel: 'off' },
+      { key: 'trafficSpeed', label: 'Traffic speed', min: 0.4, max: 2.5, step: 0.05, percent: true },
+      { key: 'trafficVolume', label: 'Traffic sound volume', min: 0, max: 1, step: 0.05, percent: true }
     ]
+  },
+  {
+    key: 'meritLock', title: 'Merit and demerit lock', eyebrow: 'AGENT CARDS',
+    hint: 'Each agent\'s merit and demerit triangles show a padlock instead of this mission\'s count, on every open viewer. They keep counting underneath, and the totals in the boxes beside them stay visible. The net score under them keeps its arrow but not its number, and the Agent Performance bars drift instead of holding still, so a standing can be guessed but not read. The padlock and key on the right of the task panel switch this too.',
+    fields: [
+      { key: 'enabled', label: 'Show a padlock instead of the counts', type: 'toggle' }
+    ],
+    sound: { label: 'Reveal sound', hint: 'Plays on every viewer when the counts are shown again' }
   },
   {
     key: 'atmosphere', title: 'Chaos atmosphere', eyebrow: 'ONE INTENSITY FOR EVERYTHING',
@@ -453,6 +479,19 @@ function renderField(path, field) {
     <output data-out="${path}">${formatValue(field, value)}</output></label>`;
 }
 
+/** The sound slot of an effect group that has one (`sound` in EFFECT_GROUPS). */
+function renderEffectSound(group) {
+  const path = `effects.${group.key}.sound`;
+  const slot = draft.effects[group.key].sound;
+  const { label, hint } = group.sound;
+  return `<div class="slot button-slot">
+    <div class="slot-name"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(hint)}</small></div>
+    <select data-path="${path}.source" aria-label="${escapeHtml(label)}">${sourceOptions(slot.source)}</select>
+    ${volumeControl(`${path}.volume`, slot.volume)}
+    <button type="button" class="play" data-test-slot="${path}" aria-label="Play ${escapeHtml(label)}">&#9654;</button>
+  </div>`;
+}
+
 function renderEffects() {
   $('#effectGroups').innerHTML = EFFECT_GROUPS.map(group => {
     const rows = group.fields.map(field => renderField(`effects.${group.key}.${field.key}`, field)).join('');
@@ -463,6 +502,7 @@ function renderEffects() {
       </div>
       <p class="hint">${group.hint}</p>
       <div class="fields">${rows}</div>
+      ${group.sound ? renderEffectSound(group) : ''}
     </div>`;
   }).join('');
 }
@@ -682,7 +722,9 @@ async function playFor(button) {
   if (button.dataset.testLight) return testLight(button);
   button.classList.add('playing');
   try {
-    if (button.dataset.testEvent) {
+    if (button.dataset.testSlot) {
+      await playSlot(getPath(draft, button.dataset.testSlot));
+    } else if (button.dataset.testEvent) {
       await playSlot(draft.sounds.events[button.dataset.testEvent]);
     } else if (button.dataset.testButton) {
       const [group, key] = button.dataset.testButton.split('.');

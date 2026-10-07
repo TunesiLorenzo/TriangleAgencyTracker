@@ -112,7 +112,8 @@ body.gra-takeover #graTakeoverOverlay {
 body.gra-transitioning #graTakeoverOverlay {
   opacity: 1;
   visibility: visible;
-  transition-delay: 0s;
+  transition: none;
+  pointer-events: auto;
 }
 
 body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-transition) { opacity: 0; }
@@ -136,8 +137,10 @@ body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-t
     repeating-linear-gradient(0deg, transparent 0 23px, rgba(119,255,114,.025) 24px 25px);
 }
 
-/* Full-screen toll gate used on the controlled reload. The old interface is
-   covered while the barriers lower; the acquired interface is revealed as they rise. */
+/* Cover the mode change behind lowered barriers; reveal the new skin as they rise.
+   graTakeover.js starts each phase on its mark of the transition sound: the scene arrives
+   with the barriers already down, holds, the barriers lift, and after --gra-toll-exit the
+   scene leaves over its last 1.3s (signs away, then the dissolve). */
 .gra-toll-transition {
   position: absolute;
   inset: 0;
@@ -148,6 +151,7 @@ body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-t
   background:
     linear-gradient(90deg, transparent 0 21%, rgba(255,255,255,.035) 21.2% 21.5%, transparent 21.7% 49.8%, rgba(255,211,51,.13) 50% 50.2%, transparent 50.4% 78.3%, rgba(255,255,255,.035) 78.5% 78.8%, transparent 79%),
     radial-gradient(ellipse at 50% 110%, rgba(18,96,48,.8), rgba(1,12,5,.98) 64%);
+  background-color: #010c05;
 }
 
 .gra-toll-transition::before {
@@ -164,7 +168,8 @@ body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-t
 
 .gra-toll-transition.is-opening {
   visibility: visible;
-  animation: gra-toll-clear 3s ease-in both;
+  opacity: 1;
+  animation: gra-toll-clear 840ms ease-in calc(var(--gra-toll-exit, 1150ms) + 460ms) both;
 }
 
 .gra-toll-gantry {
@@ -295,9 +300,9 @@ body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-t
   background: #ff3c35;
   box-shadow: 0 0 16px #ff3c35;
 }
-.gra-toll-arm-left { left: 10%; transform-origin: left center; transform: rotate(-72deg); }
+.gra-toll-arm-left { left: 10%; transform-origin: left center; }
 .gra-toll-arm-left span { right: 12%; }
-.gra-toll-arm-right { right: 10%; transform-origin: right center; transform: rotate(72deg); }
+.gra-toll-arm-right { right: 10%; transform-origin: right center; }
 .gra-toll-arm-right span { left: 12%; }
 
 .gra-toll-status {
@@ -318,15 +323,13 @@ body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-t
 .gra-toll-status span { color: #ffd333; font-size: 10px; letter-spacing: 4px; }
 .gra-toll-status strong { color: #8dff9b; font-size: clamp(15px, 2vw, 24px); letter-spacing: 5px; }
 
-.gra-toll-transition.is-approaching .gra-toll-arm-left { animation: gra-toll-close-left 720ms cubic-bezier(.45,0,.8,1) both; }
-.gra-toll-transition.is-approaching .gra-toll-arm-right { animation: gra-toll-close-right 720ms cubic-bezier(.45,0,.8,1) both; }
-.gra-toll-transition.is-opening .gra-toll-arm-left { animation: gra-toll-open-left 1.15s cubic-bezier(.2,.8,.25,1) .55s both; }
-.gra-toll-transition.is-opening .gra-toll-arm-right { animation: gra-toll-open-right 1.15s cubic-bezier(.2,.8,.25,1) .55s both; }
+.gra-toll-transition.is-opening .gra-toll-arm-left { animation: gra-toll-open-left 1150ms cubic-bezier(.2,.8,.25,1) both; }
+.gra-toll-transition.is-opening .gra-toll-arm-right { animation: gra-toll-open-right 1150ms cubic-bezier(.2,.8,.25,1) both; }
 .gra-toll-transition.is-opening .gra-toll-arm span { animation: gra-toll-lamp 240ms steps(1) 5; }
-.gra-toll-transition.is-opening .gra-toll-gantry { animation: gra-toll-gantry-away 850ms ease-in 1.75s both; }
-.gra-toll-transition.is-opening .gra-toll-booth-left { animation: gra-toll-booth-left 850ms ease-in 1.7s both; }
-.gra-toll-transition.is-opening .gra-toll-booth-right { animation: gra-toll-booth-right 850ms ease-in 1.7s both; }
-.gra-toll-transition.is-opening .gra-toll-status { animation: gra-toll-status-away 500ms ease-in 1.9s both; }
+.gra-toll-transition.is-opening .gra-toll-gantry { animation: gra-toll-gantry-away 850ms ease-in calc(var(--gra-toll-exit, 1150ms) + 50ms) both; }
+.gra-toll-transition.is-opening .gra-toll-booth-left { animation: gra-toll-booth-left 850ms ease-in var(--gra-toll-exit, 1150ms) both; }
+.gra-toll-transition.is-opening .gra-toll-booth-right { animation: gra-toll-booth-right 850ms ease-in var(--gra-toll-exit, 1150ms) both; }
+.gra-toll-transition.is-opening .gra-toll-status { animation: gra-toll-status-away 500ms ease-in calc(var(--gra-toll-exit, 1150ms) + 200ms) both; }
 
 .gra-map-grid {
   position: absolute;
@@ -700,7 +703,7 @@ body.gra-takeover[data-view="agentsTab"] #agentsView::before {
 
 /* Mission/task strip = overhead motorway message board. */
 body.gra-takeover[data-view="agentsTab"] #taskPanel {
-  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
   gap: 10px;
   padding: 31px 12px 12px;
   border: 2px solid rgba(218,255,216,.78) !important;
@@ -792,11 +795,17 @@ body.gra-takeover[data-view="agentsTab"] #taskPanel .task.used {
   filter: saturate(.45);
 }
 
-body.gra-takeover[data-view="agentsTab"] #taskPanel .task-controls :is(.add-task-btn, .task-gate-toggle) {
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task-controls :is(.add-task-btn, .task-gate-toggle, .merit-key-btn, .merit-lock-btn) {
   border: 1px solid rgba(238,255,225,.75) !important;
   background: #08703c !important;
   color: #f3ffec !important;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.32), 0 3px 0 #012f17 !important;
+}
+
+/* The padlock stays lit while the merit and demerit counts are sealed. */
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task-controls .merit-lock-btn:disabled {
+  background: #ffd333 !important;
+  color: #062817 !important;
 }
 
 /* Agent cards = individual lane permits / roadside identity boards. */
@@ -945,6 +954,9 @@ body.gra-takeover[data-view="agentsTab"] .char :is(.triangle, .triangle-down) {
   color: #fff;
   box-shadow: inset 0 0 0 2px rgba(0,0,0,.24), 0 3px 0 rgba(0,0,0,.5);
 }
+
+/* Square counters need no nudge: the sealed-merit padlock sits in the middle. */
+body.gra-takeover[data-view="agentsTab"] .char :is(.triangle, .triangle-down)::after { translate: none; }
 
 body.gra-takeover[data-view="agentsTab"] .char .triangle {
   background: linear-gradient(145deg, #16834b, #07542e);
@@ -1115,11 +1127,9 @@ body.gra-takeover[data-view="agentsTab"] #nextMissionButton::after {
 @keyframes gra-junction-pulse { to { opacity: .35; filter: drop-shadow(0 0 12px #ffd333); } }
 @keyframes gra-toll-arrive { from { opacity: 0; filter: blur(9px); } to { opacity: 1; filter: none; } }
 @keyframes gra-toll-clear {
-  0%, 72% { opacity: 1; filter: none; }
-  100% { visibility: hidden; opacity: 0; filter: blur(5px); }
+  from { opacity: 1; filter: none; }
+  to { visibility: hidden; opacity: 0; filter: blur(5px); }
 }
-@keyframes gra-toll-close-left { from { transform: rotate(-72deg); } to { transform: rotate(0); } }
-@keyframes gra-toll-close-right { from { transform: rotate(72deg); } to { transform: rotate(0); } }
 @keyframes gra-toll-open-left { from { transform: rotate(0); } to { transform: rotate(-78deg); } }
 @keyframes gra-toll-open-right { from { transform: rotate(0); } to { transform: rotate(78deg); } }
 @keyframes gra-toll-lamp { 50% { background: #72ff84; box-shadow: 0 0 20px #72ff84; } }

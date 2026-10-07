@@ -2,6 +2,7 @@ import { loadSettings, saveSettings, updateSettings } from './storage.js';
 import { playEvent } from './soundEffects.js';
 import { animateTriangle, chooseAgent, updateTint, updateTopCharacters } from './charSystem.js';
 import { openModal, toast } from './ui.js';
+import { createMeritLockControls } from './meritLock.js';
 
 const MAX_TASK_AMOUNT = 20;
 let taskGeneration = 0;
@@ -53,7 +54,8 @@ export function initTaskPanel(opts = {}) {
 
   controls.append(addBtn, gateBtn);
   stage.append(taskList, gate);
-  container.append(controls, stage);
+  // Right-hand column: the key and padlock for the agents' merit and demerit counts.
+  container.append(controls, stage, createMeritLockControls());
 
   // load tasks
   const saved = loadSettings();

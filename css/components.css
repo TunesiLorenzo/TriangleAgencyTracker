@@ -155,6 +155,26 @@
 }
 .triangle { clip-path: polygon(50% 0%,0% 100%,100% 100%); background: red; color:#fff; }
 .triangle-down { clip-path: polygon(0% 0%,100% 0%,50% 100%); background: blue; color:#fff; }
+/* Sealed merits (meritLock.js): the count stays in the triangle, but a padlock is drawn instead.
+   The net score under them is sealed the same way. */
+body.merits-locked .char :is(.triangle, .triangle-down, .net-indicator) { font-size: 0; }
+body.merits-locked .char :is(.triangle, .triangle-down, .net-indicator)::after {
+  --padlock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z'/%3E%3C/svg%3E");
+  content: '';
+  width: 13px;
+  height: 13px;
+  background: currentColor;
+  -webkit-mask: var(--padlock) center / contain no-repeat;
+  mask: var(--padlock) center / contain no-repeat;
+}
+/* nudged toward the wide end of each triangle, where the padlock fits */
+body.merits-locked .char .triangle::after { translate: 0 4px; }
+body.merits-locked .char .triangle-down::after { translate: 0 -4px; }
+/* the net score keeps its direction and colour: only the number gives way to the padlock */
+body.merits-locked .char .net-indicator { display: flex; align-items: center; justify-content: center; gap: 5px; }
+body.merits-locked .char .net-indicator::before { content: '\25AC'; font-size: 13px; }           /* level */
+body.merits-locked .char .net-indicator.positive::before { content: '\25B2'; }                   /* up */
+body.merits-locked .char .net-indicator.negative::before { content: '\25BC'; }                   /* down */
 .counter-input {
   width:48px; padding:5px 2px; text-align:center; background:#1c1c1c; color:#fff; border-radius:4px;
   border:1px solid rgba(255,255,255,0.18);
@@ -206,8 +226,15 @@
   background: rgba(255,255,255,0.06);
 }
 .char .activity-fill { height: 100%; }
-.char .activity-fill.merit { background: var(--competency-color); }
-.char .activity-fill.demerit { background: var(--anomaly-color); }
+.char .activity-fill.merit { width: calc(var(--merit-share, 0) * 100%); background: var(--competency-color); }
+.char .activity-fill.demerit { width: calc(var(--demerit-share, 0) * 100%); background: var(--anomaly-color); }
+/* Sealed merits: the split is pulled most of the way to the middle and wanders widely with
+   --seal-drift (-1 to 1, from dashboard.js), so the lean can be guessed but the meter is never
+   empty or one-sided. */
+body.merits-locked .char .activity-fill.merit {
+  width: calc((0.5 + (var(--merit-share, 0) - var(--demerit-share, 0)) * 0.18 + var(--seal-drift, 0) * 0.3) * 100%);
+}
+body.merits-locked .char .activity-fill.demerit { flex: 1; width: auto; }
 
 .char .warning-badge.standing-badge {
   border: 1px dashed var(--anomaly-color);
@@ -263,7 +290,7 @@ input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#
 #taskPanel {
   position: static;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
   align-items: stretch;
   gap: 8px;
   width: 100%;
@@ -348,7 +375,7 @@ input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#
   #taskPanel {
     position: static;
     display: grid;
-    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
     align-items: stretch;
     gap: 6px;
     width: 100%;

@@ -7,17 +7,19 @@
 
 import { BUTTON_GROUPS, EVENT_SOUND_BUTTONS, LIGHT_BUTTONS, competencyFile, getConfig, onConfigChange } from './config.js';
 import { triggerLight } from './lights.js';
-import { getAudioContext, playSynth, synthDuration } from './synth.js';
+import { getAudioContext, playSynth, shutdownAudioContext, synthDuration } from './synth.js';
 
 const MUTE_KEY = 'ta-muted';
 let muted = false;
+let poweredOff = false;
+const playingFiles = new Set();
 try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { /* storage unavailable */ }
 
 // Slots with a follow-up sound (e.g. the return-from-sick-leave jingle) are
 // exclusive; one-shot effects may overlap so rapid clicks never lose their sound.
 let sequencePlaying = false;
 
-export function isMuted() { return muted; }
+export function isMuted() { return muted || poweredOff; }
 
 export function setMuted(value) {
   muted = !!value;
@@ -45,7 +47,7 @@ function stopKeepAlive() {
 
 /** Start, retune or stop the tone to match the settings and the mute toggle. */
 function updateKeepAlive() {
-  if (!keepAliveArmed) return;
+  if (poweredOff || !keepAliveArmed) return;
   const { enabled, frequency, level } = getConfig().sounds.keepAlive;
   if (!enabled || muted) {
     stopKeepAlive();
@@ -73,6 +75,7 @@ function updateKeepAlive() {
 /** Viewer only: arm the keep-alive tone on the first gesture and follow settings changes. */
 export function initKeepAlive() {
   const wake = () => {
+    if (poweredOff) return;
     keepAliveArmed = true;
     updateKeepAlive();
     // A context the browser suspended (e.g. after an output device change) resumes on the next gesture.
@@ -126,6 +129,13 @@ async function sourceDuration(source) {
   return 0;
 }
 
+/** Seconds a slot plays for, its follow-up sound included; 0 when it is silent or unreadable. */
+export async function slotDuration(slot) {
+  if (!slot) return 0;
+  const durations = await Promise.all([sourceDuration(slot.source), sourceDuration(slot.next)]);
+  return durations[0] + durations[1];
+}
+
 // Resolves when the audio ends, errors, or times out.
 function playFile(src, volume) {
   return new Promise(resolve => {
@@ -139,6 +149,10 @@ function playFile(src, volume) {
       audio.removeEventListener('ended', cleanup);
       audio.removeEventListener('error', cleanup);
       clearTimeout(timeout);
+      playingFiles.delete(cleanup);
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
       resolve();
     };
 
@@ -148,6 +162,8 @@ function playFile(src, volume) {
     // Safety timeout in case 'ended' never fires (e.g. a corrupted file).
     const timeout = setTimeout(cleanup, 30000);
 
+    playingFiles.add(cleanup);
+
     // play() rejects under autoplay restrictions; just resolve.
     audio.play().catch(err => {
       console.warn('Sound could not play:', src, err);
@@ -156,9 +172,10 @@ function playFile(src, volume) {
   });
 }
 
-function playSource(source, volume) {
+function playSource(source, volume, allowPowerOff = false) {
+  if (poweredOff && !allowPowerOff) return Promise.resolve();
   if (!source || source === 'none' || volume <= 0) return Promise.resolve();
-  if (source.startsWith('synth:')) return playSynth(source.slice(6), volume);
+  if (source.startsWith('synth:')) return playSynth(source.slice(6), volume, { allowPowerOff });
   if (source.startsWith('file:')) return playFile(audioUrl(source.slice(5)), volume);
   return Promise.resolve();
 }
@@ -184,7 +201,7 @@ export function resolveSlot(event, { competency } = {}) {
  * `gain` scales it further (the button volume for button slots).
  */
 export async function playSlot(slot, { gain = 1 } = {}) {
-  if (!slot) return;
+  if (poweredOff || !slot) return;
   const volume = (Number(slot.volume) || 0) * (Number(gain) || 0) * (Number(getConfig().sounds.masterVolume) || 0);
   if (!slot.next || slot.next === 'none') {
     await warmedUp();
@@ -207,6 +224,27 @@ export function playEvent(event, options) {
   triggerLight(event);
   if (muted) return Promise.resolve();
   return playSlot(resolveSlot(event, options));
+}
+
+/** Stop everything at the CRT collapse, allowing only the final power-off cue. */
+export async function powerOffAudio() {
+  if (poweredOff) return;
+  const slot = buttonSlot('session', 'powerOff');
+  const sounds = getConfig().sounds;
+  const volume = (Number(slot?.volume) || 0) * (Number(sounds.buttonVolume) || 0) * (Number(sounds.masterVolume) || 0);
+  poweredOff = true;
+  stopKeepAlive();
+  warmUntil = 0;
+  for (const stop of [...playingFiles]) stop();
+  shutdownAudioContext();
+  try {
+    if (!muted && slot) {
+      await playSource(slot.source, volume, true);
+      await playSource(slot.next, volume, true);
+    }
+  } finally {
+    shutdownAudioContext();
+  }
 }
 
 /* ---------- button sounds ---------- */
@@ -238,8 +276,7 @@ export async function buttonSoundDuration(group, key, { fallbackMs = 1600, minMs
   const slot = buttonSlot(group, key);
   const warmupMs = Math.max(0, warmUntil - performance.now());
   if (!slot) return fallbackMs;
-  const durations = await Promise.all([sourceDuration(slot.source), sourceDuration(slot.next)]);
-  const seconds = durations[0] + durations[1];
+  const seconds = await slotDuration(slot);
   const measured = seconds > 0 ? seconds * 1000 + warmupMs : fallbackMs;
   return Math.max(minMs, Math.min(maxMs, measured));
 }

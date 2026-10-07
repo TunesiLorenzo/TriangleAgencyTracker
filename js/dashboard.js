@@ -6,6 +6,7 @@
 import { getAgentStats } from './charSystem.js';
 import { loadSettings, updateSettings } from './storage.js';
 import { motionAllowed } from './motion.js';
+import { isMeritLocked } from './meritLock.js';
 
 const MAX_TIMELINE = 150;
 const MAX_VISIBLE_TIMELINE = 40;
@@ -19,9 +20,27 @@ const COLOR_CHAOS = rootStyles.getPropertyValue('--reality-color').trim() || '#f
 const COLOR_WITNESS = rootStyles.getPropertyValue('--witness-color').trim() || '#bf5af2';
 const COLOR_GOLD = rootStyles.getPropertyValue('--gold-border').trim() || 'gold';
 
+// Sealed merits (meritLock.js): the Agent Performance bars drift around their real length,
+// so a standing can be guessed from the chart but a count cannot be read off it.
+const SEAL_FLOOR = 0.11;   // where an empty bar rests, as a share of its track: "none" cannot be read either
+const SEAL_REACH = 0.56;   // how much further along the longest bar rests, leaving room to overshoot
+const SEAL_DRIFT = 0.33;   // how far a bar wanders either way: over half the gap between empty and longest
+const SEAL_EASE_MS = 700;  // the drift fades in on lock and settles onto the real bars on reveal
+// A status line under the sealed bars, which never quite settles either.
+const SEAL_NOTES = ['MERIT FLUX CONTINUUM NOT CONVERGED', 'AGENT BEHAVIOR: PROBABILISTIC PROJECTION'];
+const SEAL_NOTE_SECONDS = 7;   // each note resolves out of noise, holds, then breaks up for the next
+const SEAL_NOTE_FONT = 'ui-monospace, Consolas, monospace';
+const SEAL_NOISE = '▲▼△▽◢◣#%/\\<>=+01';
+// the padlock the sealed triangles wear (components.css)
+const PADLOCK = new Path2D('M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z');
+
 let timeline = [];
 let lastRiskLevel = null;
 let lastChaosBucket = 0;
+let sealed = false;
+let sealAmount = 0;        // 0 = real bars, 1 = full drift
+let sealFrame = 0;
+let sealTick = 0;          // time of the previous drift frame
 const els = {};
 
 /* ---------- timeline persistence (world.timeline in localStorage) ---------- */
@@ -124,6 +143,90 @@ function computeRisk() {
   return { witnessRatio, chaosRatio, score, level, witness, chaos };
 }
 
+/* ---------- sealed merits: drifting bars ---------- */
+/** A smooth wander in [-1, 1]. Each bar has its own seed, so no two move together. */
+function sealDrift(seconds, seed) {
+  const t = seconds * (1 + ((seed * 3) % 7) * 0.07);
+  return 0.38 * Math.sin(t * 0.37 + seed * 2.4)   // slow: the middle of the swing wanders too
+       + 0.36 * Math.sin(t * 2.1 + seed * 4.1)
+       + 0.26 * Math.sin(t * 4.7 + seed * 7.3);
+}
+
+/** A bar's length as a share of its track: the real share, or a drifting one while sealed. */
+function barShare(value, maxVal, seconds, seed) {
+  const real = value / maxVal;
+  if (!sealAmount) return real;
+  // abs: a short bar swinging past empty comes back up instead of sticking there
+  const drifting = Math.abs(SEAL_FLOOR + real * SEAL_REACH + SEAL_DRIFT * sealDrift(seconds, seed));
+  return real + (Math.min(1, Math.max(0.02, drifting)) - real) * sealAmount;
+}
+
+/** 0 to 1, always the same for a given pair: the status line's noise keeps no state between frames. */
+function sealNoise(a, b) {
+  const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/** The status line under the sealed bars: each note resolves out of noise, holds, and breaks up again. */
+function drawSealNote(ctx, w, cy, size, seconds) {
+  const turn = seconds / SEAL_NOTE_SECONDS;
+  const note = SEAL_NOTES[Math.floor(turn) % SEAL_NOTES.length];
+  const age = (turn % 1) * SEAL_NOTE_SECONDS;
+  const moving = motionAllowed();
+  // Letters settle left to right over the first second and scatter over the last half second.
+  // Reduced motion: the note is simply written out.
+  const settled = moving ? Math.min(age / 1.1, (SEAL_NOTE_SECONDS - age) / 0.5) * note.length : note.length;
+  const tick = Math.floor(seconds * 14);   // the noise changes 14 times a second
+
+  // one cell per letter, shrunk together when the chart is too narrow for the note
+  let fontPx = size;
+  ctx.font = `bold ${fontPx}px ${SEAL_NOTE_FONT}`;
+  let cell = ctx.measureText('M').width + 1;
+  const fit = (w - 12) / (cell * note.length);
+  if (fit < 1) {
+    fontPx *= fit;
+    cell *= fit;
+    ctx.font = `bold ${fontPx}px ${SEAL_NOTE_FONT}`;
+  }
+
+  const x0 = w / 2 - (cell * (note.length - 1)) / 2;
+  const glow = 0.9 + 0.1 * Math.sin(seconds * 2.2);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = COLOR_GOLD;
+  [...note].forEach((letter, i) => {
+    if (letter === ' ') return;
+    // a letter that has settled still slips now and then
+    const loose = i >= settled || (moving && sealNoise(i, tick) < 0.003);
+    ctx.globalAlpha = sealAmount * (loose ? 0.45 : glow);
+    ctx.fillText(loose ? SEAL_NOISE[Math.floor(sealNoise(i + 0.5, tick) * SEAL_NOISE.length)] : letter, x0 + i * cell, cy);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function sealStep(now) {
+  const step = (now - sealTick) / SEAL_EASE_MS;
+  sealTick = now;
+  sealAmount = Math.min(1, Math.max(0, sealAmount + (sealed ? step : -step)));
+  const moving = sealed || sealAmount > 0;
+  // The dashboard is not laid out on the other tabs (layout.css): only the settled chart is
+  // worth drawing there.
+  if (!moving || els.hist.ctx.canvas.offsetParent) renderAgentPerformance();
+  sealFrame = moving ? requestAnimationFrame(sealStep) : 0;
+}
+
+/** Follow the lock: keep the bars moving while sealed, and let a reveal settle on the real ones. */
+function runSeal() {
+  if (!motionAllowed()) {
+    // Reduced motion: a still chart, drifted differently each time it is redrawn.
+    sealAmount = sealed ? 1 : 0;
+    renderAgentPerformance();
+    return;
+  }
+  if (sealFrame) return;
+  sealTick = performance.now();
+  sealFrame = requestAnimationFrame(sealStep);
+}
+
 /* ---------- Agent Performance (was: histogram) ---------- */
 function renderAgentPerformance() {
   const { ctx, w, h } = els.hist;
@@ -141,7 +244,10 @@ function renderAgentPerformance() {
   // Three columns that never share space: names | bars (markers inside) | net score.
   const rows = Math.max(5, stats.length);
   const headerH = 16;
-  const rowH = (h - headerH) / rows;
+  // Sealed, the status line goes under the last agent: in the spare rows of a short team,
+  // or in room the rows of a full one make for it.
+  const noteH = Math.min(34, Math.max(22, Math.round(h * 0.15)));
+  const rowH = (h - headerH - (stats.length < rows ? 0 : noteH * sealAmount)) / rows;
   const fontPx = Math.max(10, Math.min(13, Math.floor(rowH * 0.55)));
   const nameW = Math.min(150, Math.max(56, Math.round(w * 0.29)));
   const netW = 38;
@@ -149,12 +255,13 @@ function renderAgentPerformance() {
   const midX = nameW + (w - nameW - netW) / 2;
   const barMax = (w - nameW - netW) / 2 - markerW;
   const maxVal = Math.max(1, ...stats.map(s => Math.max(s.merit, s.demerit)));
+  const seconds = performance.now() / 1000;
 
   ctx.textBaseline = 'middle';
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`DEMERIT ${maxVal} ← 0 → ${maxVal} MERIT`, midX, headerH / 2);
+  ctx.fillText(sealed ? 'DEMERIT ← LOCKED → MERIT' : `DEMERIT ${maxVal} ← 0 → ${maxVal} MERIT`, midX, headerH / 2);
 
   // Longest prefix of the name that fits its column, with an ellipsis if cut.
   const fitName = text => {
@@ -182,9 +289,14 @@ function renderAgentPerformance() {
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.beginPath(); ctx.moveTo(midX, y0 + 3); ctx.lineTo(midX, y0 + rowH - 3); ctx.stroke();
 
-    const meritW = (s.merit / maxVal) * barMax;
-    const demeritW = (s.demerit / maxVal) * barMax;
+    const meritW = barShare(s.merit, maxVal, seconds, i * 2) * barMax;
+    const demeritW = barShare(s.demerit, maxVal, seconds, i * 2 + 1) * barMax;
     const barH = Math.max(4, Math.min(10, rowH * 0.32));
+    // The meter on the agent's card wanders with its bars (components.css moves the split).
+    if (sealAmount) {
+      const meterDrift = sealDrift(seconds, i + 20) * sealAmount;
+      s.el.querySelector('.activity-meter')?.style.setProperty('--seal-drift', meterDrift.toFixed(3));
+    }
 
     ctx.fillStyle = COLOR_MERIT;
     ctx.fillRect(midX, cy - barH / 2, meritW, barH);
@@ -193,14 +305,25 @@ function renderAgentPerformance() {
     ctx.fillRect(midX - demeritW, cy - barH / 2, demeritW, barH);
 
     ctx.fillStyle = s.isTopNet ? COLOR_GOLD : 'rgba(255,255,255,0.85)';
-    ctx.font = `${s.isTopNet ? 'bold ' : ''}${fontPx}px sans-serif`;
-    ctx.textAlign = 'right';
-    ctx.fillText(`${s.net > 0 ? '+' : ''}${s.net}${s.isTopNet ? '★' : ''}`, w - 5, cy);
+    if (sealed) {
+      // a padlock where the net score would be, still gold for the best one
+      const size = fontPx + 2;
+      ctx.save();
+      ctx.translate(w - 5 - size, cy - size / 2);
+      ctx.scale(size / 24, size / 24);
+      ctx.fill(PADLOCK, 'evenodd');
+      ctx.restore();
+    } else {
+      ctx.font = `${s.isTopNet ? 'bold ' : ''}${fontPx}px sans-serif`;
+      ctx.textAlign = 'right';
+      ctx.fillText(`${s.net > 0 ? '+' : ''}${s.net}${s.isTopNet ? '★' : ''}`, w - 5, cy);
+    }
 
     ctx.font = `${fontPx}px sans-serif`;
     if (s.isTopMerit) { ctx.textAlign = 'left'; ctx.fillText('\u{1F451}', midX + meritW + 2, cy); }
     if (s.isTopDemerit) { ctx.textAlign = 'right'; ctx.fillText('⚠', midX - demeritW - 2, cy); }
   });
+  if (sealAmount) drawSealNote(ctx, w, (headerH + stats.length * rowH + h) / 2, noteH - 10, seconds);
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -408,9 +531,18 @@ export function initDashboard() {
   }
   lastChaosBucket = Math.floor(currentTotals().chaos / 5);
 
+  // A branch that loads locked starts fully drifted: its real bars are never drawn.
+  sealed = isMeritLocked();
+  sealAmount = sealed ? 1 : 0;
+
   renderAgentPerformance();
   renderTimeline();
   renderRisk();
+  if (sealed) runSeal();
+  document.addEventListener('merit-lock-changed', e => {
+    sealed = e.detail.locked;
+    runSeal();
+  });
 
   // Refit the drawing surface when the viewport or active tab changes. CSS
   // makes the charts full width; without this, their 300px bitmap is stretched.

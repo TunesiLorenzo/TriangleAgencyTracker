@@ -8,7 +8,8 @@ Settings live in tracker_config.json next to this file. The viewer polls
 /api/config and applies changes live, so tuning on /settings (from this PC or a
 phone on the same network) shows up on the display without a reload.
 Tracker data (agents, tasks, counters) stays in the viewer's browser storage and can
-also be mirrored atomically to team_save.json by LAN viewers that connect Desktop Save.
+also be mirrored atomically to team_save.json by viewers that connect Desktop Save: one
+shared copy for every browser, on this PC or on the LAN.
 Previous cases (HD scans of each mission's Rapporto) are too big for that, so they
 live in cases/ next to this file, indexed by cases/cases.json. A team file carries the
 case index only; /api/cases/archive exports and restores the whole archive, scans

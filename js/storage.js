@@ -14,8 +14,12 @@ let automaticFileButton = null;
 let fileSaveAnnounced = false;
 let fileWriteChain = Promise.resolve();
 let automaticSaveBackend = 'native';
+let trackerServer = false;   // the page comes from the tracker server, which keeps the shared team save
 let serverSaveReady = false;
 let serverSaveState = { linked: false, version: null, dirty: false };
+// The team as last read from or written to the tracker computer (canonical JSON). A save that
+// matches it has nothing to send, so leaving the page is not mistaken for an unsent change.
+let serverSyncedTeam = null;
 // Set once a loaded team file is in storage and the page is reloading, so the save that runs
 // when the page is left can't overwrite that file with the agents still on screen.
 let savesSuspended = false;
@@ -140,6 +144,15 @@ function storeServerSaveState() {
   localStorage.setItem(SERVER_SAVE_STATE_KEY, JSON.stringify(serverSaveState));
 }
 
+/** JSON with every object's keys sorted: two copies of a team compare equal however they were written. */
+function canonicalJson(value) {
+  return JSON.stringify(value, (key, item) => (
+    item && typeof item === 'object' && !Array.isArray(item)
+      ? Object.fromEntries(Object.keys(item).sort().map(name => [name, item[name]]))
+      : item
+  ));
+}
+
 async function fetchServerSave() {
   const response = await fetch('/api/team-save', { cache: 'no-store' });
   const data = await response.json().catch(() => ({}));
@@ -163,7 +176,9 @@ async function putServerSave({ overwrite = false } = {}) {
   }
   if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
   serverSaveState.version = data.version;
-  serverSaveState.dirty = false;
+  // Still unsent if the team changed again while this copy was on its way.
+  serverSyncedTeam = canonicalJson(team);
+  serverSaveState.dirty = canonicalJson(loadSettings() || {}) !== serverSyncedTeam;
   serverSaveReady = true;
   storeServerSaveState();
   showServerSaveOn();
@@ -256,6 +271,10 @@ async function writeSettingsToAutomaticFile() {
 function queueAutomaticFileSave(delay = 300) {
   if (automaticSaveBackend === 'server') {
     if (!serverSaveState.linked) return;
+    // Hiding or closing the page saves again with nothing changed. That is no news for the
+    // tracker computer, and must not pass for an unsent change at the next visit, when another
+    // browser may have moved the shared copy on.
+    if (serverSaveReady && !serverSaveState.dirty && canonicalJson(loadSettings() || {}) === serverSyncedTeam) return;
     serverSaveState.dirty = true;
     storeServerSaveState();
     if (!serverSaveReady) return;
@@ -272,7 +291,7 @@ function queueAutomaticFileSave(delay = 300) {
 /** Start the save file write at once (page being hidden or closed), dropping any queued one. */
 function writeAutomaticFileNow() {
   if (automaticSaveBackend === 'server') {
-    if (!serverSaveState.linked || !serverSaveReady) return;
+    if (!serverSaveState.linked || !serverSaveReady || !serverSaveState.dirty) return;
   } else if (!automaticFileReady) return;
   window.clearTimeout(pendingFileSave);
   pendingFileSave = 0;
@@ -496,6 +515,7 @@ async function initServerSave() {
     if (remote.exists && remote.version !== serverSaveState.version) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(remote.team));
     }
+    serverSyncedTeam = remote.exists ? canonicalJson(remote.team) : null;
     serverSaveState.version = remote.version ?? null;
     serverSaveState.dirty = false;
     serverSaveReady = true;
@@ -510,9 +530,15 @@ async function initServerSave() {
   }
 }
 
-/** Restore a previously approved team file or the LAN-safe save on the tracker computer. */
-export async function initAutomaticFileSave(button) {
+/**
+ * Restore the automatic team save. With the tracker server running there is one save for every
+ * browser, the copy on the tracker computer, also for a browser on that computer itself. A file
+ * picked in the browser is for a tracker served without it, and for a browser that linked one
+ * before: that link is kept until it is unlinked.
+ */
+export async function initAutomaticFileSave(button, { serverAvailable = false } = {}) {
   automaticFileButton = button;
+  trackerServer = serverAvailable;
 
   const nativeFileAccess = window.isSecureContext
     && 'showSaveFilePicker' in window
@@ -524,6 +550,9 @@ export async function initAutomaticFileSave(button) {
   try {
     automaticFileHandle = await readStoredFileHandle();
     if (!automaticFileHandle) {
+      // A browser already saving on the tracker computer stays with it while the server is away,
+      // so what changes here in the meantime is still sent there, not to some other file.
+      if (trackerServer || loadServerSaveState().linked) return initServerSave();
       setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
       return false;
     }
@@ -538,6 +567,7 @@ export async function initAutomaticFileSave(button) {
     return automaticFileReady;
   } catch (error) {
     console.error('Failed to restore the automatic save file', error);
+    if (trackerServer && !automaticFileHandle) return initServerSave();
     setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
     return false;
   }
@@ -626,6 +656,7 @@ async function unlinkAutomaticSaveFile() {
   if (automaticSaveBackend === 'server') {
     serverSaveState = { linked: false, version: null, dirty: false };
     serverSaveReady = false;
+    serverSyncedTeam = null;
     fileSaveAnnounced = false;
     storeServerSaveState();
     setAutomaticFileStatus('Connect Desktop Save', 'Keep an automatic team save on the tracker computer.');
@@ -640,7 +671,13 @@ async function unlinkAutomaticSaveFile() {
   automaticFileHandle = null;
   automaticFileReady = false;
   fileSaveAnnounced = false;
-  setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
+  if (trackerServer) {
+    // With the file gone, the shared save on the tracker computer is the one on offer.
+    automaticSaveBackend = 'server';
+    setAutomaticFileStatus('Connect Desktop Save', 'Keep an automatic team save on the tracker computer.');
+  } else {
+    setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
+  }
 
   try {
     await deleteStoredFileHandle();
@@ -653,7 +690,9 @@ async function unlinkAutomaticSaveFile() {
     action: {
       label: 'Undo',
       onClick: () => {
-        if (automaticFileHandle) return;   // another file was connected in the meantime
+        // another file, or the desktop save, was connected in the meantime
+        if (automaticFileHandle || serverSaveState.linked) return;
+        automaticSaveBackend = 'native';
         automaticFileHandle = handle;
         connectAutomaticSaveFile();
       }

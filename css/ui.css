@@ -418,7 +418,9 @@
 }
 .task-controls { position: relative; z-index: 6; }
 .task-controls .add-task-btn,
-.task-controls .task-gate-toggle {
+.task-controls .task-gate-toggle,
+.task-controls .merit-key-btn,
+.task-controls .merit-lock-btn {
   display: grid;
   place-items: center;
   width: 36px;
@@ -428,17 +430,23 @@
   flex: none;
 }
 .task-controls .add-task-btn { font-size: 25px; line-height: 1; }
-.task-gate-toggle {
+.task-gate-toggle,
+.merit-key-btn,
+.merit-lock-btn {
   border: 1px solid rgba(255,214,10,0.55);
   border-radius: 8px;
   background: linear-gradient(180deg, #39351d, #201e13);
   color: #ffe86b;
   cursor: pointer;
-  transition: background 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+  transition: background 150ms ease, transform 120ms ease, box-shadow 150ms ease, opacity 150ms ease;
 }
-.task-gate-toggle:hover { background: linear-gradient(180deg, #514a24, #2b2817); box-shadow: 0 0 12px rgba(255,214,10,0.22); }
-.task-gate-toggle:active { transform: scale(0.97); }
-.task-gate-toggle:focus-visible { outline: 2px solid #ffe86b; outline-offset: 2px; }
+:is(.task-gate-toggle, .merit-key-btn, .merit-lock-btn):enabled:hover { background: linear-gradient(180deg, #514a24, #2b2817); box-shadow: 0 0 12px rgba(255,214,10,0.22); }
+:is(.task-gate-toggle, .merit-key-btn, .merit-lock-btn):enabled:active { transform: scale(0.97); }
+:is(.task-gate-toggle, .merit-key-btn, .merit-lock-btn):focus-visible { outline: 2px solid #ffe86b; outline-offset: 2px; }
+/* Key and padlock (meritLock.js): the one that would change nothing is switched off. With
+   the counts sealed the padlock stays lit; with them on show the key has nothing to open. */
+.merit-key-btn:disabled { opacity: 0.35; cursor: default; }
+.merit-lock-btn:disabled { background: #ffd60a; color: #19170d; box-shadow: 0 0 12px rgba(255,214,10,0.35); cursor: default; }
 .task-gate-toggle-icon {
   display: flex;
   justify-content: space-between;

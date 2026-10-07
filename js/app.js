@@ -25,6 +25,7 @@ import { confirmDialog, openModal, toast } from './ui.js';
 import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
 import { initMotionPreference } from './motion.js';
 import { initGraTakeover } from './graTakeover.js';
+import { initMeritLock } from './meritLock.js';
 
 initMotionPreference();
 
@@ -252,10 +253,11 @@ async function init() {
   await startConfigSync();
   if (!isServerAvailable()) document.getElementById('settingsLink').hidden = true;
   initGraTakeover();
+  initMeritLock();
 
   initLocalStorage();
-  // On LAN HTTP this may load the desktop-hosted team save before anything is rendered.
-  await initAutomaticFileSave(document.getElementById('autoSaveFileButton'));
+  // With the tracker server this may load the team save kept on its computer before anything is rendered.
+  await initAutomaticFileSave(document.getElementById('autoSaveFileButton'), { serverAvailable: isServerAvailable() });
   bindControls();
   initWorld();
 

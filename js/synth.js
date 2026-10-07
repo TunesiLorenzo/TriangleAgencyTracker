@@ -4,13 +4,24 @@
 // `t` into `out` (a gain node carrying the slot volume) and returns its length.
 
 let context = null;
+let poweredOff = false;
 let noise = null;
 
 /** The page's one AudioContext (also carries the amplifier keep-alive tone), resumed if suspended. */
-export function getAudioContext() {
+export function getAudioContext({ allowPowerOff = false } = {}) {
+  if (poweredOff && !allowPowerOff) throw new Error('Audio is powered off');
   if (!context) context = new (window.AudioContext || window.webkitAudioContext)();
   if (context.state === 'suspended') context.resume().catch(() => {});
   return context;
+}
+
+/** Permanently stop this page's synth, traffic and hum context. */
+export function shutdownAudioContext() {
+  poweredOff = true;
+  const previous = context;
+  context = null;
+  noise = null;
+  if (previous && previous.state !== 'closed') void previous.close().catch(() => {});
 }
 
 function noiseBuffer(ac) {
@@ -339,11 +350,11 @@ export const SYNTHS = [
 ];
 
 /** Play a built-in sound; resolves when it has finished. */
-export function playSynth(id, volume = 1) {
+export function playSynth(id, volume = 1, { allowPowerOff = false } = {}) {
   const voice = VOICES[id];
-  if (!voice || volume <= 0) return Promise.resolve();
+  if (!voice || volume <= 0 || (poweredOff && !allowPowerOff)) return Promise.resolve();
   try {
-    const ac = getAudioContext();
+    const ac = getAudioContext({ allowPowerOff });
     const out = ac.createGain();
     out.gain.value = volume;
     out.connect(ac.destination);

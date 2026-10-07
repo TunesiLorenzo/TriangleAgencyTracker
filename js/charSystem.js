@@ -585,12 +585,13 @@ export function updateTopCharacters() {
       netEl.classList.toggle('negative', net < 0);
     }
 
-    const meritFill = el.querySelector('.activity-fill.merit');
-    const demeritFill = el.querySelector('.activity-fill.demerit');
-    if (meritFill && demeritFill) {
+    // Each side's share of the meter; components.css turns them into widths, and blurs
+    // them while the merits are sealed.
+    const meter = el.querySelector('.activity-meter');
+    if (meter) {
       const total = merit + demerit || 1;
-      meritFill.style.width = `${(merit / total) * 100}%`;
-      demeritFill.style.width = `${(demerit / total) * 100}%`;
+      meter.style.setProperty('--merit-share', merit / total);
+      meter.style.setProperty('--demerit-share', demerit / total);
     }
 
     updateTint(el);

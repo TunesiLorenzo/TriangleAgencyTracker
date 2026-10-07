@@ -19,6 +19,7 @@ let tuning = structuredClone(DEFAULT_CONFIG.effects);
 const state = {
   chaos: 0,
   target: 0,   // intensity requested by the current chaos value
+  muted: false, // the G.R.A. takeover can replace these layers with its own incidents
   level: 0,    // eased intensity actually rendered
   risk: 'controlled',
   lastTime: 0,
@@ -35,7 +36,7 @@ const easeFactor = (dt, tau) => 1 - Math.exp(-dt / Math.max(0.001, tau));
 
 function glitchActive() {
   const glitch = tuning.glitch;
-  return glitch.enabled && motionAllowed()
+  return !state.muted && glitch.enabled && motionAllowed()
     && RISK_LEVELS.indexOf(state.risk) >= RISK_LEVELS.indexOf(glitch.minRisk);
 }
 
@@ -43,7 +44,9 @@ function glitchActive() {
 
 // Styles that depend only on the level; skipped when the level hasn't moved.
 function applyLevelStyles(level) {
-  if (Math.abs(level - state.appliedLevel) < 0.002) return;
+  // Small moves are skipped, except the last one down to nothing: off means fully off.
+  const landing = level === 0 && state.appliedLevel !== 0;
+  if (!landing && Math.abs(level - state.appliedLevel) < 0.002) return;
   state.appliedLevel = level;
   const { scanline, overlay, vignette } = state.els;
   const a = tuning.atmosphere;
@@ -132,8 +135,9 @@ function frame(now) {
   const dt = Math.min(0.1, Math.max(0, (now - (state.lastTime || now)) / 1000));
   state.lastTime = now;
 
-  state.level += (state.target - state.level) * easeFactor(dt, tuning.atmosphere.easeSeconds);
-  if (Math.abs(state.target - state.level) < 0.001) state.level = state.target;
+  const goal = state.muted ? 0 : state.target;
+  state.level += (goal - state.level) * easeFactor(dt, tuning.atmosphere.easeSeconds);
+  if (Math.abs(goal - state.level) < 0.001) state.level = goal;
 
   applyLevelStyles(state.level);
   updateJitter(now, dt, state.level);
@@ -188,6 +192,21 @@ function buildTitleLayers(title) {
     layer.innerHTML = html;
     title.appendChild(layer);
   });
+}
+
+/** The intensity (0..1) the current chaos value asks for, before easing and whether or not it is shown. */
+export function chaosIntensity() {
+  return state.target;
+}
+
+/**
+ * Hide every chaos layer of this module (atmosphere, shake, critical glitch) and the chaos
+ * pulse, without losing the chaos value: the G.R.A. takeover does this when it is set to
+ * show chaos through its own incidents only.
+ */
+export function setChaosEffectsMuted(muted) {
+  state.muted = !!muted;
+  document.documentElement.classList.toggle('chaos-effects-muted', state.muted);
 }
 
 /** Set the chaos value; the rendered intensity eases toward it. */

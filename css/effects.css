@@ -151,6 +151,8 @@
   );
 }
 #chaosPulseOverlay.chaos-pulse { animation: fx-chaos-pulse 550ms ease-out; }
+/* effects.js: the G.R.A. takeover is showing chaos through its own incidents instead */
+.chaos-effects-muted #chaosPulseOverlay { display: none; }
 @keyframes fx-chaos-pulse {
   0%   { opacity: 0; filter: blur(0px); }
   40%  { opacity: 0.5; filter: blur(1px); }

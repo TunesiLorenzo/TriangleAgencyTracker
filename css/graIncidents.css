@@ -1,0 +1,211 @@
+/* G.R.A. incidents (js/graIncidents.js): traffic driving across the screen, Autoverrox
+   pop-ups and breakdown glitches, shown at random while the takeover is on. They live in
+   one layer of the takeover overlay, above the tracker and below the toll barriers, and
+   never take input. Movement and timing come from the script; this is how they look. */
+
+.gra-incidents {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ---------- traffic ---------- */
+.gra-car {
+  position: absolute;
+  left: 0;
+  z-index: 2;
+  will-change: transform;
+  filter: drop-shadow(0 14px 10px rgba(0,0,0,.55));
+}
+/* Drawn heading right; flipped for the other carriageway. */
+.gra-car-body { position: relative; }
+.gra-car-leftward .gra-car-body { transform: scaleX(-1); }
+.gra-car svg { display: block; width: 100%; height: auto; overflow: visible; }
+.gra-car .gra-car-shell { fill: var(--gra-car-paint, #03130a); stroke: rgba(141,255,155,.6); stroke-width: 1.5; stroke-linejoin: round; }
+.gra-car .gra-car-glass { fill: rgba(141,255,155,.2); stroke: rgba(141,255,155,.35); stroke-width: 1; }
+.gra-car .gra-car-wheel { fill: #010603; stroke: rgba(235,255,235,.4); stroke-width: 2; }
+.gra-car .gra-car-hub { fill: rgba(141,255,155,.3); }
+.gra-car .gra-car-head { fill: #fff7c2; filter: drop-shadow(0 0 6px #fff7c2) drop-shadow(0 0 14px #ffd333); }
+.gra-car .gra-car-tail { fill: #ff3c35; filter: drop-shadow(0 0 7px #ff3c35); }
+/* Headlights reach --gra-car-beam vehicle lengths ahead, the tail lights trail 1.3 behind;
+   the script times each pass and its sound from those same lengths. */
+.gra-car-beam {
+  position: absolute;
+  left: 100%;
+  top: 30%;
+  width: calc(var(--gra-car-beam, 1.5) * 100%);
+  height: 62%;
+  background: linear-gradient(90deg, rgba(255,247,194,.42), rgba(255,247,194,.12) 45%, transparent);
+  clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 64%);
+  filter: blur(5px);
+}
+.gra-car-trail {
+  position: absolute;
+  right: 100%;
+  top: 54%;
+  width: 130%;
+  height: 7%;
+  min-height: 4px;
+  background: linear-gradient(270deg, rgba(255,60,53,.75), transparent);
+  filter: blur(2px);
+}
+
+/* ---------- Autoverrox pop-ups: the navigation card, wherever it likes ---------- */
+#graTakeoverOverlay .gra-popup {
+  position: absolute;
+  top: 0;
+  right: auto;
+  left: 0;
+  z-index: 4;
+  width: min(320px, 30vw);
+  border-color: rgba(119,255,114,.5);
+  background: linear-gradient(110deg, rgba(3,9,4,.96), rgba(9,26,12,.9));
+  box-shadow: 0 16px 40px rgba(0,0,0,.8), 0 0 22px rgba(119,255,114,.14), inset 0 1px rgba(255,255,255,.05);
+}
+.gra-popup .gra-nav-label { font-size: 9px; }
+.gra-popup strong { font-size: clamp(14px, 1.5vw, 20px); line-height: 1.15; }
+.gra-popup small { font-size: 8px; }
+/* The bar counts the pop-up's time down instead of pulsing. */
+#graTakeoverOverlay .gra-popup .gra-nav-progress span { width: 0; animation: none; }
+.gra-popup-alert { border-left-color: var(--gra-amber) !important; }
+.gra-popup-alert .gra-nav-brand,
+.gra-popup-alert strong { color: var(--gra-amber); }
+.gra-popup-alert .gra-nav-progress span { background: var(--gra-amber); box-shadow: 0 0 8px var(--gra-amber); }
+.gra-popup-danger { border-left-color: var(--gra-red) !important; }
+.gra-popup-danger .gra-nav-brand,
+.gra-popup-danger strong { color: #ff8a84; }
+.gra-popup-danger .gra-nav-progress span { background: var(--gra-red); box-shadow: 0 0 8px var(--gra-red); }
+
+/* ---------- breakdown: the page tears ---------- */
+.gra-tear-defs { position: absolute; width: 0; height: 0; }
+#pageFrame.gra-tearing {
+  filter: url(#graTearFilter)
+    drop-shadow(var(--gra-tear-split, 5px) 0 0 rgba(255,20,60,.6))
+    drop-shadow(calc(var(--gra-tear-split, 5px) * -1) 0 0 rgba(0,200,255,.6));
+}
+
+/* ---------- breakdown: corrupted blocks over whatever is underneath ---------- */
+/* Hidden until the script brings each one in. */
+.gra-block { position: absolute; z-index: 1; visibility: hidden; }
+.gra-block-invert { backdrop-filter: invert(1) hue-rotate(70deg); }
+.gra-block-shift { backdrop-filter: hue-rotate(150deg) saturate(4) contrast(1.5); }
+.gra-block-smear { backdrop-filter: blur(3px) brightness(2.2) contrast(2); }
+.gra-block-solid { background: #77ff72; opacity: .85; }
+.gra-block-void { background: #000; }
+.gra-block-stripes { background: repeating-linear-gradient(90deg, #ff2bd6 0 3px, #00e5ff 3px 6px, #f6ff00 6px 9px, #000 9px 12px); }
+
+/* ---------- breakdown: a panel stops answering ---------- */
+.gra-fault-tag {
+  position: absolute;
+  z-index: 3;
+  padding: 6px 14px;
+  translate: -50% -50%;
+  rotate: -6deg;
+  border: 2px solid var(--gra-red);
+  background: rgba(22,0,0,.86);
+  color: #ff6b64;
+  font-size: clamp(11px, 1.2vw, 17px);
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 0 22px rgba(255,60,53,.4), inset 0 0 12px rgba(255,60,53,.22);
+  animation: gra-fault-blink 1.2s steps(1) infinite;
+}
+@keyframes gra-fault-blink { 0%, 70% { opacity: 1; } 71%, 100% { opacity: .3; } }
+
+/* ---------- breakdown: error windows piling up ---------- */
+.gra-error {
+  position: absolute;
+  z-index: 5;
+  width: min(380px, 80vw);
+  border: 1px solid rgba(193,255,199,.7);
+  background: #04180d;
+  color: #eaffdf;
+  box-shadow: 0 14px 34px rgba(0,0,0,.85), 6px 6px 0 rgba(0,0,0,.5);
+  text-transform: uppercase;
+}
+.gra-error header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  background: linear-gradient(90deg, #0d7a40, #064a27);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+.gra-error header .gra-boar-mark { margin: 0; }
+.gra-error header b {
+  margin-left: auto;
+  padding: 0 5px;
+  border: 1px solid rgba(255,255,255,.6);
+  background: #a3211c;
+  font-size: 11px;
+  line-height: 14px;
+}
+.gra-error-body { display: flex; gap: 12px; align-items: flex-start; padding: 13px 12px 10px; }
+.gra-error-body i {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--gra-red);
+  color: #fff;
+  font-size: 22px;
+  font-style: normal;
+  font-weight: 900;
+  box-shadow: 0 0 14px rgba(255,60,53,.6);
+}
+.gra-error-body strong { display: block; color: #fff; font-size: 13px; letter-spacing: 1px; }
+.gra-error-body p { margin: 5px 0 0; color: rgba(234,255,223,.72); font-size: 9px; letter-spacing: .8px; line-height: 1.5; }
+.gra-error footer { display: flex; justify-content: flex-end; gap: 7px; padding: 0 10px 10px; }
+.gra-error footer span {
+  padding: 4px 12px;
+  border: 1px solid rgba(193,255,199,.58);
+  background: linear-gradient(180deg, #107a43, #07532d);
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  box-shadow: 0 2px 0 #021c0e;
+}
+
+/* ---------- breakdown: the whole tracker is "in panne" ---------- */
+.gra-crash {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 14px;
+  padding: 8vh 9vw;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(141,255,155,.035) 3px 4px),
+    #021207;
+  color: #b9ffc0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-transform: uppercase;
+}
+.gra-crash svg { width: clamp(70px, 9vw, 130px); height: auto; filter: drop-shadow(0 0 18px rgba(255,60,53,.55)); }
+.gra-crash strong { color: #fff; font-size: clamp(20px, 3.4vw, 46px); letter-spacing: clamp(1px, .3vw, 5px); line-height: 1.1; }
+.gra-crash p { max-width: 70ch; margin: 0; font-size: clamp(11px, 1.3vw, 17px); letter-spacing: 1.5px; line-height: 1.6; }
+.gra-crash-progress { color: var(--gra-amber); }
+.gra-crash-progress b { display: inline-block; min-width: 3ch; text-align: right; }
+.gra-crash-dump {
+  margin: 6px 0 0;
+  color: rgba(141,255,155,.5);
+  font: inherit;
+  font-size: clamp(9px, .95vw, 13px);
+  letter-spacing: 1px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+@media (max-width: 760px) {
+  /* The fixed navigation card is hidden on small screens; passing pop-ups are not. */
+  #graTakeoverOverlay .gra-navigation-card.gra-popup { display: grid; width: min(290px, 74vw); }
+}

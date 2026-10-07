@@ -1,10 +1,16 @@
-// G.R.A. mission skin controlled from /settings. A changed takeover setting
-// deliberately reloads each viewer so the display appears to be seized remotely.
+// G.R.A. mission skin controlled from /settings. Switch skins under the toll
+// barriers without navigating away from the running viewer.
 
 import { getConfig, onConfigChange } from './config.js';
+import { setGraIncidents } from './graIncidents.js';
 import { motionAllowed } from './motion.js';
+import { isMuted, playSlot, slotDuration, soundStartDelay } from './soundEffects.js';
 
-const RELOAD_SESSION_KEY = 'ta-gra-preserve-open-session';
+// The toll scene's own movements in ms, matched in gra.css: it arrives with the barriers
+// down, they lift, and it leaves (signs away, then the dissolve).
+const TOLL_ARRIVE_MS = 780;
+const TOLL_LIFT_MS = 1150;
+const TOLL_EXIT_MS = 1300;
 
 const MESSAGES = [
   'INTERFACCIA ACQUISITA',
@@ -20,8 +26,6 @@ let messageIndex = 0;
 let messageTimer = 0;
 let clockTimer = 0;
 let messageSwapTimer = 0;
-let bootTimer = 0;
-let reloadTimer = 0;
 
 const clockFormat = new Intl.DateTimeFormat('it-IT', {
   hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
@@ -53,13 +57,9 @@ function stopTimers() {
   window.clearInterval(messageTimer);
   window.clearInterval(clockTimer);
   window.clearTimeout(messageSwapTimer);
-  window.clearTimeout(bootTimer);
-  window.clearTimeout(reloadTimer);
   messageTimer = 0;
   clockTimer = 0;
   messageSwapTimer = 0;
-  bootTimer = 0;
-  reloadTimer = 0;
 }
 
 export function initGraTakeover() {
@@ -93,17 +93,14 @@ export function initGraTakeover() {
     }
 
     stopTimers();
+    // Traffic, pop-ups and breakdowns come and go with the skin.
+    setGraIncidents(active);
     if (!active) {
       messageIndex = 0;
       message.textContent = MESSAGES[0];
       message.classList.remove('is-changing');
       code.textContent = 'G.R.A. // 00';
-      toll?.classList.remove('is-approaching', 'is-opening');
       return;
-    }
-
-    if (playToll('is-opening')) {
-      bootTimer = window.setTimeout(() => toll.classList.remove('is-opening'), 3100);
     }
 
     updateClock(clock);
@@ -112,24 +109,56 @@ export function initGraTakeover() {
   };
 
   const configuredState = config => config.effects?.graTakeover?.enabled === true;
-  setActive(configuredState(getConfig()));
+  let desired = configuredState(getConfig());
+  let transitioning = false;
+  setActive(desired);
 
-  let reloadQueued = false;
-  onConfigChange(config => {
-    const desired = configuredState(config);
-    if (desired === active || reloadQueued) return;
-    reloadQueued = true;
-    // Only a display that is already open bypasses login after this one reload.
-    // A locked or mid-authentication display remains locked.
-    if (document.documentElement.dataset.session === 'open') {
-      try { sessionStorage.setItem(RELOAD_SESSION_KEY, '1'); } catch { /* storage unavailable */ }
+  const switchMode = async () => {
+    if (desired === active || transitioning) return;
+    // Locked and authenticating displays keep their login state, and reduced
+    // motion switches immediately without moving barriers.
+    const settings = getConfig().effects.graTakeover;
+    const open = document.documentElement.dataset.session === 'open';
+    if (!open || !toll || !hasMotion) {
+      if (open && !isMuted()) void playSlot(settings.sound);
+      setActive(desired);
+      return;
     }
-    const reload = () => window.location.reload();
-    if (playToll('is-approaching')) {
+
+    // The sound starts now and the screen follows it: untouched until the toll scene
+    // covers it at coverAt, the barriers lift at openAt, and the scene has dissolved
+    // when the sound ends. A muted viewer keeps the same timing.
+    transitioning = true;
+    const soundMs = await slotDuration(settings.sound) * 1000;
+    const heardIn = soundStartDelay();
+    if (!isMuted()) void playSlot(settings.sound);
+    const mark = seconds => heardIn + Math.max(0, Number(seconds) || 0) * 1000;
+    const coverAt = mark(settings.coverAt);
+    // Never before the scene has covered the old skin, nor too late to lift and leave.
+    const openAt = Math.max(mark(settings.openAt), coverAt + TOLL_ARRIVE_MS);
+    const endAt = Math.max(heardIn + soundMs, openAt + TOLL_LIFT_MS + TOLL_EXIT_MS);
+    toll.style.setProperty('--gra-toll-exit', `${endAt - TOLL_EXIT_MS - openAt}ms`);
+
+    window.setTimeout(() => {
       document.body.classList.add('gra-transitioning');
-      reloadTimer = window.setTimeout(reload, 780);
-    } else {
-      reload();
-    }
+      playToll('is-approaching');
+    }, coverAt);
+    // Adopt the latest request if the setting changed before the scene covered the screen.
+    window.setTimeout(() => setActive(desired), coverAt + TOLL_ARRIVE_MS);
+    window.setTimeout(() => playToll('is-opening'), openAt);
+    window.setTimeout(() => {
+      toll.classList.remove('is-opening');
+      document.body.classList.remove('gra-transitioning');
+      transitioning = false;
+      // A request received meanwhile is handled as soon as the scene clears.
+      switchMode();
+    }, endAt);
+  };
+
+  onConfigChange(config => {
+    desired = configuredState(config);
+    // Read the sound's length ahead of time, so a switch starts the moment it is asked for.
+    void slotDuration(config.effects.graTakeover.sound);
+    switchMode();
   });
 }

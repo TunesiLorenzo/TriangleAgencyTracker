@@ -291,6 +291,16 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
 }
 .field output { text-align: right; }
 .field select { grid-column: 2 / 4; }
+/* An effect card is about half as wide as a slot list, so its sound slot stacks. */
+.effect-card .slot {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name play" "source source" "volume volume";
+  margin-top: 10px;
+}
+.effect-card .slot-name { grid-area: name; }
+.effect-card .slot > select { grid-area: source; }
+.effect-card .slot .volume { grid-area: volume; }
+.effect-card .slot .play { grid-area: play; }
 
 .toggle { cursor: pointer; }
 .toggle input { position: absolute; opacity: 0; pointer-events: none; }
