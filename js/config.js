@@ -277,6 +277,9 @@ export const DEFAULT_CONFIG = {
     }
   },
   effects: {
+    graTakeover: {
+      enabled: false       // remote display takeover, controlled from /settings
+    },
     atmosphere: {
       maxChaos: 16,        // chaos at which everything is fully intense
       easeSeconds: 0.25,   // how quickly effects follow a chaos change

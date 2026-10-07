@@ -7,7 +7,8 @@
   --login-ok: #30d158;
 }
 
-/* Signed in (login.js): the main screen alone. Every page load starts signed out. */
+/* Signed in (login.js): the main screen alone. Normal page loads start signed out;
+   a settings-triggered G.R.A. reload can preserve an already-open display once. */
 html[data-session="open"] .login-screen { display: none; }
 html:not([data-session="open"]) body { overflow: hidden; }
 

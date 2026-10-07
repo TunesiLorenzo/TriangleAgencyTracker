@@ -1,0 +1,1162 @@
+/* G.R.A. / Autoverrox takeover. The decorative layer never receives input and
+   sits below the existing chaos/CRT layers, dialogs, toasts and login screen. */
+
+body.gra-takeover {
+  --gra-sign: #096735;
+  --gra-sign-deep: #032d18;
+  --gra-sign-black: #011108;
+  --gra-lane: #f4f5dc;
+  --gra-line: #8dff9b;
+  --gra-yellow: #ffd333;
+  background: #020b05;
+}
+
+/* The Agency videos disappear completely during the takeover. This SVG layer is
+   a proper moving street plan behind the tracker rather than a tint over the video. */
+.gra-map-background {
+  position: absolute;
+  inset: -8%;
+  overflow: hidden;
+  opacity: 0;
+  background:
+    linear-gradient(rgba(87,177,108,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(87,177,108,.05) 1px, transparent 1px),
+    radial-gradient(circle at 50% 45%, #0b3620 0, #04180d 52%, #010704 100%);
+  background-size: 48px 48px, 48px 48px, auto;
+  transition: opacity 420ms ease;
+}
+
+body.gra-takeover #backgroundHue video { opacity: 0 !important; }
+body.gra-takeover .gra-map-background { opacity: 1; }
+
+.gra-map-background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at center, transparent 34%, rgba(0,12,5,.58) 100%),
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(150,255,163,.018) 4px);
+  pointer-events: none;
+}
+
+.gra-map-background svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 6px rgba(77,255,112,.18));
+  transform: scale(1.08) translate3d(0, 0, 0);
+}
+
+.gra-map-background path,
+.gra-map-background ellipse {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.gra-map-minor-roads path { stroke: rgba(141,255,155,.22); stroke-width: 3; }
+.gra-map-major-roads path {
+  stroke: rgba(225,255,222,.7);
+  stroke-width: 7;
+  stroke-dasharray: 2 5;
+}
+.gra-map-ring-road ellipse {
+  stroke: rgba(255,211,51,.55);
+  stroke-width: 5;
+  stroke-dasharray: 22 9 3 9;
+}
+.gra-map-junctions circle {
+  fill: #ffd333;
+  stroke: #07160c;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+.gra-map-labels text {
+  fill: rgba(222,255,224,.65);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  paint-order: stroke;
+  stroke: rgba(1,17,8,.9);
+  stroke-width: 5px;
+}
+
+body.gra-takeover.gra-motion-enabled .gra-map-background svg { animation: gra-street-pan 24s ease-in-out infinite alternate; }
+body.gra-takeover.gra-motion-enabled .gra-map-major-roads path { animation: gra-street-flow 5s linear infinite; }
+body.gra-takeover.gra-motion-enabled .gra-map-ring-road ellipse { animation: gra-ring-flow 9s linear infinite; }
+body.gra-takeover.gra-motion-enabled .gra-map-junctions circle { animation: gra-junction-pulse 2.6s ease-in-out infinite alternate; }
+
+#graTakeoverOverlay {
+  --gra-green: #77ff72;
+  --gra-amber: #ffc62f;
+  --gra-red: #ff3c35;
+  position: fixed;
+  inset: 0;
+  z-index: 9995;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  color: #eaffdf;
+  background:
+    radial-gradient(ellipse at center, transparent 28%, rgba(0,25,4,.12) 74%, rgba(0,12,2,.3) 100%),
+    linear-gradient(rgba(34,255,58,.045), rgba(0,0,0,.04));
+  transition: opacity 320ms ease, visibility 0s linear 320ms;
+}
+
+body.gra-takeover #graTakeoverOverlay {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+body.gra-transitioning #graTakeoverOverlay {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-transition) { opacity: 0; }
+
+#graTakeoverOverlay::before,
+#graTakeoverOverlay::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(119,255,114,.2);
+  clip-path: polygon(0 0, 18% 0, 18% 2px, 82% 2px, 82% 0, 100% 0, 100% 26%, calc(100% - 2px) 26%, calc(100% - 2px) 74%, 100% 74%, 100% 100%, 82% 100%, 82% calc(100% - 2px), 18% calc(100% - 2px), 18% 100%, 0 100%, 0 74%, 2px 74%, 2px 26%, 0 26%);
+  opacity: .9;
+}
+
+#graTakeoverOverlay::after {
+  inset: 0;
+  border: 0;
+  clip-path: none;
+  background:
+    linear-gradient(90deg, transparent 0 49.8%, rgba(119,255,114,.035) 49.9% 50.1%, transparent 50.2%),
+    repeating-linear-gradient(0deg, transparent 0 23px, rgba(119,255,114,.025) 24px 25px);
+}
+
+/* Full-screen toll gate used on the controlled reload. The old interface is
+   covered while the barriers lower; the acquired interface is revealed as they rise. */
+.gra-toll-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, transparent 0 21%, rgba(255,255,255,.035) 21.2% 21.5%, transparent 21.7% 49.8%, rgba(255,211,51,.13) 50% 50.2%, transparent 50.4% 78.3%, rgba(255,255,255,.035) 78.5% 78.8%, transparent 79%),
+    radial-gradient(ellipse at 50% 110%, rgba(18,96,48,.8), rgba(1,12,5,.98) 64%);
+}
+
+.gra-toll-transition::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent 0 38px, rgba(141,255,155,.035) 39px 40px);
+}
+
+.gra-toll-transition.is-approaching {
+  visibility: visible;
+  animation: gra-toll-arrive 780ms ease-out both;
+}
+
+.gra-toll-transition.is-opening {
+  visibility: visible;
+  animation: gra-toll-clear 3s ease-in both;
+}
+
+.gra-toll-gantry {
+  position: absolute;
+  top: 12%;
+  left: 50%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  width: min(720px, 80vw);
+  min-height: 78px;
+  padding: 12px 18px;
+  transform: translateX(-50%);
+  border: 5px solid #d8dbcb;
+  border-radius: 3px;
+  background: #086b38;
+  color: #fff;
+  box-shadow: 0 8px 0 #06160d, 0 18px 46px rgba(0,0,0,.75), inset 0 0 0 2px rgba(255,255,255,.16);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.gra-toll-gantry::before,
+.gra-toll-gantry::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  width: 14px;
+  height: 55vh;
+  background: repeating-linear-gradient(0deg, #d7dacb 0 18px, #1b2820 18px 36px);
+  box-shadow: 3px 0 0 rgba(0,0,0,.45);
+}
+.gra-toll-gantry::before { left: 24px; }
+.gra-toll-gantry::after { right: 24px; }
+
+.gra-toll-route {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  aspect-ratio: 1;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.gra-toll-gantry strong { font-size: clamp(18px, 2.8vw, 34px); letter-spacing: clamp(2px, .6vw, 8px); }
+.gra-toll-arrow {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  aspect-ratio: 1;
+  border: 2px solid rgba(255,255,255,.7);
+  background: #063a20;
+  color: #7eff91;
+  font-size: 34px;
+  line-height: 1;
+  box-shadow: 0 0 16px rgba(92,255,111,.42);
+}
+
+.gra-toll-lanes {
+  position: absolute;
+  inset: 23% 0 0;
+  display: flex;
+  justify-content: center;
+  gap: min(18vw, 250px);
+  perspective: 460px;
+  opacity: .6;
+}
+.gra-toll-lanes span {
+  width: 6px;
+  height: 120%;
+  transform: rotateX(60deg);
+  transform-origin: top;
+  background: repeating-linear-gradient(to bottom, #f4f5dc 0 42px, transparent 42px 82px);
+}
+
+.gra-toll-booth {
+  position: absolute;
+  top: 42%;
+  z-index: 4;
+  width: clamp(74px, 9vw, 118px);
+  height: clamp(145px, 24vh, 230px);
+  border: 3px solid #b8c0b5;
+  border-top: 13px solid #e4e8df;
+  border-radius: 2px;
+  background:
+    linear-gradient(135deg, transparent 48%, rgba(255,255,255,.08) 49% 51%, transparent 52%) 0 0 / 18px 18px,
+    linear-gradient(#17482d 0 37%, #082619 37%);
+  box-shadow: 0 16px 35px rgba(0,0,0,.8), inset 0 0 24px rgba(0,0,0,.55);
+}
+.gra-toll-booth-left { left: 7%; }
+.gra-toll-booth-right { right: 7%; }
+.gra-toll-booth i {
+  display: block;
+  width: 70%;
+  height: 24%;
+  margin: 12px auto;
+  border: 3px solid #0a130e;
+  background: linear-gradient(145deg, rgba(181,255,203,.42), rgba(10,43,25,.8));
+}
+.gra-toll-booth b {
+  display: block;
+  color: #ffd333;
+  font-size: 12px;
+  letter-spacing: 3px;
+  text-align: center;
+}
+
+.gra-toll-arm {
+  position: absolute;
+  top: 52%;
+  z-index: 6;
+  width: 43%;
+  height: clamp(14px, 2.2vh, 24px);
+  border: 3px solid #d6d9ce;
+  border-radius: 2px;
+  background: repeating-linear-gradient(115deg, #f5f3e9 0 36px, #e9362b 36px 72px);
+  box-shadow: 0 6px 0 rgba(0,0,0,.65), 0 0 22px rgba(255,255,255,.15);
+}
+.gra-toll-arm span {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  aspect-ratio: 1;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: #ff3c35;
+  box-shadow: 0 0 16px #ff3c35;
+}
+.gra-toll-arm-left { left: 10%; transform-origin: left center; transform: rotate(-72deg); }
+.gra-toll-arm-left span { right: 12%; }
+.gra-toll-arm-right { right: 10%; transform-origin: right center; transform: rotate(72deg); }
+.gra-toll-arm-right span { left: 12%; }
+
+.gra-toll-status {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  z-index: 8;
+  display: grid;
+  gap: 4px;
+  min-width: min(410px, 70vw);
+  padding: 12px 20px;
+  transform: translateX(-50%);
+  border-block: 1px solid rgba(141,255,155,.5);
+  background: rgba(1,15,7,.88);
+  text-align: center;
+  text-transform: uppercase;
+}
+.gra-toll-status span { color: #ffd333; font-size: 10px; letter-spacing: 4px; }
+.gra-toll-status strong { color: #8dff9b; font-size: clamp(15px, 2vw, 24px); letter-spacing: 5px; }
+
+.gra-toll-transition.is-approaching .gra-toll-arm-left { animation: gra-toll-close-left 720ms cubic-bezier(.45,0,.8,1) both; }
+.gra-toll-transition.is-approaching .gra-toll-arm-right { animation: gra-toll-close-right 720ms cubic-bezier(.45,0,.8,1) both; }
+.gra-toll-transition.is-opening .gra-toll-arm-left { animation: gra-toll-open-left 1.15s cubic-bezier(.2,.8,.25,1) .55s both; }
+.gra-toll-transition.is-opening .gra-toll-arm-right { animation: gra-toll-open-right 1.15s cubic-bezier(.2,.8,.25,1) .55s both; }
+.gra-toll-transition.is-opening .gra-toll-arm span { animation: gra-toll-lamp 240ms steps(1) 5; }
+.gra-toll-transition.is-opening .gra-toll-gantry { animation: gra-toll-gantry-away 850ms ease-in 1.75s both; }
+.gra-toll-transition.is-opening .gra-toll-booth-left { animation: gra-toll-booth-left 850ms ease-in 1.7s both; }
+.gra-toll-transition.is-opening .gra-toll-booth-right { animation: gra-toll-booth-right 850ms ease-in 1.7s both; }
+.gra-toll-transition.is-opening .gra-toll-status { animation: gra-toll-status-away 500ms ease-in 1.9s both; }
+
+.gra-map-grid {
+  position: absolute;
+  inset: 0;
+  opacity: .34;
+  background-image:
+    radial-gradient(circle at center, rgba(255,60,53,.9) 0 1px, transparent 2px),
+    radial-gradient(circle at center, rgba(119,255,114,.5) 0 1px, transparent 2px);
+  background-position: 7px 11px, 23px 31px;
+  background-size: 58px 58px, 82px 82px;
+  mask-image: radial-gradient(ellipse at center, transparent 12%, #000 72%);
+}
+
+.gra-route-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: .55;
+  filter: drop-shadow(0 0 5px rgba(119,255,114,.45));
+}
+
+.gra-route {
+  fill: none;
+  stroke: var(--gra-green);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.gra-route-branch { stroke: var(--gra-amber); opacity: .8; stroke-dasharray: .5 5; }
+.gra-route-warning { stroke: var(--gra-red); opacity: .7; stroke-dasharray: 8 5 1 5; }
+
+.gra-circuit {
+  position: absolute;
+  width: clamp(190px, 27vw, 460px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 5px double rgba(196,255,198,.35);
+  opacity: .18;
+  background:
+    radial-gradient(circle, transparent 0 42%, rgba(255,211,51,.18) 42.5% 44%, transparent 44.5%),
+    repeating-conic-gradient(from 20deg, transparent 0 19deg, rgba(141,255,155,.2) 20deg 21deg, transparent 22deg 44deg);
+  box-shadow: 0 0 36px rgba(47,255,92,.12), inset 0 0 28px rgba(38,222,80,.08);
+}
+
+.gra-circuit::before,
+.gra-circuit::after {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border: 3px solid rgba(207,255,207,.25);
+  border-radius: inherit;
+}
+.gra-circuit::before { inset: 28%; border-color: rgba(255,211,51,.28); }
+.gra-circuit::after { border-style: dashed; }
+
+.gra-circuit-one { top: 12%; left: -11%; }
+.gra-circuit-two { right: -13%; bottom: 7%; width: clamp(250px, 34vw, 580px); }
+
+.gra-road-perspective {
+  position: absolute;
+  left: 50%;
+  bottom: -18vh;
+  width: min(56vw, 820px);
+  height: 70vh;
+  transform: translateX(-50%) perspective(520px) rotateX(64deg);
+  transform-origin: bottom center;
+  opacity: .17;
+  overflow: hidden;
+  background: linear-gradient(90deg, transparent, rgba(12,14,12,.92) 12% 88%, transparent);
+  border-inline: 3px solid rgba(255,198,47,.4);
+  mask-image: linear-gradient(to top, #000 35%, transparent 100%);
+}
+
+.gra-road-perspective::before,
+.gra-road-perspective::after,
+.gra-road-perspective span {
+  content: '';
+  position: absolute;
+  top: -100%;
+  bottom: 0;
+  width: 5px;
+  background: repeating-linear-gradient(to bottom, rgba(255,255,255,.9) 0 45px, transparent 45px 92px);
+}
+
+.gra-road-perspective::before { left: 33%; }
+.gra-road-perspective span { left: calc(50% - 2px); }
+.gra-road-perspective::after { right: 33%; }
+
+.gra-traffic-signal {
+  position: fixed;
+  top: clamp(78px, 10vh, 120px);
+  left: clamp(10px, 2vw, 28px);
+  display: grid;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 9px;
+  background: rgba(4,7,4,.8);
+  box-shadow: 0 0 0 2px rgba(0,0,0,.8), 0 0 28px rgba(119,255,114,.15);
+}
+
+.gra-light {
+  width: clamp(12px, 1.5vw, 18px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: inset 0 -3px 5px rgba(0,0,0,.65), 0 0 8px currentColor;
+  opacity: .23;
+}
+
+.gra-light-red { color: var(--gra-red); }
+.gra-light-amber { color: var(--gra-amber); }
+.gra-light-green { color: var(--gra-green); opacity: 1; }
+
+.gra-navigation-card {
+  position: fixed;
+  top: clamp(78px, 10vh, 120px);
+  right: clamp(10px, 2vw, 28px);
+  display: grid;
+  width: min(290px, 27vw);
+  padding: 11px 13px;
+  border: 1px solid rgba(119,255,114,.34);
+  border-left: 4px solid var(--gra-green);
+  background: linear-gradient(110deg, rgba(3,9,4,.92), rgba(9,20,10,.72));
+  box-shadow: 0 12px 35px rgba(0,0,0,.7), inset 0 1px rgba(255,255,255,.05);
+  text-transform: uppercase;
+}
+
+.gra-nav-brand { color: var(--gra-green); font-size: 12px; letter-spacing: 2px; }
+.gra-boar-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 19px;
+  margin-right: 5px;
+  border: 1px solid currentColor;
+  border-radius: 45% 45% 60% 60%;
+  font-size: 8px;
+  letter-spacing: 0;
+}
+.gra-nav-label { margin-top: 10px; color: rgba(234,255,223,.55); font-size: 8px; letter-spacing: 1.5px; }
+.gra-navigation-card strong { margin-top: 2px; color: #fff; font-size: clamp(13px, 1.4vw, 18px); letter-spacing: 1px; }
+.gra-navigation-card small { margin-top: 8px; color: rgba(234,255,223,.5); font-size: 7px; letter-spacing: .8px; }
+.gra-nav-progress { height: 3px; margin-top: 8px; overflow: hidden; background: rgba(119,255,114,.14); }
+.gra-nav-progress span { display: block; width: 64%; height: 100%; background: var(--gra-green); box-shadow: 0 0 8px var(--gra-green); }
+
+.gra-takeover-message {
+  position: fixed;
+  left: 50%;
+  bottom: 43px;
+  display: grid;
+  justify-items: center;
+  width: min(510px, 58vw);
+  padding: 6px 18px 7px;
+  transform: translateX(-50%);
+  border-inline: 1px solid rgba(119,255,114,.28);
+  background: linear-gradient(90deg, transparent, rgba(3,8,4,.82) 18% 82%, transparent);
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(119,255,114,.65), 2px 2px #000;
+}
+
+.gra-message-code { color: var(--gra-amber); font-size: 9px; letter-spacing: 3px; }
+.gra-takeover-message strong {
+  margin-top: 3px;
+  color: var(--gra-green);
+  font-size: clamp(13px, 1.7vw, 22px);
+  letter-spacing: clamp(1px, .35vw, 5px);
+  transition: opacity 130ms ease, transform 130ms ease, filter 130ms ease;
+}
+.gra-takeover-message strong.is-changing { opacity: 0; transform: translateY(5px); filter: blur(4px); }
+
+.gra-system-band {
+  position: fixed;
+  left: 50%;
+  bottom: 8px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 20px;
+  width: min(960px, calc(100vw - 32px));
+  min-height: 27px;
+  padding: 4px 12px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(119,255,114,.28);
+  background: rgba(3,8,4,.88);
+  color: rgba(234,255,223,.64);
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  box-shadow: 0 7px 28px rgba(0,0,0,.75);
+}
+
+.gra-band-warning { overflow: hidden; color: var(--gra-amber); text-align: center; white-space: nowrap; }
+
+/* The same tracker content, rebuilt visually as road infrastructure: square sign
+   plates, reflective borders, dark green control housings and lane-marker accents. */
+body.gra-takeover #pageWrapper {
+  --gra-panel-edge: rgba(119,255,114,.28);
+}
+
+body.gra-takeover :is(.top-buttons-left, .top-buttons-right) { opacity: .94; }
+
+body.gra-takeover :is(button, .nav-link, input, select, textarea) {
+  border-radius: 2px !important;
+}
+
+body.gra-takeover button:not(.anomaly-summary):not(.agency-summary):not(.view-tab),
+body.gra-takeover .top-buttons-right .nav-link {
+  border: 1px solid rgba(193,255,199,.58) !important;
+  background: linear-gradient(180deg, #107a43, #07532d) !important;
+  color: #f4ffe9 !important;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.35), 0 3px 0 #021c0e, 0 8px 18px rgba(0,0,0,.38) !important;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+body.gra-takeover button:not(.anomaly-summary):not(.agency-summary):not(.view-tab):hover,
+body.gra-takeover .top-buttons-right .nav-link:hover {
+  border-color: #d9ffda !important;
+  background: linear-gradient(180deg, #159454, #086337) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 3px 0 #021c0e, 0 0 18px rgba(89,255,115,.32) !important;
+}
+
+body.gra-takeover :is(input, select, textarea) {
+  border: 1px solid rgba(141,255,155,.5) !important;
+  background: rgba(1,24,11,.92) !important;
+  color: #efffe9 !important;
+  box-shadow: inset 0 0 12px rgba(29,129,59,.2);
+}
+
+body.gra-takeover :is(
+  .panel, .box, .graph-box, .char, .world, #taskPanel, .view-tabs,
+  .rel-summary, .rel-profile, .anomaly-summary, .anomaly-profile, .anomaly-abilities,
+  .agency-summary, .agency-panel, .cases-desk, .cases-vault, .modal-panel, .toast
+) {
+  border: 1px solid rgba(141,255,155,.42) !important;
+  border-left: 4px solid #56d86d !important;
+  border-radius: 2px !important;
+  background:
+    linear-gradient(90deg, rgba(151,255,162,.045) 1px, transparent 1px) 0 0 / 22px 100%,
+    linear-gradient(155deg, rgba(12,91,47,.96), rgba(3,40,21,.97) 58%, rgba(1,20,10,.98)) !important;
+  color: #f0ffe9 !important;
+  box-shadow:
+    0 16px 32px rgba(0,0,0,.72),
+    inset 0 1px rgba(216,255,215,.17),
+    inset 0 0 30px rgba(69,219,94,.055) !important;
+}
+
+body.gra-takeover :is(.char, .rel-summary, .rel-profile, .anomaly-summary, .anomaly-profile, .anomaly-abilities, .agency-summary, .agency-panel) {
+  border-top: 4px solid #8dff9b !important;
+}
+
+body.gra-takeover :is(.char img, .rel-identity img, .anomaly-identity img, .agency-identity img) {
+  border: 1px solid rgba(186,255,190,.55);
+  border-radius: 2px !important;
+  background: #032914;
+}
+
+body.gra-takeover :is(.stat .value, .counter-input, .anomaly-count, .rel-count, .agency-count, .track-box) {
+  border: 1px solid rgba(141,255,155,.3) !important;
+  border-radius: 1px !important;
+  background: rgba(0,20,9,.72) !important;
+  color: #efffe9 !important;
+}
+
+body.gra-takeover :is(.graph-box, .graph-box canvas, canvas) { border-radius: 1px !important; }
+body.gra-takeover .graph-box::before,
+body.gra-takeover .graph-box::after { display: none; }
+body.gra-takeover .graph-box canvas {
+  border: 1px solid rgba(141,255,155,.18);
+  background:
+    linear-gradient(rgba(141,255,155,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(141,255,155,.05) 1px, transparent 1px),
+    rgba(0,20,9,.6);
+  background-size: 18px 18px;
+}
+
+body.gra-takeover :is(.graph-title, .world-label, .anomaly-title, .agency-label, .anomaly-label, .rel-label) {
+  color: #b9ffc0 !important;
+  letter-spacing: .12em;
+  opacity: .9;
+}
+
+body.gra-takeover .view-tabs {
+  gap: 3px;
+  padding: 5px;
+  background: #064326 !important;
+  border: 2px solid #d9f4d7 !important;
+}
+
+body.gra-takeover .view-tab {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: rgba(239,255,233,.66) !important;
+  opacity: 1;
+}
+
+body.gra-takeover .view-tab[aria-selected="true"] {
+  color: #07150b !important;
+  background: #ffd333 !important;
+  box-shadow: inset 0 -3px rgba(0,0,0,.3) !important;
+}
+
+body.gra-takeover .modal-backdrop {
+  background: rgba(0,13,5,.8);
+  backdrop-filter: blur(5px) saturate(.7);
+}
+body.gra-takeover .modal-panel { border-top: 8px solid #8dff9b !important; }
+body.gra-takeover .modal-title {
+  color: #caffca;
+  letter-spacing: .16em;
+}
+body.gra-takeover .toast { border-left-color: #ffd333 !important; }
+
+body.gra-takeover :is(.activity-meter, .anomaly-summary-square, .agency-mini-square, .track-square) { border-radius: 0 !important; }
+body.gra-takeover :is(.standing-badge, .net-indicator, .anomaly-back, .anomaly-switch, .agency-back, .agency-switch) { border-radius: 2px !important; }
+
+body.gra-takeover * {
+  scrollbar-color: rgba(91,224,111,.8) rgba(0,30,13,.4);
+}
+
+body.gra-takeover h1 {
+  color: var(--gra-green, #77ff72);
+  font-size: 0;
+  text-shadow: 0 0 7px rgba(119,255,114,.65), 0 0 30px rgba(119,255,114,.24);
+}
+
+body.gra-takeover h1::before {
+  content: 'AUTOVERROX';
+  display: block;
+  color: #77ff72;
+  font-size: clamp(30px, 5vw, 64px);
+  letter-spacing: clamp(3px, .8vw, 10px);
+}
+
+body.gra-takeover h1::after {
+  content: 'GRANDE RACCORDO ADIMENSIONALE  //  CONTROLLO ACQUISITO';
+  display: block;
+  margin-top: 5px;
+  color: #ffc62f;
+  font-size: clamp(8px, 1vw, 12px);
+  letter-spacing: 3px;
+}
+
+/* Agents view: the mission board becomes a piece of Autoverrox road
+   infrastructure.  This deliberately stays scoped to the active Agents tab;
+   the other tracker pages only keep the light global G.R.A. colour pass. */
+body.gra-takeover[data-view="agentsTab"] #agentsView {
+  position: relative;
+  isolation: isolate;
+  gap: clamp(14px, 2vw, 24px);
+}
+
+body.gra-takeover[data-view="agentsTab"] #agentsView::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -12px -10px -20px;
+  pointer-events: none;
+  opacity: .38;
+  background:
+    linear-gradient(90deg, transparent 0 49.65%, rgba(255,211,51,.34) 49.65% 50.35%, transparent 50.35%) 0 0 / 33.333% 100%,
+    repeating-linear-gradient(90deg, transparent 0 8%, rgba(238,255,225,.11) 8% 11%, transparent 11% 17%) 0 8px / 100% 2px no-repeat;
+  filter: drop-shadow(0 0 8px rgba(119,255,114,.15));
+}
+
+/* Mission/task strip = overhead motorway message board. */
+body.gra-takeover[data-view="agentsTab"] #taskPanel {
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  padding: 31px 12px 12px;
+  border: 2px solid rgba(218,255,216,.78) !important;
+  border-top: 7px solid #d8f5d5 !important;
+  border-left-width: 2px !important;
+  background:
+    linear-gradient(90deg, transparent 0 48%, rgba(255,255,255,.025) 48% 52%, transparent 52%),
+    linear-gradient(180deg, #075c32, #043b21 65%, #032a18) !important;
+  box-shadow: 0 18px 34px rgba(0,0,0,.72), inset 0 0 0 3px #07512e !important;
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel::before {
+  content: 'CENTRALE TRAFFICO MISSIONE  /  CORSIE OPERATIVE';
+  position: absolute;
+  top: 7px;
+  left: 12px;
+  right: 12px;
+  overflow: hidden;
+  color: #d9ffda;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .22em;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .82;
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel::after {
+  content: 'GRA 90';
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  padding: 1px 5px;
+  border: 1px solid rgba(255,255,255,.72);
+  background: #1467a8;
+  color: #fff;
+  font: 800 8px/13px system-ui, sans-serif;
+  letter-spacing: .08em;
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task-stage {
+  border: 1px solid rgba(137,255,147,.22);
+  border-radius: 0;
+  background: rgba(0,18,8,.35);
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task-list { padding: 6px; }
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task {
+  min-height: 72px;
+  margin: 0;
+  padding: 10px 30px 10px 12px;
+  border: 1px solid rgba(164,255,171,.26);
+  border-left: 6px solid #ffd333;
+  border-radius: 1px;
+  background:
+    linear-gradient(90deg, rgba(255,211,51,.08), transparent 32%),
+    #06351e;
+  box-shadow: inset 0 0 16px rgba(0,0,0,.26);
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task::before {
+  content: '\2192';
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  color: #ffd333;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task-title {
+  color: #efffe9;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task-meta {
+  color: #aeeab3;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: .04em;
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task.used {
+  opacity: .5;
+  filter: saturate(.45);
+}
+
+body.gra-takeover[data-view="agentsTab"] #taskPanel .task-controls :is(.add-task-btn, .task-gate-toggle) {
+  border: 1px solid rgba(238,255,225,.75) !important;
+  background: #08703c !important;
+  color: #f3ffec !important;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.32), 0 3px 0 #012f17 !important;
+}
+
+/* Agent cards = individual lane permits / roadside identity boards. */
+body.gra-takeover[data-view="agentsTab"] #charContainer {
+  column-gap: clamp(12px, 1.8vw, 22px);
+  row-gap: clamp(18px, 2.4vw, 34px);
+  padding-top: 8px;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char {
+  --gra-lane: '01';
+  overflow: hidden;
+  padding: 39px 12px 12px;
+  border: 2px solid rgba(221,255,218,.76) !important;
+  border-top: 8px solid #d8f5d5 !important;
+  background:
+    linear-gradient(115deg, transparent 0 72%, rgba(255,255,255,.035) 72% 73%, transparent 73%),
+    linear-gradient(160deg, #09603a, #043a23 52%, #022617) !important;
+  box-shadow:
+    0 18px 32px rgba(0,0,0,.72),
+    inset 0 0 0 3px #07512e,
+    inset 0 1px rgba(255,255,255,.18) !important;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char:nth-child(2) { --gra-lane: '02'; }
+body.gra-takeover[data-view="agentsTab"] .char:nth-child(3) { --gra-lane: '03'; }
+body.gra-takeover[data-view="agentsTab"] .char:nth-child(4) { --gra-lane: '04'; }
+body.gra-takeover[data-view="agentsTab"] .char:nth-child(5) { --gra-lane: '05'; }
+body.gra-takeover[data-view="agentsTab"] .char:nth-child(6) { --gra-lane: '06'; }
+
+body.gra-takeover[data-view="agentsTab"] .char::before {
+  content: 'AGENTE  /  CORSIA ' var(--gra-lane);
+  position: absolute;
+  z-index: 20;
+  top: 9px;
+  left: 35px;
+  right: 35px;
+  overflow: hidden;
+  color: #d9ffda;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .18em;
+  line-height: 18px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .86;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char::after {
+  content: '';
+  position: absolute;
+  z-index: 19;
+  top: 9px;
+  left: 11px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid rgba(255,255,255,.55);
+  border-radius: 50%;
+  background: #062817;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.38);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char:hover {
+  transform: translateY(-3px);
+  border-color: #efffec !important;
+  box-shadow:
+    0 22px 38px rgba(0,0,0,.76),
+    0 0 24px rgba(95,255,123,.14),
+    inset 0 0 0 3px #087344 !important;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .char-portrait {
+  position: relative;
+  width: 88px;
+  height: 104px;
+  padding: 4px;
+  border: 1px solid rgba(221,255,218,.7);
+  border-radius: 1px;
+  background: #012b17;
+  box-shadow: 0 0 0 3px #064329, 0 8px 18px rgba(0,0,0,.45);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .char-portrait::after {
+  content: 'CAM ' var(--gra-lane);
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px 3px;
+  background: rgba(0,20,8,.78);
+  color: #9effa8;
+  font: 700 7px/10px ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: .08em;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .char-portrait img {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  filter: saturate(.82) contrast(1.05) sepia(.08) hue-rotate(72deg);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .stat {
+  align-items: stretch;
+  min-height: 27px;
+  margin: 2px 0;
+  border-bottom: 1px solid rgba(153,255,163,.13);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .stat .label {
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+  color: #aeeab3 !important;
+  font-size: .76em;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .stat .value {
+  align-self: stretch;
+  padding: 3px 6px;
+  border: 0 !important;
+  border-left: 2px solid rgba(141,255,155,.26) !important;
+  background: rgba(0,21,9,.6) !important;
+  color: #f0ffe9 !important;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-weight: 700;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .tracker-row {
+  width: 100%;
+  margin: 8px 0 4px;
+  padding: 7px;
+  border-top: 1px solid rgba(196,255,199,.2);
+  border-bottom: 1px solid rgba(196,255,199,.2);
+  background: rgba(0,18,8,.32);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char :is(.triangle, .triangle-down) {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255,255,255,.65);
+  border-radius: 1px;
+  clip-path: none;
+  color: #fff;
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,.24), 0 3px 0 rgba(0,0,0,.5);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .triangle {
+  background: linear-gradient(145deg, #16834b, #07542e);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .triangle-down {
+  background: linear-gradient(145deg, #1b6fa7, #104567);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .counter-input {
+  height: 38px;
+  border: 1px solid rgba(255,211,51,.52) !important;
+  background: #061e10 !important;
+  color: #ffdd4f !important;
+  box-shadow: inset 0 0 9px rgba(0,0,0,.45);
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .activity-meter {
+  height: 5px;
+  margin-top: 8px;
+  border: 1px solid rgba(224,255,219,.26);
+  background: #01180b;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .net-indicator {
+  min-width: 88px;
+  padding: 3px 10px;
+  border: 1px solid rgba(151,255,160,.3);
+  border-radius: 1px !important;
+  background: #032a17;
+  color: #d9ffda;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char .standing-region { min-height: 25px; }
+body.gra-takeover[data-view="agentsTab"] .char .standing-badge {
+  border-radius: 1px;
+  box-shadow: none;
+  letter-spacing: .12em;
+}
+
+body.gra-takeover[data-view="agentsTab"] .char :is(.remove-btn, .flip-btn, .export-btn, .death-btn) {
+  border: 1px solid rgba(219,255,216,.48) !important;
+  background: #075432 !important;
+  color: #eaffdf !important;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.28), 0 2px 0 #011c0d !important;
+}
+
+/* Lower dashboard = traffic telemetry. */
+body.gra-takeover[data-view="agentsTab"] .world-section {
+  position: relative;
+  gap: clamp(8px, 1vw, 16px);
+  padding-top: 29px;
+  border-top: 2px dashed rgba(241,255,231,.34);
+}
+
+body.gra-takeover[data-view="agentsTab"] .world-section::before {
+  content: 'TELEMETRIA RETE STRADALE  //  SETTORE MISSIONE';
+  position: absolute;
+  top: 7px;
+  left: 0;
+  color: #b9ffc0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .2em;
+  opacity: .78;
+}
+
+body.gra-takeover[data-view="agentsTab"] :is(.world-section .world, .world-section .graph-box) {
+  border: 2px solid rgba(208,255,208,.48) !important;
+  border-top: 6px solid #87e993 !important;
+  border-left-width: 2px !important;
+  background:
+    linear-gradient(rgba(141,255,155,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(141,255,155,.035) 1px, transparent 1px),
+    linear-gradient(155deg, #073a23, #022313) !important;
+  background-size: 22px 22px, 22px 22px, auto !important;
+}
+
+body.gra-takeover[data-view="agentsTab"] .world-section .graph-title {
+  color: #dbffda !important;
+  font-size: clamp(11px, 1.4vw, 16px);
+  font-weight: 900;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+
+body.gra-takeover[data-view="agentsTab"] .world-section .world-counter {
+  border: 1px solid rgba(148,255,158,.24);
+  border-radius: 1px;
+  background: rgba(0,23,10,.56);
+  box-shadow: none;
+}
+
+body.gra-takeover[data-view="agentsTab"] .world-section .world-counter .counter {
+  border: 1px solid rgba(255,211,51,.32);
+  border-radius: 1px;
+  background: rgba(0,13,5,.7);
+  color: #ffdc47;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-shadow: 0 0 12px rgba(255,211,51,.25);
+}
+
+body.gra-takeover[data-view="agentsTab"] .world-section .anomaly-stat {
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,.15);
+}
+
+body.gra-takeover[data-view="agentsTab"] .mission-controls {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 2px dashed rgba(241,255,231,.28);
+}
+
+body.gra-takeover[data-view="agentsTab"] #nextMissionButton::after {
+  content: '  \2192';
+  color: #ffd333;
+}
+
+@media (max-width: 760px) {
+  body.gra-takeover[data-view="agentsTab"] #taskPanel::before {
+    padding-right: 42px;
+    letter-spacing: .12em;
+  }
+
+  body.gra-takeover[data-view="agentsTab"] .char {
+    padding-top: 35px;
+  }
+
+  body.gra-takeover[data-view="agentsTab"] .char::before {
+    left: 30px;
+    right: 30px;
+    letter-spacing: .11em;
+  }
+}
+
+/* Motion is enabled explicitly by the controller so ?motion=reduced remains static
+   even when the operating system itself does not request reduced motion. */
+#graTakeoverOverlay.gra-motion .gra-route { animation: gra-route-flow 5s linear infinite; }
+#graTakeoverOverlay.gra-motion .gra-route-branch { animation-duration: 7s; animation-direction: reverse; }
+#graTakeoverOverlay.gra-motion .gra-route-warning { animation-duration: 3.4s; }
+#graTakeoverOverlay.gra-motion .gra-map-grid { animation: gra-map-drift 18s linear infinite; }
+#graTakeoverOverlay.gra-motion .gra-circuit-one { animation: gra-circuit-float 12s ease-in-out infinite; }
+#graTakeoverOverlay.gra-motion .gra-circuit-two { animation: gra-circuit-float 15s ease-in-out -4s infinite reverse; }
+#graTakeoverOverlay.gra-motion .gra-circuit::after { animation: gra-circuit-spin 26s linear infinite; }
+#graTakeoverOverlay.gra-motion .gra-road-perspective::before,
+#graTakeoverOverlay.gra-motion .gra-road-perspective::after,
+#graTakeoverOverlay.gra-motion .gra-road-perspective span { animation: gra-lanes 2.4s linear infinite; }
+#graTakeoverOverlay.gra-motion .gra-light { animation: gra-signal 4.8s steps(1, end) infinite; }
+#graTakeoverOverlay.gra-motion .gra-light-amber { animation-delay: 1.6s; }
+#graTakeoverOverlay.gra-motion .gra-light-green { animation-delay: 3.2s; }
+#graTakeoverOverlay.gra-motion .gra-nav-progress span { animation: gra-nav-progress 3.5s ease-in-out infinite; }
+
+@keyframes gra-route-flow { to { stroke-dashoffset: -100; } }
+@keyframes gra-map-drift { to { background-position: 65px 69px, -59px -51px; } }
+@keyframes gra-circuit-float { 50% { transform: translate(3vw, -2vh) rotate(4deg); } }
+@keyframes gra-circuit-spin { to { transform: rotate(360deg); } }
+@keyframes gra-lanes { to { transform: translateY(92px); } }
+@keyframes gra-signal { 0%, 32% { opacity: 1; } 33%, 100% { opacity: .2; } }
+@keyframes gra-nav-progress { 0%, 100% { width: 38%; } 50% { width: 92%; } }
+@keyframes gra-street-pan {
+  0% { transform: scale(1.08) translate3d(-1.8%, -1%, 0) rotate(-.35deg); }
+  100% { transform: scale(1.13) translate3d(2%, 1.5%, 0) rotate(.4deg); }
+}
+@keyframes gra-street-flow { to { stroke-dashoffset: -70; } }
+@keyframes gra-ring-flow { to { stroke-dashoffset: 88; } }
+@keyframes gra-junction-pulse { to { opacity: .35; filter: drop-shadow(0 0 12px #ffd333); } }
+@keyframes gra-toll-arrive { from { opacity: 0; filter: blur(9px); } to { opacity: 1; filter: none; } }
+@keyframes gra-toll-clear {
+  0%, 72% { opacity: 1; filter: none; }
+  100% { visibility: hidden; opacity: 0; filter: blur(5px); }
+}
+@keyframes gra-toll-close-left { from { transform: rotate(-72deg); } to { transform: rotate(0); } }
+@keyframes gra-toll-close-right { from { transform: rotate(72deg); } to { transform: rotate(0); } }
+@keyframes gra-toll-open-left { from { transform: rotate(0); } to { transform: rotate(-78deg); } }
+@keyframes gra-toll-open-right { from { transform: rotate(0); } to { transform: rotate(78deg); } }
+@keyframes gra-toll-lamp { 50% { background: #72ff84; box-shadow: 0 0 20px #72ff84; } }
+@keyframes gra-toll-gantry-away { to { transform: translate(-50%, -180%); opacity: 0; } }
+@keyframes gra-toll-booth-left { to { transform: translateX(-150%); opacity: 0; } }
+@keyframes gra-toll-booth-right { to { transform: translateX(150%); opacity: 0; } }
+@keyframes gra-toll-status-away { to { transform: translate(-50%, 30px); opacity: 0; } }
+
+@media (max-width: 760px) {
+  .gra-toll-gantry { top: 9%; width: 88vw; min-height: 62px; padding: 8px 11px; gap: 8px; }
+  .gra-toll-gantry strong { font-size: clamp(14px, 3.6vw, 24px); letter-spacing: 2px; }
+  .gra-toll-route { width: 42px; font-size: 8px; }
+  .gra-toll-arrow { width: 38px; font-size: 25px; }
+  .gra-toll-booth { top: 45%; width: 68px; height: 142px; }
+  .gra-toll-booth-left { left: 3%; }
+  .gra-toll-booth-right { right: 3%; }
+  .gra-toll-arm { top: 54%; width: 45%; }
+  .gra-toll-arm-left { left: 6%; }
+  .gra-toll-arm-right { right: 6%; }
+  .gra-navigation-card { display: none; }
+  .gra-takeover-message { width: 72vw; }
+  .gra-traffic-signal { top: 76px; }
+  .gra-system-band { grid-template-columns: 1fr auto; gap: 8px; }
+  .gra-system-band > :first-child { display: none; }
+  .gra-band-warning { text-align: left; }
+}
+
+@media (max-width: 470px) {
+  .gra-toll-route { display: none; }
+  .gra-toll-gantry { grid-template-columns: 1fr auto; }
+  .gra-toll-booth { opacity: .72; }
+  .gra-toll-status { min-width: 86vw; padding-inline: 10px; }
+  .gra-toll-status span { letter-spacing: 2px; }
+  .gra-toll-status strong { letter-spacing: 2px; }
+  .gra-takeover-message { width: 82vw; padding-inline: 8px; }
+  .gra-traffic-signal { top: 108px; }
+  .gra-system-band { font-size: 6px; letter-spacing: .8px; }
+  .gra-circuit-one { left: -30%; }
+  .gra-circuit-two { right: -45%; }
+}

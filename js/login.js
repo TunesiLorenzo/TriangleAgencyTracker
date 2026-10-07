@@ -20,6 +20,7 @@ const READER_ZOOM = 2;     // the close-up on the badge going through the card r
 const PURGE_SECONDS = 4;   // Log Out: the countdown before the server stops and the page reloads
 const USERNAME = 'Manager#56776544';
 const PASSWORD = '*'.repeat(14);
+const GRA_RELOAD_SESSION_KEY = 'ta-gra-preserve-open-session';
 
 // Without motion every beat is short: the steps still show, nothing travels.
 const wait = ms => new Promise(resolve => setTimeout(resolve, motionAllowed() ? ms : Math.min(ms, 150)));
@@ -465,5 +466,13 @@ export function initLogin() {
   screen.addEventListener('click', signIn);
   document.getElementById('logoutButton').addEventListener('click', signOut);
 
-  setState('locked');      // every page load, a reload included, starts at the login
+  // A settings-triggered G.R.A. reload may preserve an already-open display once.
+  // The marker lives in this tab only and is consumed immediately; normal reloads
+  // and displays that were locked still begin at the sign-in screen.
+  let preserveOpenSession = false;
+  try {
+    preserveOpenSession = sessionStorage.getItem(GRA_RELOAD_SESSION_KEY) === '1';
+    sessionStorage.removeItem(GRA_RELOAD_SESSION_KEY);
+  } catch { /* storage unavailable */ }
+  setState(preserveOpenSession ? 'open' : 'locked');
 }

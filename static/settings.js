@@ -55,6 +55,13 @@ const LIGHT_ACTION_FIELDS = {
 // Slider/toggle definitions for the Effects tab.
 const EFFECT_GROUPS = [
   {
+    key: 'graTakeover', title: 'G.R.A. takeover', eyebrow: 'DISPLAY OVERRIDE',
+    hint: 'Let the anomaly seize every open viewer. Switching this on or off saves immediately and reloads the displays; an already signed-in display stays signed in.',
+    fields: [
+      { key: 'enabled', label: 'Take over viewer displays', type: 'toggle' }
+    ]
+  },
+  {
     key: 'atmosphere', title: 'Chaos atmosphere', eyebrow: 'ONE INTENSITY FOR EVERYTHING',
     hint: 'Chaos is turned into one intensity from 0 to 100%. These set what each layer does at full intensity.',
     fields: [

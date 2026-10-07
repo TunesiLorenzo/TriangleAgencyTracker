@@ -24,6 +24,7 @@ import { initButtonSounds, initKeepAlive, isMuted, playEvent, setMuted } from '.
 import { confirmDialog, openModal, toast } from './ui.js';
 import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
 import { initMotionPreference } from './motion.js';
+import { initGraTakeover } from './graTakeover.js';
 
 initMotionPreference();
 
@@ -250,6 +251,7 @@ async function init() {
   // Sound and effect settings from /settings; defaults when served without the Flask app.
   await startConfigSync();
   if (!isServerAvailable()) document.getElementById('settingsLink').hidden = true;
+  initGraTakeover();
 
   initLocalStorage();
   // On LAN HTTP this may load the desktop-hosted team save before anything is rendered.

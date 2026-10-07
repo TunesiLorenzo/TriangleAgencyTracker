@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="./css/utilities.css">
   <link rel="stylesheet" href="./css/login.css">
   <link rel="stylesheet" href="./css/cursor.css">
+  <link rel="stylesheet" href="./css/gra.css">
 </head>
 <body>
   <div id="loginScreen" class="login-screen" data-state="locked" role="dialog" aria-modal="true" aria-label="Triangle Agency sign-in">
@@ -182,6 +183,42 @@
   <div id="backgroundHue" aria-hidden="true">
     <video id="bgVideo1" src="./images/bck_calm.mp4" autoplay muted loop playsinline></video>
     <video id="bgVideo2" class="secondary-background" autoplay muted loop playsinline></video>
+    <div class="gra-map-background">
+      <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <g class="gra-map-minor-roads">
+          <path d="M-90 130 C180 70 255 205 470 132 S815 48 1055 132 S1395 220 1690 92"></path>
+          <path d="M-70 315 C170 395 360 235 585 330 S970 440 1225 310 S1465 215 1680 345"></path>
+          <path d="M-80 680 C175 580 305 730 535 638 S875 505 1090 640 S1410 790 1680 650"></path>
+          <path d="M105 -90 C75 140 210 250 145 448 S85 710 210 990"></path>
+          <path d="M395 -95 C505 105 360 285 470 475 S590 720 500 980"></path>
+          <path d="M760 -80 C650 140 835 275 730 470 S610 740 815 980"></path>
+          <path d="M1110 -100 C1010 145 1200 295 1080 475 S930 720 1135 990"></path>
+          <path d="M1430 -70 C1345 145 1500 330 1390 520 S1280 740 1485 970"></path>
+          <path d="M-50 500 C230 460 345 545 565 508 S920 405 1170 515 S1455 600 1660 535"></path>
+          <path d="M250 -40 C295 155 630 140 665 355 S505 690 765 910"></path>
+          <path d="M1290 -40 C1235 180 910 185 930 390 S1110 675 870 940"></path>
+        </g>
+        <g class="gra-map-major-roads">
+          <path d="M-120 770 C170 650 230 360 510 370 S790 685 940 405 S1260 115 1720 165"></path>
+          <path d="M145 980 C285 690 520 725 650 500 S720 145 865 -100"></path>
+          <path d="M-100 205 C230 25 470 245 720 180 S1170 20 1710 255"></path>
+        </g>
+        <g class="gra-map-ring-road">
+          <ellipse cx="815" cy="455" rx="505" ry="305"></ellipse>
+          <ellipse cx="815" cy="455" rx="392" ry="225"></ellipse>
+        </g>
+        <g class="gra-map-junctions">
+          <circle cx="310" cy="455" r="7"></circle><circle cx="440" cy="250" r="6"></circle>
+          <circle cx="650" cy="500" r="7"></circle><circle cx="815" cy="150" r="6"></circle>
+          <circle cx="940" cy="405" r="8"></circle><circle cx="1195" cy="250" r="7"></circle>
+          <circle cx="1318" cy="520" r="6"></circle><circle cx="815" cy="760" r="7"></circle>
+        </g>
+        <g class="gra-map-labels">
+          <text x="328" y="438">USCITA 12</text><text x="975" y="390">SVINCOLO G.R.A.</text>
+          <text x="1215" y="235">ANELLO EST</text><text x="672" y="530">CORSIA ADIMENSIONALE</text>
+        </g>
+      </svg>
+    </div>
   </div>
   <div id="chaosVignette" aria-hidden="true"></div>
 
@@ -267,6 +304,56 @@
       </footer>
     </div>
   </main>
+  </div>
+
+  <div id="graTakeoverOverlay" aria-hidden="true">
+    <div class="gra-toll-transition">
+      <div class="gra-toll-gantry">
+        <span class="gra-toll-route">G.R.A.</span>
+        <strong>VARCO AUTOVERROX</strong>
+        <span class="gra-toll-arrow">&#8595;</span>
+      </div>
+      <div class="gra-toll-lanes"><span></span><span></span><span></span></div>
+      <div class="gra-toll-booth gra-toll-booth-left"><i></i><b>01</b></div>
+      <div class="gra-toll-booth gra-toll-booth-right"><i></i><b>02</b></div>
+      <div class="gra-toll-arm gra-toll-arm-left"><span></span></div>
+      <div class="gra-toll-arm gra-toll-arm-right"><span></span></div>
+      <div class="gra-toll-status"><span>TRANSITO AUTORIZZATO</span><strong>APERTURA VARCO</strong></div>
+    </div>
+    <div class="gra-map-grid"></div>
+    <svg class="gra-route-lines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
+      <path class="gra-route gra-route-main" pathLength="100" d="M-70 620 C180 520 160 300 410 315 S715 560 790 285 S1010 120 1270 42"></path>
+      <path class="gra-route gra-route-branch" pathLength="100" d="M170 760 C305 560 550 625 590 420 S530 115 720 -50"></path>
+      <path class="gra-route gra-route-warning" pathLength="100" d="M-80 165 C210 40 280 230 510 168 S830 38 1280 205"></path>
+    </svg>
+    <div class="gra-circuit gra-circuit-one"></div>
+    <div class="gra-circuit gra-circuit-two"></div>
+    <div class="gra-road-perspective"><span></span></div>
+
+    <div class="gra-traffic-signal" aria-hidden="true">
+      <span class="gra-light gra-light-red"></span>
+      <span class="gra-light gra-light-amber"></span>
+      <span class="gra-light gra-light-green"></span>
+    </div>
+
+    <div class="gra-navigation-card" aria-hidden="true">
+      <div class="gra-nav-brand"><span class="gra-boar-mark">AV</span> AUTOVERROX</div>
+      <span class="gra-nav-label">DESTINAZIONE ASSEGNATA</span>
+      <strong>FUORI DAL TRAFFICO</strong>
+      <div class="gra-nav-progress"><span></span></div>
+      <small>PERCORSO ADIMENSIONALE · ACCESSO VINCOLATO</small>
+    </div>
+
+    <div class="gra-takeover-message" aria-hidden="true">
+      <span class="gra-message-code">G.R.A. // 00</span>
+      <strong id="graTakeoverMessage">INTERFACCIA ACQUISITA</strong>
+    </div>
+
+    <div class="gra-system-band" aria-hidden="true">
+      <span>AUTOVERROX CONTROL NETWORK</span>
+      <span class="gra-band-warning">ANOMALIA DI CLASSE TRAFFICO · DOMINIO ATTIVO</span>
+      <span id="graTakeoverClock">00:00:00</span>
+    </div>
   </div>
 
   <div id="scanlineOverlay" aria-hidden="true"></div>
