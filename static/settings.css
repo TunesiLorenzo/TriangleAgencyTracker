@@ -281,6 +281,9 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
 
 /* ---------- effects ---------- */
 #effectGroups { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 14px; }
+/* the mission picker heads the tab, across every column */
+.mission-card { grid-column: 1 / -1; }
+.mission-card .fields { max-width: 560px; }
 .fields { display: flex; flex-direction: column; gap: 10px; }
 .field {
   display: grid;
@@ -290,7 +293,9 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
   font-size: 0.85rem;
 }
 .field output { text-align: right; }
-.field select { grid-column: 2 / 4; }
+.field select, .field button, .field input[type=text], .field-actions { grid-column: 2 / 4; }
+.field-actions { display: flex; gap: 8px; }
+.field-actions button { flex: 1; }
 /* An effect card is about half as wide as a slot list, so its sound slot stacks. */
 .effect-card .slot {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -405,7 +410,7 @@ footer { display: flex; justify-content: center; padding-top: 10px; }
   .cue { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label play" "select select" "volume volume"; }
   .field { grid-template-columns: minmax(0, 1fr) 4.5em; }
   .field input[type=range] { grid-column: 1 / -1; grid-row: 2; }
-  .field select { grid-column: 1 / -1; }
+  .field select, .field button, .field input[type=text], .field-actions { grid-column: 1 / -1; }
   .toggle i { grid-column: 2; }
   .light-slot {
     grid-template-columns: minmax(0, 1fr) auto auto;

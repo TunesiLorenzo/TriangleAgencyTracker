@@ -27,6 +27,8 @@ import os
 import re
 import secrets
 import shutil
+import socket
+import struct
 import threading
 import zipfile
 from pathlib import Path
@@ -816,6 +818,48 @@ def lights_cue():
         raise ValueError("Unknown light target")
     light_bridge.submit(cue, ambient, target)
     return jsonify({"ok": True})
+
+
+# -----------------------------
+# VOICEMEETER (music level on the room computer)
+# -----------------------------
+# VoiceMeeter takes plain-text commands over its VBAN network protocol: one UDP packet with
+# a 28-byte header and the command behind it. UDP sends no answer, so a packet that went out
+# says nothing about whether VoiceMeeter was listening.
+vban_frame = 0
+vban_lock = threading.Lock()
+
+
+def send_vban_text(host, port, stream, command):
+    global vban_frame
+    with vban_lock:
+        vban_frame += 1
+        frame = vban_frame
+    # "VBAN", text sub-protocol (0x40) at its usual rate index, UTF-8, stream name, frame counter
+    header = b"VBAN" + bytes([0x52, 0, 0, 0x10]) + stream.encode("utf-8")[:16].ljust(16, b"\0") + struct.pack("<L", frame)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as link:
+        link.sendto(header + command.encode("utf-8"), (host, port))
+
+
+@app.post("/api/voicemeeter")
+def voicemeeter_command():
+    """Fade one VoiceMeeter strip to its dropped or its normal level (the tester on /settings)."""
+    payload = request.get_json(silent=True) or {}
+    host = str(payload.get("host") or "").strip()
+    if not host:
+        raise ValueError("Set the name of the computer running VoiceMeeter first")
+    port = int(payload.get("port") or 6980)
+    stream = str(payload.get("stream") or "Command1").strip()
+    strip = int(payload.get("strip") or 0)
+    level = float(payload.get("drop" if payload.get("action") == "drop" else "normal") or 0)
+    milliseconds = int(float(payload.get("fadeSeconds") or 0) * 1000)
+    target = f"Strip[{strip}]"
+    command = f"{target}.FadeTo=({level:.1f}, {milliseconds});" if milliseconds > 0 else f"{target}.Gain={level:.1f};"
+    try:
+        send_vban_text(host, port, stream, command)
+    except socket.gaierror:
+        raise ValueError(f'No computer called "{host}" was found on the network') from None
+    return jsonify({"ok": True, "message": f"Sent to {host}:{port} ({stream}): {command}"})
 
 
 # -----------------------------

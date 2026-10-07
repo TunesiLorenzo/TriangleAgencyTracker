@@ -21,6 +21,15 @@ let sequencePlaying = false;
 
 export function isMuted() { return muted || poweredOff; }
 
+// "Silenzio di Tomba" (silence.js) swallows the tracker's sounds. The handler is told which
+// event asked for one (nothing for a button or a plain slot) and returns true once the
+// sound is to stay unheard.
+let swallow = null;
+
+export function setSoundSwallow(handler) {
+  swallow = handler;
+}
+
 export function setMuted(value) {
   muted = !!value;
   try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* ignore */ }
@@ -201,7 +210,7 @@ export function resolveSlot(event, { competency } = {}) {
  * `gain` scales it further (the button volume for button slots).
  */
 export async function playSlot(slot, { gain = 1 } = {}) {
-  if (poweredOff || !slot) return;
+  if (poweredOff || !slot || swallow?.()) return;
   const volume = (Number(slot.volume) || 0) * (Number(gain) || 0) * (Number(getConfig().sounds.masterVolume) || 0);
   if (!slot.next || slot.next === 'none') {
     await warmedUp();
@@ -222,6 +231,8 @@ export async function playSlot(slot, { gain = 1 } = {}) {
 /** Play the sound assigned to a tracker event, e.g. playEvent('witness'). */
 export function playEvent(event, options) {
   triggerLight(event);
+  // Before the mute check: a swallowed sound is still felt on a muted screen.
+  if (swallow?.(event)) return Promise.resolve();
   if (muted) return Promise.resolve();
   return playSlot(resolveSlot(event, options));
 }

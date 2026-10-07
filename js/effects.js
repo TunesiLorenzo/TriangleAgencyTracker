@@ -199,13 +199,18 @@ export function chaosIntensity() {
   return state.target;
 }
 
+const mutedBy = new Set();
+
 /**
  * Hide every chaos layer of this module (atmosphere, shake, critical glitch) and the chaos
  * pulse, without losing the chaos value: the G.R.A. takeover does this when it is set to
- * show chaos through its own incidents only.
+ * show chaos through its own incidents only, and "Silenzio di Tomba" while the heart is
+ * stopped. Each `source` mutes on its own account; the layers return when none is left.
  */
-export function setChaosEffectsMuted(muted) {
-  state.muted = !!muted;
+export function setChaosEffectsMuted(muted, source = 'gra') {
+  if (muted) mutedBy.add(source);
+  else mutedBy.delete(source);
+  state.muted = mutedBy.size > 0;
   document.documentElement.classList.toggle('chaos-effects-muted', state.muted);
 }
 

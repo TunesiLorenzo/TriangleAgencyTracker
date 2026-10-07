@@ -52,11 +52,18 @@ const LIGHT_ACTION_FIELDS = {
   off: []
 };
 
+// Effects made for a single mission. The Effects tab has only the picked one's cards out
+// (effects.mission); `switch` is the setting that starts each, kept off for the others.
+const MISSIONS = [
+  { key: 'gra', label: 'G.R.A.', switch: 'effects.graTakeover.enabled' },
+  { key: 'silence', label: 'Silenzio di Tomba', switch: 'effects.silence.enabled' }
+];
+
 // Slider/toggle definitions for the Effects tab. A group with `sound` also gets a sound
-// slot, saved as effects.<group>.sound.
+// slot, saved as effects.<group>.sound; one with `mission` belongs to that mission effect.
 const EFFECT_GROUPS = [
   {
-    key: 'graTakeover', title: 'G.R.A. takeover', eyebrow: 'DISPLAY OVERRIDE',
+    key: 'graTakeover', mission: 'gra', title: 'G.R.A. takeover', eyebrow: 'DISPLAY OVERRIDE',
     hint: 'Let the anomaly seize every open viewer. Switching this on or off saves immediately and starts the transition sound, while the display stays signed in. The two marks are seconds into that sound: the toll barrier covers the screen and the new mode loads behind it, then the barriers lift. The scene dissolves as the sound ends, or about 2.5 s after the barriers lift when there is no sound or it is shorter. Choose a built-in sound or a file from the Sounds library. "Chaos effects" picks what a taken-over display does with chaos: the G.R.A. incidents (next card), the usual tracker effects (shake, grain, scanlines, critical glitch), or both.',
     fields: [
       { key: 'enabled', label: 'Take over viewer displays', type: 'toggle' },
@@ -67,7 +74,7 @@ const EFFECT_GROUPS = [
     sound: { label: 'Barrier transition sound', hint: 'Starts the transition, in either direction' }
   },
   {
-    key: 'graIncidents', title: 'G.R.A. incidents', eyebrow: 'WHILE THE TAKEOVER IS ON',
+    key: 'graIncidents', mission: 'gra', title: 'G.R.A. incidents', eyebrow: 'WHILE THE TAKEOVER IS ON',
     hint: 'Things that happen at random on a taken-over viewer, unless the takeover is set to the usual chaos effects only. Strength is the first slider plus the share of the second that the Chaos counter has reached (see "Chaos for full intensity" on the Chaos atmosphere card), up to 100%. The three rates are times a minute at full strength; less strength means fewer incidents and milder, shorter breakdowns (3.5 to 10 seconds, one at a time). Vehicles play a recording from <code>audio/GRA</code>, a file with "truck" in its name for lorries and one with "car" for the rest, pitched to their speed: at 100% traffic speed they pass at about the pace of the recordings. None of this touches the tracker\'s data.',
     fields: [
       { key: 'baseStrength', label: 'Strength with no chaos', min: 0, max: 1, step: 0.05, percent: true },
@@ -77,6 +84,37 @@ const EFFECT_GROUPS = [
       { key: 'glitchesPerMinute', label: 'Breakdowns', min: 0, max: 12, step: 0.5, unit: '/min', zeroLabel: 'off' },
       { key: 'trafficSpeed', label: 'Traffic speed', min: 0.4, max: 2.5, step: 0.05, percent: true },
       { key: 'trafficVolume', label: 'Traffic sound volume', min: 0, max: 1, step: 0.05, percent: true }
+    ]
+  },
+  {
+    key: 'silence', mission: 'silence', title: 'Silenzio di Tomba', eyebrow: 'DISPLAY OVERRIDE',
+    hint: 'The anomaly that stops every sound, and with it the heart. On every open viewer the tracker\'s own sounds are swallowed and the display loses its colour: by the first slider, plus the share of the second that the Chaos counter has reached (see "Chaos for full intensity" on the Chaos atmosphere card), up to fully black and white. The heart is yours to play. Switched on, it fades in and beats at the rate set here: heard, drawn under the title, and letting a breath of colour through on each beat; a merit lands as one strong beat, a demerit as a missed one. Switched off, it fades away. "Trigger a flatline" makes it falter while darkness closes in from the edges, then stops it: the display stops too, fully black and white, under the long tone of a heart monitor, until the heart fades back in and everything moves again. None of this touches the tracker\'s data.',
+    fields: [
+      { key: 'enabled', label: 'Silence viewer displays', type: 'toggle' },
+      { key: 'baseGrey', label: 'Black and white with no chaos', min: 0, max: 1, step: 0.05, percent: true },
+      { key: 'chaosGrey', label: 'Added at full chaos', min: 0, max: 1, step: 0.05, percent: true },
+      { key: 'heartbeat', label: 'Heartbeat', type: 'toggle' },
+      { key: 'bpm', label: 'Heart rate', min: 30, max: 180, step: 2, unit: 'bpm' },
+      { key: 'volume', label: 'Heartbeat volume', min: 0, max: 1, step: 0.05, percent: true },
+      { key: 'fadeSeconds', label: 'Heartbeat fades in and out over', min: 0, max: 15, step: 0.5, unit: 's', zeroLabel: 'at once' },
+      { key: 'flatlineAt', label: 'Stop the heart', type: 'trigger', action: 'Trigger a flatline' },
+      { key: 'failSeconds', label: 'Darkness closes in for', min: 0, max: 20, step: 0.5, unit: 's' },
+      { key: 'flatlineSeconds', label: 'The heart stays stopped for', min: 1, max: 30, step: 0.5, unit: 's' },
+      { key: 'flatlineVolume', label: 'Flatline tone volume', min: 0, max: 1, step: 0.05, percent: true, zeroLabel: 'off' }
+    ]
+  },
+  {
+    key: 'voicemeeter', title: 'VoiceMeeter music level', eyebrow: 'TEST',
+    hint: 'Fades one strip of VoiceMeeter on another computer, to try out turning the music down from the tracker. The tracker server sends the command over the network (VBAN text), so VoiceMeeter needs VBAN switched on with an incoming text stream of this name. Nothing answers back: "Sent" means the command left the server, not that VoiceMeeter took it.',
+    fields: [
+      { key: 'host', label: 'Computer running VoiceMeeter', type: 'text' },
+      { key: 'port', label: 'VBAN port', type: 'text' },
+      { key: 'stream', label: 'Incoming stream name', type: 'text' },
+      { key: 'strip', label: 'Strip (first is 0)', min: 0, max: 7, step: 1 },
+      { key: 'drop', label: 'Dropped level', min: -60, max: 0, step: 1, unit: 'dB' },
+      { key: 'normal', label: 'Normal level', min: -60, max: 12, step: 1, unit: 'dB' },
+      { key: 'fadeSeconds', label: 'Fade', min: 0, max: 10, step: 0.5, unit: 's', zeroLabel: 'at once' },
+      { key: 'test', label: 'Try it', type: 'actions', actions: [{ key: 'drop', label: 'Drop' }, { key: 'restore', label: 'Restore' }] }
     ]
   },
   {
@@ -461,9 +499,24 @@ function formatValue(field, value) {
   return `${rounded}${field.unit ? ` ${field.unit}` : ''}`;
 }
 
-/** One slider, toggle or dropdown row bound to `path` in the draft. */
+/** One slider, toggle, dropdown or trigger row bound to `path` in the draft. */
 function renderField(path, field) {
   const value = getPath(draft, path);
+  if (field.type === 'trigger') {
+    // A button for something that happens once: pressing it saves the moment it was pressed.
+    return `<div class="field"><span>${field.label}</span>
+      <button type="button" class="secondary" data-trigger="${path}">${field.action}</button></div>`;
+  }
+  if (field.type === 'text') {
+    return `<label class="field"><span>${field.label}</span>
+      <input type="text" value="${escapeHtml(value ?? '')}" data-path="${path}" spellcheck="false"></label>`;
+  }
+  if (field.type === 'actions') {
+    // Buttons that ask the server to do something now; pressing them saves nothing.
+    const group = path.split('.')[1];
+    return `<div class="field"><span>${field.label}</span><span class="field-actions">${field.actions
+      .map(action => `<button type="button" class="secondary" data-server-action="${group}.${action.key}">${action.label}</button>`).join('')}</span></div>`;
+  }
   if (field.type === 'toggle') {
     return `<label class="field toggle"><span>${field.label}</span>
       <input type="checkbox" data-path="${path}" data-kind="boolean"${value ? ' checked' : ''}><i aria-hidden="true"></i></label>`;
@@ -492,8 +545,26 @@ function renderEffectSound(group) {
   </div>`;
 }
 
+/** The mission whose cards are out: the one picked, unless another one is switched on (then that one). */
+function currentMission() {
+  const on = MISSIONS.filter(mission => getPath(draft, mission.switch) === true);
+  const picked = MISSIONS.find(mission => mission.key === draft.effects.mission);
+  if (picked && (!on.length || on.includes(picked))) return picked.key;
+  return on[0]?.key || 'none';
+}
+
 function renderEffects() {
-  $('#effectGroups').innerHTML = EFFECT_GROUPS.map(group => {
+  const mission = currentMission();
+  draft.effects.mission = mission;
+  const choices = [{ key: 'none', label: 'None' }, ...MISSIONS]
+    .map(choice => `<option value="${choice.key}"${choice.key === mission ? ' selected' : ''}>${escapeHtml(choice.label)}</option>`).join('');
+  const picker = `<div class="card effect-card mission-card">
+      <div class="section-heading"><div><span class="eyebrow">ONE AT A TIME</span><h2>Mission effect</h2></div></div>
+      <p class="hint">Effects made for a single mission. Pick one to bring out its settings; the others are put away and switched off. Picking one does not start it: the switch on its own card does.</p>
+      <div class="fields"><label class="field"><span>Mission</span><select data-path="effects.mission">${choices}</select></label></div>
+    </div>`;
+
+  $('#effectGroups').innerHTML = picker + EFFECT_GROUPS.filter(group => !group.mission || group.mission === mission).map(group => {
     const rows = group.fields.map(field => renderField(`effects.${group.key}.${field.key}`, field)).join('');
     return `<div class="card effect-card">
       <div class="section-heading">
@@ -708,6 +779,11 @@ function handleEdit(event) {
 
   const output = document.querySelector(`output[data-out="${path}"]`);
   if (output) output.textContent = formatValue(fieldFor(path) || { percent: true }, value);
+  if (path === 'effects.mission') {
+    // The missions put away are switched off, so nothing runs out of sight.
+    MISSIONS.filter(mission => mission.key !== value).forEach(mission => setPath(draft, mission.switch, false));
+    renderEffects();
+  }
   if (path.startsWith('lights.')) {
     // A new action, effect or target shows different sliders; other edits only recolour the swatch.
     if (/\.(action|effect)$/.test(path) || path === 'lights.target') renderLights();
@@ -820,6 +896,26 @@ async function init() {
 
     const play = event.target.closest('.play');
     if (play) playFor(play);
+
+    const action = event.target.closest('[data-server-action]');
+    if (action) {
+      // The values on screen go along, so a setting changed a moment ago is the one tried.
+      const [group, key] = action.dataset.serverAction.split('.');
+      fetch(`/api/${group}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...draft.effects[group], action: key })
+      })
+        .then(response => response.json())
+        .then(data => setStatus(data.message, data.ok ? 'saved' : 'error'))
+        .catch(() => setStatus('Could not reach the tracker server', 'error'));
+    }
+
+    const trigger = event.target.closest('[data-trigger]');
+    if (trigger) {
+      setPath(draft, trigger.dataset.trigger, Date.now());
+      scheduleSave();
+    }
 
     const reset = event.target.closest('[data-reset-group]');
     if (reset) {

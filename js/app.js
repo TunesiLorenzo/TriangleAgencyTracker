@@ -26,6 +26,7 @@ import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './wo
 import { initMotionPreference } from './motion.js';
 import { initGraTakeover } from './graTakeover.js';
 import { initMeritLock } from './meritLock.js';
+import { initSilence } from './silence.js';
 
 initMotionPreference();
 
@@ -260,6 +261,8 @@ async function init() {
   await initAutomaticFileSave(document.getElementById('autoSaveFileButton'), { serverAvailable: isServerAvailable() });
   bindControls();
   initWorld();
+  // After initWorld: its title layers are copies of the title, which must not hold the trace yet.
+  initSilence();
 
   const saved = loadSettings();
   saved?.chars?.forEach((character, index) => addChar(character, { delay: index * 70 }));

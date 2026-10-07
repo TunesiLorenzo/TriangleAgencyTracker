@@ -286,6 +286,9 @@ export const DEFAULT_CONFIG = {
     }
   },
   effects: {
+    // The mission effect picked on /settings: 'none', 'gra' or 'silence' (MISSIONS in
+    // static/settings.js). Only its cards are out there; the others are kept switched off.
+    mission: 'none',
     graTakeover: {
       enabled: false,      // remote display takeover, controlled from /settings
       chaosEffects: 'both', // what chaos does on a taken-over display: 'gra' incidents, the 'default' atmosphere, or 'both'
@@ -302,6 +305,28 @@ export const DEFAULT_CONFIG = {
       glitchesPerMinute: 1, // the tracker breaking down for 3.5 to 10 seconds
       trafficSpeed: 1,     // 1 = about the pace of the pass-by recordings (cars cross in 1.75-3 s)
       trafficVolume: 0.8   // pass-by recordings from audio/GRA (car*, truck*)
+    },
+    silence: {             // "Silenzio di Tomba" (silence.js): sounds swallowed, colour drained, a heart to play
+      enabled: false,      // remote, like the takeover: every open viewer follows it
+      baseGrey: 0.3,       // how black and white the display is (0..1) with no chaos on the counter...
+      chaosGrey: 0.65,     // ...and what full chaos intensity (atmosphere.maxChaos) adds to it
+      heartbeat: true,     // the heart beats: heard, drawn under the title, a breath of colour on each beat
+      bpm: 60,
+      volume: 0.7,         // of the heartbeat
+      fadeSeconds: 4,      // it fades in over this long when switched on and after a flatline, and out when switched off
+      flatlineAt: 0,       // the moment "Trigger a flatline" was last pressed; viewers run one when it changes
+      failSeconds: 5,      // a flatline: the heart falters and darkness closes in for this long...
+      flatlineSeconds: 6,  // ...then it is stopped for this long, and the display with it
+      flatlineVolume: 0.5  // the heart monitor's long tone meanwhile; 0 = a silent flatline
+    },
+    voicemeeter: {         // the music's strip in VoiceMeeter on the room computer (web.py sends the commands)
+      host: 'Laptop-Lorenzo', // that computer's name or address
+      port: '6980',        // VoiceMeeter's VBAN port...
+      stream: 'Command1',  // ...and the name of its incoming text stream
+      strip: 4,            // counted from 0, left to right
+      drop: -20,           // dB the strip goes to when dropped...
+      normal: 0,           // ...and when restored
+      fadeSeconds: 2       // 0 = at once
     },
     meritLock: {
       enabled: false,      // agent cards show a padlock instead of this mission's merit and demerit counts
