@@ -57,6 +57,7 @@ html:not([data-session="open"]) body { overflow: hidden; }
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  overflow: hidden;   /* the warm-up band's glow and the power-on bloom stay on the screen */
 }
 .login-screen:not([data-state="locked"]) { cursor: progress; }
 
@@ -368,6 +369,64 @@ html:not([data-session="open"]) body { overflow: hidden; }
 .login-screen:is([data-state="powering-off"], [data-state="off"]) .login-iris-edge { display: none; }
 .login-screen[data-state="off"] .login-stage { visibility: hidden; }
 
+/* Page load: the same black screen, until a click switches it on (login.js) - the collapse
+   above backwards: a dot, the bright line, then the picture snaps open too large and too
+   bright and settles. */
+.login-screen:is([data-state="standby"], [data-state="powering-on"]),
+.login-screen.is-warming { background: #000; }
+.login-screen[data-state="standby"] { cursor: pointer; }
+.login-screen[data-state="standby"] .login-stage { visibility: hidden; }
+.login-screen[data-state="powering-on"] .login-stage {
+  transform-origin: center;
+  animation: login-crt-expand var(--login-power-on, 1400ms) linear both;
+}
+.login-screen[data-state="powering-on"]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px #fff, 0 0 22px rgba(195,225,255,.8);
+  transform-origin: center;
+  pointer-events: none;
+  animation: login-crt-line-on var(--login-power-on, 1400ms) linear both;
+}
+
+/* Just switched on: the tube warms up. login.js drives these the way effects.js drives the
+   chaos layers - the picture drifts, sways and jolts, scanlines crawl over it and a glowing
+   band sweeps up the screen - all fading out together. */
+.login-crt-lines,
+.login-crt-band {
+  display: none;
+  position: absolute;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.login-screen.is-warming :is(.login-crt-lines, .login-crt-band) { display: block; }
+/* the stripes of #scanlineOverlay (effects.css); 10px taller than the screen, so they can crawl */
+.login-crt-lines {
+  top: -10px;
+  height: calc(100% + 10px);
+  background: repeating-linear-gradient(to bottom, rgba(255,50,50,0.1) 0 4px, rgba(0,0,0,0.7) 4px 10px);
+}
+/* #crtScanline */
+.login-crt-band {
+  bottom: 0;
+  height: 60px;
+  background: rgba(255,255,255,0.05);
+  box-shadow: 0 0 110px rgba(255,255,255,0.4);
+}
+/* a jolt: red/blue colour fringes, as on #pageWrapper.glitching */
+.login-screen.is-crt-glitch :is(.login-panel, .login-hud) {
+  filter: drop-shadow(4px 0 0 rgba(255,20,60,0.7)) drop-shadow(-4px 0 0 rgba(0,170,255,0.7));
+}
+
 @keyframes login-crt-collapse {
   0% { transform: scale(1, 1); filter: none; opacity: 1; }
   15% { transform: scale(1.035, .82); filter: brightness(1.2); opacity: 1; }
@@ -387,8 +446,29 @@ html:not([data-session="open"]) body { overflow: hidden; }
     animation: login-crt-fade var(--login-power-off, 150ms) linear both;
   }
   .login-screen[data-state="powering-off"]::after { display: none; }
+  .login-screen[data-state="powering-on"] .login-stage {
+    animation: login-crt-fade var(--login-power-on, 150ms) linear reverse both;
+  }
+  .login-screen[data-state="powering-on"]::after { display: none; }
 }
 @keyframes login-crt-fade { to { opacity: 0; } }
+@keyframes login-crt-expand {
+  0%, 10% { transform: scale(0, 0); filter: brightness(0); opacity: 0; }
+  26% { transform: scale(.7, .003); filter: brightness(6) blur(1px); opacity: .8; }
+  40% { transform: scale(1, .004); filter: brightness(4) blur(1px); opacity: 1; animation-timing-function: cubic-bezier(.2,.9,.3,1); }
+  66% { transform: scale(1.04, 1.07); filter: brightness(2) blur(.6px); opacity: 1; }
+  82% { transform: scale(.995, .97); filter: brightness(1.3) blur(0); opacity: 1; }
+  100% { transform: scale(1, 1); filter: brightness(1) blur(0); opacity: 1; }
+}
+/* The line grows out of a dot, then blooms over the picture as it opens. */
+@keyframes login-crt-line-on {
+  0% { transform: scale(0, 1); opacity: 0; }
+  10% { transform: scale(.008, 1); opacity: .9; }
+  26% { transform: scale(.7, 1); opacity: 1; }
+  40% { transform: scale(1, 1); opacity: 1; }
+  62% { transform: scale(1, 140); opacity: .2; }
+  100% { transform: scale(1, 300); opacity: 0; }
+}
 
 /* ---------- Retina scanner ---------- */
 .login-scanner {

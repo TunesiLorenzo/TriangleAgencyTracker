@@ -4,12 +4,13 @@ Two front-ends share one local Flask server (same layout as MTG_Table):
   /          the tracker viewer shown on the table screen (static index.html)
   /settings  the setup page: sound assignments and effect tuning
 
-Settings live in tracker_config.json in the configured data folder. The viewer
-polls /api/config and applies changes live, so tuning on /settings shows up on
-the display without a reload. TRACKER_DATA_DIR can place both tracker_config.json
-and team_save.json on a synced, mapped or removable drive.
+Settings and the team share one tracker file, triangle-agency-tracker.json in the
+configured data folder unless a viewer connecting Tracker Save put it elsewhere (the
+choice is remembered in tracker_location.json). TRACKER_DATA_DIR can place the data
+folder on a synced, mapped or removable drive. The viewer polls /api/config and applies
+changes live, so tuning on /settings shows up on the display without a reload.
 Tracker data (agents, tasks, counters) stays in the viewer's browser storage and can
-also be mirrored atomically to team_save.json by viewers that connect Tracker Save:
+also be mirrored atomically to the tracker file by viewers that connect Tracker Save:
 one shared copy for every browser, on this computer or on the LAN.
 Previous cases (HD scans of each mission's Rapporto) are too big for that, so they
 live in cases/ next to this file, indexed by cases/cases.json. A team file carries the
@@ -29,6 +30,8 @@ import re
 import secrets
 import shutil
 import threading
+import time
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -47,8 +50,13 @@ except OSError as error:
 
 AUDIO_DIR = BASE_DIR / "audio"
 UPLOAD_FOLDERS = {"uploads": AUDIO_DIR / "uploads", "Competencies": AUDIO_DIR / "Competencies"}
-CONFIG_FILE = DATA_DIR / "tracker_config.json"
-TEAM_SAVE_FILE = DATA_DIR / "team_save.json"
+TRACKER_FILE_FORMAT = "triangle-agency-tracker"
+TRACKER_FILE_VERSION = 1
+DEFAULT_TRACKER_FILE = DATA_DIR / "triangle-agency-tracker.json"
+LOCATION_FILE = DATA_DIR / "tracker_location.json"   # where the tracker file is, once there is one
+# Settings and the team were two files before they shared the tracker file.
+LEGACY_CONFIG_FILE = DATA_DIR / "tracker_config.json"
+LEGACY_TEAM_FILE = DATA_DIR / "team_save.json"
 CASES_DIR = BASE_DIR / "cases"
 CASES_FILE = CASES_DIR / "cases.json"
 BADGE_DIR = BASE_DIR / "images" / "badge"   # the Manager's photo on the login screen badge
@@ -70,14 +78,14 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 # template would sit next to an updated settings.js it no longer matches until a restart.
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-config_lock = threading.Lock()
+store_lock = threading.Lock()   # the tracker file, where it is, and the settings held in memory
 config_state = {"revision": 0, "config": {}}
-team_save_lock = threading.Lock()
+tracker_file = DEFAULT_TRACKER_FILE
 cases_lock = threading.Lock()
 
 
 # -----------------------------
-# CONFIG PERSISTENCE
+# TRACKER FILE (settings and team)
 # -----------------------------
 def write_json_file(path, payload):
     """Write beside the target and rename, so a crash never leaves half a file."""
@@ -89,51 +97,160 @@ def write_json_file(path, payload):
     os.replace(temporary, path)
 
 
-def load_config():
-    try:
-        saved = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return
-    except (OSError, ValueError):
-        app.logger.exception("tracker_config.json is unreadable; starting from defaults")
-        set_aside_config()
-        return
-    if isinstance(saved, dict) and isinstance(saved.get("config"), dict):
-        config_state["config"] = saved["config"]
-        try:
-            config_state["revision"] = int(saved.get("revision") or 0)
-        except (TypeError, ValueError):
-            config_state["revision"] = 0
-    else:
-        app.logger.error("tracker_config.json holds no settings; starting from defaults")
-        set_aside_config()
-
-
-def set_aside_config():
-    """Move a settings file that cannot be used out of the way, so the next save does not replace it."""
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    aside = CONFIG_FILE.with_name(f"tracker_config.unreadable-{stamp}.json")
-    try:
-        os.replace(CONFIG_FILE, aside)
-        app.logger.warning("The unusable settings file was kept as %s", aside.name)
-    except OSError:
-        app.logger.exception("The unusable settings file could not be set aside")
-
-
 def team_save_version(team):
     """Stable content version used to prevent two viewers overwriting each other."""
     encoded = json.dumps(team, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
-def load_team_save():
+def settings_revision(settings):
     try:
-        team = json.loads(TEAM_SAVE_FILE.read_text(encoding="utf-8"))
+        return int(settings.get("revision") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_tracker_data(data):
+    """Split what a JSON file holds into (team, settings); either may be None.
+
+    Raises ValueError for anything that is not tracker data, so such a file is never taken
+    up and written over.
+    """
+    if isinstance(data, dict):
+        if data.get("format") == TRACKER_FILE_FORMAT:
+            team, settings = data.get("team"), data.get("settings")
+            return (
+                team if isinstance(team, dict) else None,
+                settings if isinstance(settings, dict) and isinstance(settings.get("config"), dict) else None,
+            )
+        # Older files held one of the two: tracker_config.json (or a settings export) and team_save.json.
+        if isinstance(data.get("config"), dict) and "chars" not in data:
+            return None, {"revision": settings_revision(data), "config": data["config"]}
+        if isinstance(data.get("chars"), list) or isinstance(data.get("world"), dict):
+            return data, None
+    raise ValueError("That file does not hold Triangle Agency tracker data")
+
+
+def read_tracker_file(path):
+    """The (team, settings) in a tracker file; (None, None) when it is missing or empty."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None, None
+    if not text.strip():
+        return None, None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        raise ValueError(f"{path.name} is not readable JSON") from None
+    return parse_tracker_data(data)
+
+
+def write_tracker_file(path, team, settings):
+    payload = {"format": TRACKER_FILE_FORMAT, "version": TRACKER_FILE_VERSION, "settings": settings}
+    if team is not None:
+        payload["team"] = team
+    write_json_file(path, payload)
+
+
+def tracker_file_info():
+    return {"file": str(tracker_file), "folder": str(tracker_file.parent), "name": tracker_file.name}
+
+
+def remember_tracker_file():
+    """Record where the tracker file is: relative inside the data folder, so a synced folder still works elsewhere."""
+    try:
+        stored = tracker_file.relative_to(DATA_DIR).as_posix()
+    except ValueError:
+        stored = str(tracker_file)
+    write_json_file(LOCATION_FILE, {"path": stored})
+
+
+def remembered_tracker_file():
+    try:
+        stored = json.loads(LOCATION_FILE.read_text(encoding="utf-8"))["path"]
+        if not isinstance(stored, str) or not stored.strip():
+            raise ValueError("No path")
     except FileNotFoundError:
         return None
-    if not isinstance(team, dict):
-        raise ValueError("The team save is not a settings object")
-    return team
+    except (OSError, ValueError, KeyError, TypeError):
+        app.logger.exception("tracker_location.json is unreadable; using the default tracker file")
+        return None
+    return (DATA_DIR / stored).resolve()
+
+
+def set_aside(path):
+    """Move a file that cannot be used out of the way, so the next save does not replace it."""
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    aside = path.with_name(f"{path.stem}.unreadable-{stamp}{path.suffix}")
+    try:
+        os.replace(path, aside)
+        app.logger.warning("The unusable %s was kept as %s", path.name, aside.name)
+    except OSError:
+        app.logger.exception("The unusable %s could not be set aside", path.name)
+
+
+def load_store():
+    """Find the tracker file and read the settings from it."""
+    global tracker_file
+    remembered = remembered_tracker_file()
+    tracker_file = remembered or DEFAULT_TRACKER_FILE
+    try:
+        _, settings = read_tracker_file(tracker_file)
+    except (OSError, ValueError):
+        app.logger.exception("%s is unusable; starting from defaults", tracker_file)
+        set_aside(tracker_file)
+        return
+    if settings is not None:
+        config_state["config"] = settings["config"]
+        config_state["revision"] = settings_revision(settings)
+    if remembered is None and not tracker_file.exists():
+        import_legacy_files()
+
+
+def import_legacy_files():
+    """First start with a single tracker file: fill it from the two files used before.
+
+    They are left where they are. Recording the tracker file's place afterwards keeps this
+    from happening again, so those old copies cannot come back later as the current ones.
+    """
+    team = settings = None
+    try:
+        team, _ = read_tracker_file(LEGACY_TEAM_FILE)
+    except (OSError, ValueError):
+        app.logger.exception("team_save.json could not be carried over")
+    try:
+        _, settings = read_tracker_file(LEGACY_CONFIG_FILE)
+    except (OSError, ValueError):
+        app.logger.exception("tracker_config.json could not be carried over")
+    if team is None and settings is None:
+        return
+    if settings is not None:
+        config_state["config"] = settings["config"]
+        config_state["revision"] = settings_revision(settings)
+    try:
+        write_tracker_file(tracker_file, team, config_state)
+        remember_tracker_file()
+    except OSError:
+        app.logger.exception("The tracker file could not be created from the earlier files")
+
+
+def tracker_file_target(folder, name):
+    """The path asked for when connecting Tracker Save, checked."""
+    folder = str(folder or "").strip().strip('"')
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("Give the tracker file a name")
+    if not name.casefold().endswith(".json"):
+        name += ".json"
+    if name.startswith(".") or re.search(r'[<>:"/\\|?*\x00-\x1f]', name):
+        raise ValueError('The file name cannot start with a dot or contain < > : " / \\ | ? *')
+    if not folder:
+        return (DATA_DIR / name).resolve()
+    path = Path(folder).expanduser()
+    if not path.is_absolute():
+        raise ValueError("Give the full path of the folder on the tracker computer")
+    return (path / name).resolve()
 
 
 # -----------------------------
@@ -403,7 +520,7 @@ def get_config():
     # Polling viewers send their known revision. Avoid walking audio/ and sending the
     # full settings object every two seconds when nothing has changed.
     known_revision = request.args.get("revision", type=int)
-    with config_lock:
+    with store_lock:
         if known_revision == config_state["revision"]:
             return jsonify({
                 "ok": True,
@@ -424,7 +541,7 @@ def set_config():
         raise ValueError("Expected a settings object")
     expected = payload.get("expectedRevision")
     overwrite = payload.get("overwrite") is True
-    with config_lock:
+    with store_lock:
         # Settings are sent whole, so a page that missed a change would undo it. Such a save is
         # rejected unless the overwrite is explicit, as for the team save.
         if not overwrite and expected != config_state["revision"]:
@@ -434,9 +551,11 @@ def set_config():
                 "revision": config_state["revision"],
                 "message": "The settings changed on another page",
             }), 409
-        config_state["config"] = config
-        config_state["revision"] += 1
-        write_json_file(CONFIG_FILE, config_state)
+        # Written before it is taken up, so a failed write leaves the settings as they were.
+        team, _ = read_tracker_file(tracker_file)
+        saved = {"revision": config_state["revision"] + 1, "config": config}
+        write_tracker_file(tracker_file, team, saved)
+        config_state.update(saved)
         return jsonify({"ok": True, "revision": config_state["revision"]})
 
 
@@ -446,11 +565,13 @@ def set_config():
 @app.get("/api/team-save")
 def get_team_save():
     """Return the desktop-hosted team save used when LAN HTTP cannot open local files."""
-    with team_save_lock:
-        team = load_team_save()
+    with store_lock:
+        team, _ = read_tracker_file(tracker_file)
         if team is None:
-            return jsonify({"ok": True, "exists": False, "version": None, "team": None})
-        return jsonify({"ok": True, "exists": True, "version": team_save_version(team), "team": team})
+            return jsonify({"ok": True, "exists": False, "version": None, "team": None, **tracker_file_info()})
+        return jsonify({
+            "ok": True, "exists": True, "version": team_save_version(team), "team": team, **tracker_file_info(),
+        })
 
 
 @app.put("/api/team-save")
@@ -467,8 +588,8 @@ def put_team_save():
     if expected is not None and not isinstance(expected, str):
         raise ValueError("Invalid team save version")
 
-    with team_save_lock:
-        current = load_team_save()
+    with store_lock:
+        current, _ = read_tracker_file(tracker_file)
         current_version = team_save_version(current) if current is not None else None
         if not overwrite and expected != current_version:
             return jsonify({
@@ -478,8 +599,57 @@ def put_team_save():
                 "version": current_version,
                 "message": "The tracker team save changed in another viewer",
             }), 409
-        write_json_file(TEAM_SAVE_FILE, team)
-        return jsonify({"ok": True, "version": team_save_version(team)})
+        write_tracker_file(tracker_file, team, config_state)
+        return jsonify({"ok": True, "version": team_save_version(team), **tracker_file_info()})
+
+
+@app.get("/api/tracker-file")
+def get_tracker_file():
+    with store_lock:
+        return jsonify({"ok": True, **tracker_file_info(), "dataDir": str(DATA_DIR)})
+
+
+@app.post("/api/tracker-file")
+def set_tracker_file():
+    """Put the tracker file somewhere else, or take up one that is already there.
+
+    A file that already holds tracker data is only taken up once the viewer has said which
+    side to keep: "load" brings in its settings, "replace" writes the current ones over
+    them. Its team is left for the viewer to load or replace through /api/team-save. A file
+    holding anything else is refused.
+    """
+    global tracker_file
+    payload = request.get_json(silent=True) or {}
+    mode = payload.get("mode")
+    if mode not in (None, "load", "replace"):
+        raise ValueError("Choose load or replace")
+    target = tracker_file_target(payload.get("folder"), payload.get("name"))
+
+    with store_lock:
+        if target == tracker_file:
+            return jsonify({"ok": True, **tracker_file_info()})
+        team, settings = read_tracker_file(target)
+        if mode is None and (team is not None or settings is not None):
+            return jsonify({
+                "ok": False,
+                "needsChoice": True,
+                "team": team,
+                "hasSettings": settings is not None,
+                "file": str(target),
+                "name": target.name,
+                "message": "That file already holds tracker data",
+            }), 409
+
+        saved = config_state
+        if mode == "load" and settings is not None:
+            # A new revision, so every open viewer and settings page takes the loaded settings up.
+            saved = {"revision": config_state["revision"] + 1, "config": settings["config"]}
+        target.parent.mkdir(parents=True, exist_ok=True)
+        write_tracker_file(target, team, saved)
+        tracker_file = target
+        config_state.update(saved)
+        remember_tracker_file()
+        return jsonify({"ok": True, **tracker_file_info()})
 
 
 @app.get("/api/sounds")
@@ -824,7 +994,7 @@ light_bridge = lights.LightBridge(app.logger)
 
 
 def saved_light_settings():
-    with config_lock:
+    with store_lock:
         saved = config_state["config"].get("lights")
     return saved if isinstance(saved, dict) else {}
 
@@ -864,10 +1034,44 @@ def lights_cue():
     return jsonify({"ok": True})
 
 
+@app.post("/api/lights/scene")
+def lights_scene():
+    """Queue one of the login screen's scenes (lights.py), with the cues set for them on /settings."""
+    payload = request.get_json(silent=True) or {}
+    scene, session = payload.get("scene"), payload.get("session")
+    if scene not in lights.SCENES or not isinstance(session, dict):
+        raise ValueError("Expected a light scene")
+    target = payload.get("target") or "all"
+    if target not in lights.TARGETS:
+        raise ValueError("Unknown light target")
+    light_bridge.submit_scene(scene, session, target)
+    return jsonify({"ok": True})
+
+
 # -----------------------------
 # SHUTDOWN
 # -----------------------------
 SHUTDOWN_DELAY = 3   # seconds between the Log Out window closing and the server stopping
+SHUTDOWN_LIGHTS_WAIT = 45   # at most this much longer, for the lights to finish going dark and fading back up
+SERVICES_OFF_DELAY = 2.5    # seconds after the last light command before LightRPG and the VoiceMeeter bridge stop
+
+
+def stop_local_voicemeeter_bridge():
+    """Stop a VoiceMeeter bridge on this computer.
+
+    The bridge listens on loopback beside the room display. When that is another computer,
+    nothing answers here and the viewer stops its own once this server is gone (js/login.js).
+    """
+    with store_lock:
+        saved = config_state["config"].get("effects")
+    settings = saved.get("voicemeeter") if isinstance(saved, dict) else None
+    port = settings.get("bridgePort") if isinstance(settings, dict) else None
+    if not isinstance(port, int) or not 1024 <= port <= 65535:
+        port = 5003
+    try:
+        urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/api/shutdown", method="POST"), timeout=2).close()
+    except (OSError, ValueError):
+        pass
 
 
 @app.post("/api/shutdown")
@@ -875,10 +1079,15 @@ def shutdown():
     """Log Out on the viewer stops the server.
 
     The viewer calls this once its closing animation has finished; answering first and
-    exiting a few seconds later lets the reply reach the browser. LightRPG runs in its own
-    window and keeps going.
+    exiting a few seconds later lets the reply reach the browser. The shutdown light scene
+    is paced from here, so it ends first; a moment after its last command LightRPG and the
+    VoiceMeeter bridge are stopped too, then this server.
     """
     def stop():
+        light_bridge.wait_idle(SHUTDOWN_LIGHTS_WAIT)
+        time.sleep(SERVICES_OFF_DELAY)
+        light_bridge.stop_lightrpg()
+        stop_local_voicemeeter_bridge()
         print("Logged out - Triangle Agency Tracker stopped.", flush=True)
         os._exit(0)   # Flask's development server has no stop call; the OS frees the port and lock
 
@@ -886,4 +1095,4 @@ def shutdown():
     return jsonify({"ok": True})
 
 
-load_config()
+load_store()

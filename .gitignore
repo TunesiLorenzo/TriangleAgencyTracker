@@ -3,8 +3,10 @@ __pycache__/
 .venv/
 .agents/
 tracker_config.json
-tracker_config.unreadable-*.json
 team_save.json
+triangle-agency-tracker.json
+tracker_location.json
+*.unreadable-*.json
 *.json.tmp
 Materiale/
 cases/

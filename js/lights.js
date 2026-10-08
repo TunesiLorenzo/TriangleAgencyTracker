@@ -14,6 +14,25 @@ export function sendLightCue(cue, lights = getConfig().lights) {
   }).then(response => response.json()).catch(() => ({ ok: false, message: 'The tracker server is not running' }));
 }
 
+/**
+ * Run one of the login screen's scenes now: 'powerOn', 'login', 'severed' or 'shutdown'
+ * (lights.py), with the cues under lights.session.
+ */
+export function sendLightScene(scene, lights = getConfig().lights) {
+  return fetch('/api/lights/scene', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scene, session: lights.session, target: lights.target })
+  }).then(response => response.json()).catch(() => ({ ok: false, message: 'The tracker server is not running' }));
+}
+
+/** A scene from the login screen, if the room lights are in use. */
+export function triggerLightScene(scene) {
+  const lights = getConfig().lights;
+  if (!lights.enabled || !isServerAvailable()) return;
+  sendLightScene(scene, lights);
+}
+
 /** Cue the lights for a tracker event, e.g. triggerLight('witness'). */
 export function triggerLight(event) {
   const lights = getConfig().lights;

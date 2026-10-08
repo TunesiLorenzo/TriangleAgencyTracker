@@ -17,7 +17,7 @@ rem   set ROOM_HOST=New-Room-Laptop
 rem   set TRACKER_HOST=New-Tracker-PC
 rem   start_lan.bat tracker
 rem
-rem Optional second argument: folder for tracker_config.json and team_save.json.
+rem Optional second argument: folder for the tracker file (team and settings).
 rem Example: start_lan.bat laptop "G:\My Drive\Triangle Agency"
 
 if not defined ROOM_HOST set "ROOM_HOST=Laptop-Lorenzo"

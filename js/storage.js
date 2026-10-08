@@ -20,6 +20,8 @@ let serverSaveState = { linked: false, version: null, dirty: false };
 // The team as last read from or written to the tracker computer (canonical JSON). A save that
 // matches it has nothing to send, so leaving the page is not mistaken for an unsent change.
 let serverSyncedTeam = null;
+// The tracker file on the tracker computer (team and settings), as the server last named it.
+let serverSaveFile = { file: '', folder: '', name: '' };
 // Set once a loaded team file is in storage and the page is reloading, so the save that runs
 // when the page is left can't overwrite that file with the agents still on screen.
 let savesSuspended = false;
@@ -123,7 +125,13 @@ function showAutomaticFileOn(handle) {
 }
 
 function showServerSaveOn() {
-  setAutomaticFileStatus('Tracker Save: On', 'Automatically saving the team in the tracker data folder. Click to disconnect.');
+  const where = serverSaveFile.file ? `to ${serverSaveFile.file}` : 'in the tracker file';
+  setAutomaticFileStatus('Tracker Save: On', `Automatically saving the team ${where} on the tracker computer. Click to disconnect.`);
+}
+
+function noteServerSaveFile(data) {
+  if (typeof data?.file !== 'string') return;
+  serverSaveFile = { file: data.file, folder: data.folder || '', name: data.name || data.file };
 }
 
 function loadServerSaveState() {
@@ -157,6 +165,30 @@ async function fetchServerSave() {
   const response = await fetch('/api/team-save', { cache: 'no-store' });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
+  noteServerSaveFile(data);
+  return data;
+}
+
+/**
+ * Ask the tracker computer to keep its file at this folder and name. A file already there
+ * with tracker data in it comes back as { needsChoice } and nothing is changed until `mode`
+ * says which side to keep: 'load' (the file's settings) or 'replace' (the current ones).
+ */
+async function setTrackerFile({ folder, name, mode }) {
+  const response = await fetch('/api/tracker-file', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder, name, mode })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (data.needsChoice) return data;
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.message || `HTTP ${response.status}`);
+    // The server answered: the place or the file was refused, and its message says why.
+    if (data.message) error.name = 'TrackerFileError';
+    throw error;
+  }
+  noteServerSaveFile(data);
   return data;
 }
 
@@ -176,13 +208,14 @@ async function putServerSave({ overwrite = false } = {}) {
   }
   if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
   serverSaveState.version = data.version;
+  noteServerSaveFile(data);
   // Still unsent if the team changed again while this copy was on its way.
   serverSyncedTeam = canonicalJson(team);
   serverSaveState.dirty = canonicalJson(loadSettings() || {}) !== serverSyncedTeam;
   serverSaveReady = true;
   storeServerSaveState();
   showServerSaveOn();
-  if (!fileSaveAnnounced) toast('Auto-saving in the tracker data folder');
+  if (!fileSaveAnnounced) toast(`Auto-saving to ${serverSaveFile.name || 'the tracker file'} on the tracker computer`);
   fileSaveAnnounced = true;
   return true;
 }
@@ -203,7 +236,7 @@ async function writeSettingsToServer() {
       setAutomaticFileStatus('Reconnect Tracker Save', 'The tracker computer could not be reached. Click to retry.');
       toast('The tracker save is temporarily offline. Changes are safe in this browser and will wait for reconnect.', { kind: 'warn', duration: 10000 });
     }
-    console.error('Failed to save the team in the tracker data folder', error);
+    console.error('Failed to save the team in the tracker file', error);
     return false;
   }
 }
@@ -496,7 +529,7 @@ async function initServerSave() {
   automaticSaveBackend = 'server';
   serverSaveState = loadServerSaveState();
   if (!serverSaveState.linked) {
-    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in the tracker data folder.');
+    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in a file on the tracker computer. You choose where.');
     return false;
   }
 
@@ -524,7 +557,7 @@ async function initServerSave() {
     return true;
   } catch (error) {
     serverSaveReady = false;
-    setAutomaticFileStatus('Reconnect Tracker Save', 'Could not reach the team save in the tracker data folder. Click to retry.');
+    setAutomaticFileStatus('Reconnect Tracker Save', 'Could not reach the team save on the tracker computer. Click to retry.');
     console.error('Failed to restore the tracker team save', error);
     return false;
   }
@@ -532,7 +565,7 @@ async function initServerSave() {
 
 /**
  * Restore the automatic team save. With the tracker server running there is one save for every
- * browser, the copy in the tracker data folder, also for a browser on that computer itself. A file
+ * browser, the tracker file on that computer, also for a browser on that computer itself. A file
  * picked in the browser is for a tracker served without it, and for a browser that linked one
  * before: that link is kept until it is unlinked.
  */
@@ -550,7 +583,7 @@ export async function initAutomaticFileSave(button, { serverAvailable = false } 
   try {
     automaticFileHandle = await readStoredFileHandle();
     if (!automaticFileHandle) {
-      // A browser already saving in the tracker data folder stays with it while the server is away,
+      // A browser already saving in the tracker file stays with it while the server is away,
       // so what changes here in the meantime is still sent there, not to some other file.
       if (trackerServer || loadServerSaveState().linked) return initServerSave();
       setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
@@ -573,11 +606,71 @@ export async function initAutomaticFileSave(button, { serverAvailable = false } 
   }
 }
 
+/**
+ * Where the tracker computer should keep its file: resolves to { folder, name }, or null when
+ * the dialog is dismissed. The browser cannot browse that computer, so the folder is typed.
+ */
+function askTrackerFileLocation(current) {
+  return new Promise(resolve => {
+    const form = document.createElement('form');
+    form.className = 'task-form';
+    form.noValidate = true;
+    form.innerHTML = `
+      <p class="modal-message">One file on the tracker computer holds the team and the settings. Choose where it is kept and what it is called. A file already there is never replaced without asking.</p>
+      <label class="field">
+        <span class="field-label">Folder on the tracker computer</span>
+        <input name="folder" type="text" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="field">
+        <span class="field-label">File name</span>
+        <input name="name" type="text" maxlength="120" autocomplete="off" spellcheck="false" autofocus>
+      </label>`;
+    const { folder, name } = form.elements;
+    folder.value = current.folder || '';
+    name.value = current.name || 'triangle-agency-tracker.json';
+    [folder, name].forEach(input => input.addEventListener('input', () => input.classList.remove('invalid')));
+
+    let location = null;
+    openModal({
+      title: 'Connect tracker save',
+      content: form,
+      className: 'case-form-modal',
+      actions: [
+        { label: 'Cancel' },
+        {
+          label: 'Connect',
+          variant: 'primary',
+          submit: true,
+          onClick: () => {
+            const empty = [folder, name].find(input => !input.value.trim());
+            if (empty) {
+              empty.classList.add('invalid');
+              empty.focus();
+              return false;
+            }
+            location = { folder: folder.value.trim(), name: name.value.trim() };
+          }
+        }
+      ],
+      onClose: () => resolve(location)
+    });
+  });
+}
+
+/** What a tracker file holds, for the load-or-replace prompt. */
+function describeTrackerFile(remote) {
+  const parts = [];
+  if (remote.team) parts.push(describeSettings(remote.team));
+  if (remote.hasSettings) parts.push(remote.team ? 'and the settings saved with them' : 'saved settings');
+  return parts.join(' ');
+}
+
 function askServerSaveChoice(remote) {
   return new Promise(resolve => {
     const body = document.createElement('p');
     body.className = 'modal-message';
-    body.textContent = `The tracker data folder already holds ${describeSettings(remote.team)}. Load that copy, or explicitly replace it with the team currently in this browser.`;
+    const settingsToo = remote.hasSettings ? ' and the current settings' : '';
+    body.textContent = `${remote.name || 'The tracker file'} already holds ${describeTrackerFile(remote)}. Load that copy, or explicitly replace it with the team currently in this browser${settingsToo}.`;
     let choice = null;
     openModal({
       title: 'Tracker save conflict',
@@ -598,7 +691,7 @@ async function connectServerSave() {
   }
 
   try {
-    const remote = await fetchServerSave();
+    let remote = await fetchServerSave();
 
     if (serverSaveState.linked && serverSaveState.dirty && remote.version === serverSaveState.version) {
       serverSaveReady = true;
@@ -619,8 +712,23 @@ async function connectServerSave() {
       return true;
     }
 
+    // A new link: ask where the tracker computer keeps the file, and under what name.
+    const current = await fetch('/api/tracker-file', { cache: 'no-store' }).then(response => response.json());
+    const place = await askTrackerFileLocation(current);
+    if (!place) return false;
+    let choice = null;
+    const placed = await setTrackerFile(place);
+    if (placed.needsChoice) {
+      // Another file with tracker data in it: nothing was changed, and one answer covers
+      // its team and its settings.
+      choice = await askServerSaveChoice(placed);
+      if (!choice) return false;
+      await setTrackerFile({ ...place, mode: choice === 'desktop' ? 'load' : 'replace' });
+    }
+    remote = await fetchServerSave();
+
     if (remote.exists) {
-      const choice = await askServerSaveChoice(remote);
+      choice ??= await askServerSaveChoice(remote);
       if (!choice) return false;
       serverSaveState.linked = true;
       serverSaveState.version = remote.version;
@@ -643,6 +751,10 @@ async function connectServerSave() {
     storeServerSaveState();
     return putServerSave();
   } catch (error) {
+    if (error.name === 'TrackerFileError') {
+      toast(`${error.message}. Nothing was changed.`, { kind: 'error', duration: 8000 });
+      return false;
+    }
     serverSaveReady = false;
     setAutomaticFileStatus('Reconnect Tracker Save', 'Could not reach the tracker server. Click to retry.');
     toast('Could not connect the tracker team save. Your browser-local data is unchanged.', { kind: 'error', duration: 7000 });
@@ -659,7 +771,7 @@ async function unlinkAutomaticSaveFile() {
     serverSyncedTeam = null;
     fileSaveAnnounced = false;
     storeServerSaveState();
-    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in the tracker data folder.');
+    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in a file on the tracker computer. You choose where.');
     toast('Disconnected the tracker save. The tracker copy and this browser copy were both kept.', { duration: 6000 });
     return false;
   }
@@ -672,9 +784,9 @@ async function unlinkAutomaticSaveFile() {
   automaticFileReady = false;
   fileSaveAnnounced = false;
   if (trackerServer) {
-    // With the file gone, the shared save in the tracker data folder is the one on offer.
+    // With the file gone, the shared save on the tracker computer is the one on offer.
     automaticSaveBackend = 'server';
-    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in the tracker data folder.');
+    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in a file on the tracker computer. You choose where.');
   } else {
     setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
   }
@@ -854,6 +966,11 @@ export function saveSettingsFile(filename) {
 export function loadSettingsFile() {
   chooseJsonFile(data => {
     if (!data || typeof data !== 'object') throw new Error('Invalid settings file');
+    // The tracker computer's own file holds the settings too; the team is the part loaded here.
+    if (data.format === 'triangle-agency-tracker') {
+      if (!data.team || typeof data.team !== 'object') throw new Error('That tracker file holds no team');
+      data = data.team;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     if (automaticSaveBackend === 'server' && serverSaveState.linked) {
       serverSaveState.dirty = true;

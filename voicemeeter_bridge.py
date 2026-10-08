@@ -2,7 +2,8 @@
 
 The Triangle viewer can be served by another computer, but VoiceMeeter runs on
 this one. Browsers cannot call VoiceMeeter's native API directly, so this tiny
-HTTP service exposes only status and strip-gain controls on loopback.
+HTTP service exposes only status and strip-gain controls on loopback, and
+stops when the tracker's Log Out asks it to.
 """
 
 import argparse
@@ -271,6 +272,18 @@ def create_app(voicemeeter=None, allowed_origins=()):
             })
         except (TypeError, ValueError, VoiceMeeterError, OSError) as error:
             return jsonify({"ok": False, "message": str(error)}), 400
+
+    @app.post("/api/shutdown")
+    def shutdown():
+        """Log Out on the tracker stops this bridge too, once the reply has left."""
+        def stop():
+            try:
+                mixer.close()
+            finally:
+                os._exit(0)   # Flask's development server has no stop call
+
+        threading.Timer(0.5, stop).start()
+        return jsonify({"ok": True, "message": "The VoiceMeeter bridge is stopping."})
 
     return app
 

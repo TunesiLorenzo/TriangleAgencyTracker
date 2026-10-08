@@ -1,6 +1,7 @@
 // login.js
 // The sign-in screen shown when the tracker is opened in a new browser session, and the
-// Log Out button at the bottom of every tab that brings it back. A click anywhere types
+// Log Out button at the bottom of every tab that brings it back. The page loads black; a
+// click anywhere switches the screen on like a CRT. The next click anywhere types
 // in the Manager's credentials; the Manager badge drops in on its lanyard and goes through
 // the card reader; the retina scanner rises and scans; then a triangular window opens out
 // of the logo onto the main screen. Log Out runs that window in reverse, counts down
@@ -9,16 +10,22 @@
 // underneath. Behind it all, the moving contour lines of loginBackdrop.js. Its sounds are
 // the "Log in / out" buttons on /settings; the timing of every step and the badge picture
 // are on the Login tab there. Ctrl + left-click skips the sequence and opens the tracker.
+// The room lights follow the screen switching on, the login screen and Log Out (the scenes
+// of lights.py, set under Session lights on /settings).
 
 import { getConfig, onConfigChange } from './config.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { playButton, powerOffAudio, soundStartDelay } from './soundEffects.js';
 import { motionAllowed } from './motion.js';
+import { triggerLightScene } from './lights.js';
+import { stopVoiceMeeterBridge } from './voicemeeter.js';
 
 const READER_ZOOM = 2;     // the close-up on the badge going through the card reader
 const PURGE_SECONDS = 4;   // Log Out: the countdown before the CRT switches off
 const POWER_OFF_MS = 1100;
+const POWER_ON_MS = 1400;  // page load: the black screen switching on, the same collapse backwards
+const WARM_UP_MS = 3500;   // the picture wobbling under crawling scanlines once it is on
 const USERNAME = 'Manager#56776544';
 const PASSWORD = '*'.repeat(14);
 
@@ -27,7 +34,9 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, motionAllowed() ? 
 const canClipWindow = window.CSS?.supports?.('clip-path', 'path(evenodd, "M0 0H1V1Z")') ?? false;
 
 const els = {};
-let state = 'locked';     // locked | authenticating | open | closing | severed | powering-off | off
+let state = 'standby';    // standby | powering-on | locked | authenticating | open | closing | severed | powering-off | off
+let switchingOn = false;  // clicked in standby, waiting for the amplifier before the picture comes up
+let settled = Promise.resolve();   // resolves once the picture has stopped wobbling after power on
 let signedInWaiters = [];
 let clockTimer = 0;
 let backdrop = null;      // the moving background; null without WebGL
@@ -44,7 +53,7 @@ function setState(next) {
   else delete document.documentElement.dataset.session;
   els.main.inert = !open;
 
-  if (open || poweredOff) {
+  if (open || poweredOff || next === 'standby') {
     clearInterval(clockTimer);
     clockTimer = 0;
     backdrop?.stop();
@@ -300,8 +309,106 @@ function iris(direction, duration) {
   });
 }
 
+/**
+ * Page load leaves the screen black; the first click (or Enter / Space) switches it on like a
+ * CRT, the Log Out collapse run backwards, then the picture takes a few seconds to settle.
+ */
+async function powerOn() {
+  if (state !== 'standby' || switchingOn) return;
+  switchingOn = true;
+  // This click also wakes a sleeping amplifier: hold the picture back until the sound can be heard.
+  await new Promise(resolve => setTimeout(resolve, soundStartDelay()));
+  const moving = motionAllowed();
+  const duration = moving ? POWER_ON_MS : 150;
+  els.screen.style.setProperty('--login-power-on', `${duration}ms`);
+  setState('powering-on');
+  playButton('session', 'powerOn');
+  triggerLightScene('powerOn');
+  await new Promise(resolve => setTimeout(resolve, duration));
+  if (moving) settled = warmUp();
+  // The room pulses for as long as the picture is unsteady.
+  settled.then(() => triggerLightScene('login'));
+  setState('locked');
+}
+
+const TAU = Math.PI * 2;
+const spread = () => Math.random() * 2 - 1;
+
+/**
+ * The tube warming up, for WARM_UP_MS: the chaos atmosphere of effects.js at full strength,
+ * dying away. The picture drifts toward random targets with sharp jolts (colour fringes on
+ * each), sways sideways and breathes; scanlines crawl over it and a glowing band sweeps up
+ * the screen. Resolves when the picture is still.
+ */
+function warmUp() {
+  const { screen, stage, crtLines, crtBand } = els;
+  const jitter = { x: 0, y: 0, skew: 0, tx: 0, ty: 0, tskew: 0, nextRetarget: 0, burstUntil: 0 };
+  const start = performance.now();
+  let last = start;
+  let bandY = 0;
+  screen.classList.add('is-warming');
+
+  return new Promise(resolve => {
+    const frame = now => {
+      const t = (now - start) / WARM_UP_MS;
+      if (t >= 1 || state === 'open') {
+        screen.classList.remove('is-warming', 'is-crt-glitch');
+        stage.style.transform = '';
+        stage.style.opacity = '';
+        resolve();
+        return;
+      }
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const seconds = now / 1000;
+      // In over the first instant, so nothing pops up on the settled picture, then a long decay.
+      const level = Math.min(1, t / 0.04) * (1 - t) ** 1.5;
+
+      let bursting = now < jitter.burstUntil;
+      if (!bursting && Math.random() < dt * 3.5 * level) {
+        jitter.burstUntil = now + 70 + Math.random() * 150;
+        jitter.nextRetarget = 0;
+        bursting = true;
+      }
+      screen.classList.toggle('is-crt-glitch', bursting);
+      if (now >= jitter.nextRetarget) {
+        const amp = bursting ? 3 + 14 * level : 3 * level;
+        jitter.tx = spread() * amp;
+        jitter.ty = spread() * amp * 0.35;       // a tube loses its horizontal hold first
+        jitter.tskew = spread() * (bursting ? 2.2 : 0.35) * level;
+        jitter.nextRetarget = now + (bursting ? 30 : 130);
+      }
+      const k = 1 - Math.exp(-dt / (bursting ? 0.02 : 0.09));
+      jitter.x += (jitter.tx - jitter.x) * k;
+      jitter.y += (jitter.ty - jitter.y) * k;
+      jitter.skew += (jitter.tskew - jitter.skew) * k;
+
+      const sway = Math.sin(seconds * TAU * 5.3) * 2.5 * level;
+      const breathe = 1 + Math.sin(seconds * TAU * 1.3) * 0.012 * level;
+      stage.style.transform = `translate(${(jitter.x + sway).toFixed(2)}px, ${jitter.y.toFixed(2)}px) skewX(${jitter.skew.toFixed(3)}deg) scaleY(${breathe.toFixed(4)})`;
+      // mains hum in the brightness, and a dip on each jolt
+      stage.style.opacity = (1 - level * (0.1 + 0.07 * Math.sin(seconds * TAU * 9)) - (bursting ? 0.22 * level : 0)).toFixed(3);
+
+      crtLines.style.opacity = (level * 0.55).toFixed(3);
+      crtLines.style.transform = `translateY(${((seconds * 22) % 10).toFixed(1)}px)`;
+      bandY += (90 + 260 * level) * dt;
+      if (bandY > window.innerHeight + 60) bandY = 0;
+      crtBand.style.opacity = (level * 0.8).toFixed(3);
+      crtBand.style.transform = `translateY(${(-bandY).toFixed(1)}px)`;
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
 async function signIn(event) {
-  if (state !== 'locked' || (event?.button !== undefined && event.button !== 0)) return;
+  if (event?.button !== undefined && event.button !== 0) return;
+  if (state === 'standby') {
+    if (event?.ctrlKey) setState('open');
+    else powerOn();
+    return;
+  }
+  if (state !== 'locked') return;
   if (event?.ctrlKey) {
     event.preventDefault();
     setState('open');
@@ -323,6 +430,7 @@ async function signIn(event) {
   await wait(t.credentialsHold);
 
   // The reader rises beside the form while the badge drops in on its lanyard...
+  await settled;   // measured on a still picture, should the tube still be warming up
   shiftPanel();
   frameReader();
   screen.classList.add('is-badge-shown');
@@ -382,6 +490,7 @@ async function signOut() {
   cleanUp();
   // Not 'locked': a click during the countdown must not start a sign-in.
   setState('severed');
+  triggerLightScene('severed');
   await purgeCountdown();
   await powerOff();
   await stopServer();
@@ -410,6 +519,7 @@ async function powerOff() {
   const sound = powerOffAudio();
   await new Promise(resolve => setTimeout(resolve, duration));
   setState('off');
+  triggerLightScene('shutdown');
   // Keep the server available until the audio has finished loading and playing.
   await sound;
 }
@@ -417,8 +527,23 @@ async function powerOff() {
 /** Stop the server after the picture and sound finish, leaving this page black. */
 async function stopServer() {
   try {
-    await fetch('/api/shutdown', { method: 'POST' });
-  } catch { /* already stopped or served without the tracker backend */ }
+    const response = await fetch('/api/shutdown', { method: 'POST' });
+    if (!response.ok) return;
+  } catch {
+    return;   // already stopped or served without the tracker backend
+  }
+  // The server lets the lights finish, stops LightRPG and goes. The VoiceMeeter bridge is
+  // on this computer, which may not be the server's, so it is stopped from here: the
+  // server no longer answering is the sign that the lights are done.
+  for (let tries = 0; tries < 90; tries++) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      await fetch('/api/config', { method: 'HEAD', cache: 'no-store' });
+    } catch {
+      break;
+    }
+  }
+  stopVoiceMeeterBridge(getConfig().effects.voicemeeter).catch(() => { /* none running here */ });
 }
 
 /** Resolves once the Manager is signed in (at once if they already are). */
@@ -432,6 +557,8 @@ export function initLogin() {
     screen,
     main: document.getElementById('pageWrapper'),
     stage: screen.querySelector('.login-stage'),
+    crtLines: screen.querySelector('.login-crt-lines'),
+    crtBand: screen.querySelector('.login-crt-band'),
     content: screen.querySelector('.login-content'),
     panel: screen.querySelector('.login-panel'),
     logoMark: screen.querySelector('.login-logo-mark'),
@@ -469,7 +596,11 @@ export function initLogin() {
   onConfigChange(config => showBadgePicture(config.login.badgePicture));
 
   screen.addEventListener('click', signIn);
+  // Nothing on the black screen can take focus, so the keyboard switches it on from anywhere.
+  document.addEventListener('keydown', event => {
+    if (state === 'standby' && (event.key === 'Enter' || event.key === ' ')) powerOn();
+  });
   document.getElementById('logoutButton').addEventListener('click', signOut);
 
-  setState('locked');
+  setState('standby');
 }

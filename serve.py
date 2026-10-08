@@ -14,7 +14,7 @@ import threading
 import webbrowser
 from pathlib import Path
 
-from web import DATA_DIR, app, autostart_lights
+from web import app, autostart_lights, tracker_file_info
 
 
 def acquire_instance_lock(port):
@@ -65,7 +65,7 @@ def main():
     print("Triangle Agency Tracker")
     print("  Viewer:   {}".format(url))
     print("  Settings: {}settings".format(url))
-    print("  Data:     {}".format(DATA_DIR))
+    print("  Data:     {}".format(tracker_file_info()["file"]))
     print("Bound to {}:{} - other devices on the LAN can open it too. Ctrl+C or Log Out to stop.".format(args.host, args.port))
 
     lights_message = autostart_lights()

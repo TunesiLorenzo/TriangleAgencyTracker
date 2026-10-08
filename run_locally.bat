@@ -4,7 +4,7 @@ setlocal EnableExtensions
 rem One-computer launcher.
 rem
 rem Double-click this file to run Triangle, LightRPG and the VoiceMeeter bridge
-rem on this laptop. To keep tracker_config.json and team_save.json on a drive,
+rem on this laptop. To keep the tracker file (team and settings) on a drive,
 rem either pass the folder:
 rem   run_locally.bat "G:\My Drive\Triangle Agency"
 rem or set TRACKER_DATA_DIR before running this file.

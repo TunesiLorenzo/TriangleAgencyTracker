@@ -203,6 +203,7 @@ export const BUTTON_GROUPS = [
   {
     key: 'session', label: 'Log in / out', hint: 'The sign-in sequence on the login screen (login.js plays these in turn) and Log Out at the bottom of every tab.',
     buttons: [
+      { key: 'powerOn', label: 'CRT power on', hint: 'Once, on the first click on the black screen after the page loads', selector: '.login-screen[data-state="powering-on"]', sound: 'file:powerOn.mp3' },
       { key: 'typing', label: 'Credentials typed', hint: 'Each character of the username and password', selector: '.login-input', sound: 'synth:typewriter', volume: 0.7 },
       { key: 'badgeDrop', label: 'Badge drops in on its lanyard', hint: 'As the lanyard catches it', selector: '.login-lanyard', sound: 'synth:clink' },
       { key: 'badgeInsert', label: 'Badge slides into the reader', selector: '.login-reader-slit', sound: 'synth:cardInsert' },
@@ -266,6 +267,16 @@ export const DEFAULT_CONFIG = {
     autoStart: true,       // launch LightRPG with the tracker (serve.py) while enabled
     target: 'all',
     ambient: cue('white', { temperature: 2700, brightness: 60 }),
+    // The room around the login screen (login.js asks for each scene, lights.py runs them).
+    session: {
+      powerOn: cue('color', { hue: 0 }),     // the screen switching on: bulbs pulse between the standby light and this
+      loginCenter: cue('white', { temperature: 6500, brightness: 70, led: 0 }),  // the login screen: centre bulb and LED strip...
+      loginSides: cue('color', { hue: 0 }),  // ...and the two side bulbs
+      severed: cue('color', { hue: 0 }),     // Log Out's countdown: bulbs and LED strip breathe this
+      standby: cue('white', { temperature: 2700, brightness: 60 }),  // the screen is off: only the centre bulb, on this
+      blackout: 2,           // seconds everything stays dark once the screen is off...
+      fade: 4                // ...and seconds the centre bulb then takes to reach the standby light
+    },
     events: {
       merit: cue('color', { hue: 45, saturation: 85, seconds: 2 }),
       demerit: cue('color', { hue: 0, seconds: 2 }),

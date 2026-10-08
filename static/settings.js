@@ -13,7 +13,7 @@ import {
   getConfigRevision, mergeConfig, onConfigChange, reloadConfig, saveConfig, setLocalConfig, setSoundFiles,
   startConfigSync
 } from '/js/config.js';
-import { sendLightCue } from '/js/lights.js';
+import { sendLightCue, sendLightScene } from '/js/lights.js';
 import { playSlot, resolveSlot } from '/js/soundEffects.js';
 import { SYNTHS } from '/js/synth.js';
 import { COMPETENCY_INFO } from '/js/competencies.js';
@@ -23,6 +23,7 @@ const TAB_KEY = 'ta-settings-tab';
 const BUTTON_GROUP_KEY = 'ta-settings-button-group';
 const SETTINGS_FILE_FORMAT = 'triangle-agency-tracker-settings';
 const SETTINGS_FILE_VERSION = 1;
+const TRACKER_FILE_FORMAT = 'triangle-agency-tracker';   // the server's file: team and settings
 const MAX_SETTINGS_FILE_BYTES = 512 * 1024;
 
 const KEEP_ALIVE_FIELDS = [
@@ -43,8 +44,20 @@ const LIGHT_FIELDS = {
   brightness: { label: 'Brightness', min: 1, max: 100, step: 1, unit: '%' },
   temperature: { label: 'Temperature', min: 2500, max: 6500, step: 100, unit: 'K' },
   led: { label: 'LED colour', min: 0, max: 360, step: 5, unit: '°' },
-  seconds: { label: 'Hold', min: 0, max: 30, step: 0.5, unit: 's', zeroLabel: 'keep' }
+  seconds: { label: 'Hold', min: 0, max: 30, step: 0.5, unit: 's', zeroLabel: 'keep' },
+  blackout: { label: 'Screen off: dark for', min: 0, max: 10, step: 0.5, unit: 's' },
+  fade: { label: 'Standby light fades up over', min: 0, max: 15, step: 0.5, unit: 's' }
 };
+// Session lights (lights.session): the cue behind each step of the scenes in lights.py.
+// `scene` is what the test button runs; `strip: false` marks a cue only bulbs show.
+const SESSION_LIGHTS = [
+  { key: 'powerOn', label: 'Power on', hint: 'Bulbs pulse between the standby light and this; the LED strip breathes it', actions: ['none', 'color'], scene: 'powerOn' },
+  { key: 'loginCenter', label: 'Login screen: centre bulb', hint: 'Once the picture has settled; the LED strip follows this one', actions: ['none', 'color', 'white', 'off'], scene: 'login' },
+  { key: 'loginSides', label: 'Login screen: side bulbs', hint: 'Top-left and bottom-right', actions: ['none', 'color', 'white', 'off'], scene: 'login', strip: false },
+  { key: 'severed', label: 'Log Out: link severed', hint: 'Bulbs and LED strip breathe this during the countdown', actions: ['none', 'color'], scene: 'severed' },
+  { key: 'standby', label: 'Standby', hint: 'Screen off: all dark, then the centre bulb alone fades up to this', actions: ['none', 'color', 'white'], scene: 'shutdown', strip: false }
+];
+const BULB_ONLY_CUES = new Set(SESSION_LIGHTS.filter(row => row.strip === false).map(row => `lights.session.${row.key}`));
 // What the bulbs take; the LED strip only ever gets a hue (see stripHue).
 const LIGHT_ACTION_FIELDS = {
   none: [],
@@ -354,6 +367,13 @@ function configFromSettingsFile(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('That JSON file does not contain settings.');
   }
+  // A tracker file holds the team too; its settings are the part loaded here.
+  if (payload.format === TRACKER_FILE_FORMAT) {
+    if (!payload.settings || typeof payload.settings !== 'object' || Array.isArray(payload.settings)) {
+      throw new Error('That tracker file holds no settings.');
+    }
+    payload = { config: payload.settings.config };
+  }
   if (payload.format && payload.format !== SETTINGS_FILE_FORMAT) {
     throw new Error('That JSON file belongs to a different application.');
   }
@@ -361,7 +381,7 @@ function configFromSettingsFile(payload) {
     throw new Error('This settings file was made by a newer tracker version.');
   }
 
-  // Accept both files exported here and the server's existing tracker_config.json.
+  // Accept both files exported here and the server's earlier tracker_config.json.
   const candidate = payload.config && typeof payload.config === 'object' && !Array.isArray(payload.config)
     ? payload.config
     : payload;
@@ -622,16 +642,16 @@ const usesStrip = () => ['all', 'strip'].includes(draft.lights.target);
  * is not a bulb: it has no white and always runs at full saturation and brightness
  * (lights.py), so a Colour cue shows its own hue and White or a bulb effect the LED colour.
  */
-function stripHue(cue) {
-  if (!usesStrip()) return null;
+function stripHue(cue, path) {
+  if (!usesStrip() || BULB_ONLY_CUES.has(path)) return null;
   if (cue.action === 'color') return cue.hue;
   if (cue.action === 'white' || (cue.action === 'effect' && !cue.effect.startsWith('strip:'))) return cue.led;
   return null;
 }
 
 /** Roughly what the cue looks like, for the round swatch beside it; a ring is the LED strip. */
-function swatchStyle(cue) {
-  const led = stripHue(cue);
+function swatchStyle(cue, path) {
+  const led = stripHue(cue, path);
   const ledColor = led === null ? '' : `hsl(${led} 100% 50%)`;
   const level = 25 + cue.brightness * 0.3;
   let fill = '';
@@ -645,9 +665,9 @@ function swatchStyle(cue) {
   return `background: ${fill}${ledColor && usesBulbs() ? `; box-shadow: 0 0 0 3px ${ledColor}` : ''}`;
 }
 
-function lightFieldKeys(cue, { hold }) {
+function lightFieldKeys(cue, { hold, path }) {
   const keys = usesBulbs() ? [...LIGHT_ACTION_FIELDS[cue.action]] : cue.action === 'color' ? ['hue'] : [];
-  if (stripHue(cue) !== null && cue.action !== 'color') keys.push('led');
+  if (stripHue(cue, path) !== null && cue.action !== 'color') keys.push('led');
   if (hold && cue.action !== 'none') keys.push('seconds');
   return keys;
 }
@@ -658,18 +678,22 @@ function effectOptions(selected) {
     .map(effect => `<option value="${effect.key}"${effect.key === selected ? ' selected' : ''}>${escapeHtml(effect.label)}</option>`).join('')}</optgroup>`).join('');
 }
 
-/** One cue editor: the action, its sliders, a swatch and (for events) a test button. */
-function lightCueRow(path, cue, { label, hint, hold = true, test = true }) {
-  const actions = LIGHT_ACTIONS.map(action =>
+/**
+ * One cue editor: the action, its sliders, a swatch and (for events) a test button.
+ * `only` limits the actions on offer; `scene` makes the test button run that scene.
+ */
+function lightCueRow(path, cue, { label, hint, hold = true, test = true, only, scene }) {
+  const actions = LIGHT_ACTIONS.filter(action => !only || only.includes(action.key)).map(action =>
     `<option value="${action.key}"${action.key === cue.action ? ' selected' : ''}>${action.label}</option>`).join('');
-  const fields = lightFieldKeys(cue, { hold }).map(key => renderField(`${path}.${key}`, LIGHT_FIELDS[key])).join('');
+  const fields = lightFieldKeys(cue, { hold, path }).map(key => renderField(`${path}.${key}`, LIGHT_FIELDS[key])).join('');
+  const tested = scene ? `data-test-scene="${scene}"` : `data-test-light="${path.replace('lights.', '')}"`;
   const effect = cue.action === 'effect'
     ? `<label class="field"><span>Effect</span><select data-path="${path}.effect">${effectOptions(cue.effect)}</select></label>` : '';
   return `<div class="light-slot">
     ${label ? `<div class="slot-name"><strong>${escapeHtml(label)}</strong>${hint ? `<small>${escapeHtml(hint)}</small>` : ''}</div>` : ''}
     <select data-path="${path}.action" aria-label="${escapeHtml(label || 'Ambient')} light">${actions}</select>
-    <span class="light-swatch" data-swatch="${path}" style="${swatchStyle(cue)}" aria-hidden="true"></span>
-    ${test ? `<button type="button" class="play" data-test-light="${path.replace('lights.', '')}" aria-label="Try the ${escapeHtml(label)} light">&#9654;</button>` : ''}
+    <span class="light-swatch" data-swatch="${path}" style="${swatchStyle(cue, path)}" aria-hidden="true"></span>
+    ${test ? `<button type="button" class="play" ${tested} aria-label="Try the ${escapeHtml(label)} light">&#9654;</button>` : ''}
     <div class="light-fields">${effect}${fields}</div>
   </div>`;
 }
@@ -678,6 +702,9 @@ function renderLights() {
   const outcomeEvents = new Set(['captured', 'killed', 'escaped']);
   $('#lightGeneral').innerHTML = LIGHT_GENERAL_FIELDS.map(field => renderField(`lights.${field.key}`, field)).join('');
   $('#lightAmbient').innerHTML = lightCueRow('lights.ambient', draft.lights.ambient, { hold: false, test: false });
+  $('#sessionLightSlots').innerHTML = SESSION_LIGHTS.map(({ key, label, hint, actions, scene }) =>
+    lightCueRow(`lights.session.${key}`, draft.lights.session[key], { label, hint, hold: false, only: actions, scene })).join('');
+  $('#sessionLightFields').innerHTML = ['blackout', 'fade'].map(key => renderField(`lights.session.${key}`, LIGHT_FIELDS[key])).join('');
   $('#missionOutcomeLightSlots').innerHTML = LIGHT_EVENTS.filter(({ key }) => outcomeEvents.has(key)).map(({ key, label, hint }) =>
     lightCueRow(`lights.events.${key}`, draft.lights.events[key], { label, hint })).join('');
   $('#lightSlots').innerHTML = LIGHT_EVENTS.filter(({ key }) => !outcomeEvents.has(key)).map(({ key, label, hint }) =>
@@ -740,9 +767,10 @@ function watchLightStatus(active) {
 async function testLight(button) {
   const key = button.dataset.testLight;
   // 'ambient' or 'events.<event>'; the ambient light has no hold, so it just stays.
-  const cue = key === 'ambient' ? { ...draft.lights.ambient, seconds: 0 } : getPath(draft.lights, key);
+  const cue = key === 'ambient' ? { ...draft.lights.ambient, seconds: 0 } : key && getPath(draft.lights, key);
   button.classList.add('playing');
-  const result = await sendLightCue(cue, draft.lights);
+  // A session light's button runs its whole scene (lights.py).
+  const result = await (cue ? sendLightCue(cue, draft.lights) : sendLightScene(button.dataset.testScene, draft.lights));
   if (!result.ok) setStatus(result.message || 'Light cue failed', 'error');
   // The server queues the cue; give the bulbs a moment, then show how it went.
   setTimeout(() => { button.classList.remove('playing'); refreshLightStatus(); }, 1500);
@@ -824,13 +852,13 @@ function handleEdit(event) {
     if (/\.(action|effect)$/.test(path) || path === 'lights.target') renderLights();
     const cuePath = path.slice(0, path.lastIndexOf('.'));
     const swatch = document.querySelector(`[data-swatch="${cuePath}"]`);
-    if (swatch) swatch.style.cssText = swatchStyle(getPath(draft, cuePath));
+    if (swatch) swatch.style.cssText = swatchStyle(getPath(draft, cuePath), cuePath);
   }
   scheduleSave();
 }
 
 async function playFor(button) {
-  if (button.dataset.testLight) return testLight(button);
+  if (button.dataset.testLight || button.dataset.testScene) return testLight(button);
   button.classList.add('playing');
   try {
     if (button.dataset.testSlot) {

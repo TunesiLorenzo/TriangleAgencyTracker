@@ -35,6 +35,11 @@ export function getVoiceMeeterStatus(settings) {
   return bridgeRequest('/api/status', settings);
 }
 
+/** Stop the bridge on this computer (Log Out, after the tracker server has gone). */
+export function stopVoiceMeeterBridge(settings) {
+  return bridgeRequest('/api/shutdown', settings, { method: 'POST' });
+}
+
 export function setVoiceMeeterLevel(action, settings) {
   if (action !== 'drop' && action !== 'restore') {
     return Promise.reject(new Error('VoiceMeeter action must be drop or restore.'));
