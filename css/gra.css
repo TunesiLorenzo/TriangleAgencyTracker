@@ -1107,6 +1107,135 @@ body.gra-takeover[data-view="agentsTab"] #nextMissionButton::after {
   }
 }
 
+/* Portrait: the Agents tab is laid out to fill one screen with nothing to scroll
+   (layout.css), and the sign plates above are taller than the cards they restyle. The
+   same plates, tightened until the page is as tall as the plain one. */
+@media (orientation: portrait) {
+  body.gra-takeover[data-view="agentsTab"] :is(h1, .view-tabs) { margin-bottom: 10px; }
+  body.gra-takeover[data-view="agentsTab"] .view-tabs { padding-block: 3px; }
+  body.gra-takeover[data-view="agentsTab"] #agentsView { gap: 8px; }
+
+  body.gra-takeover[data-view="agentsTab"] #taskPanel {
+    gap: 8px;
+    padding: 20px 8px 5px;
+    border-top-width: 5px !important;
+  }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel::before { top: 3px; }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel::after { top: 2px; }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel .task-stage { min-height: 64px; }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel .task-list { padding: 4px; }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel .task {
+    min-height: 56px;
+    padding: 4px 26px 4px 10px;
+  }
+
+  body.gra-takeover[data-view="agentsTab"] #charContainer {
+    row-gap: 12px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char {
+    padding: 24px 8px 7px;
+    border-top-width: 6px !important;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char::before { top: 3px; }
+  body.gra-takeover[data-view="agentsTab"] .char::after { top: 7px; }
+  body.gra-takeover[data-view="agentsTab"] .char .char-portrait {
+    width: 72px;
+    height: 84px;
+    padding: 3px;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char .stat {
+    min-height: 22px;
+    margin: 1px 0;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char .stat .value { padding: 1px 6px; }
+  body.gra-takeover[data-view="agentsTab"] .char .tracker-row {
+    margin: 3px 0 1px;
+    padding: 3px 7px;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char :is(.triangle, .triangle-down) {
+    width: 32px;
+    height: 32px;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char .counter-input { height: 32px; }
+  body.gra-takeover[data-view="agentsTab"] .char .activity-meter { margin-top: 5px; }
+  body.gra-takeover[data-view="agentsTab"] .char .net-indicator { padding-block: 1px; }
+
+  body.gra-takeover[data-view="agentsTab"] .world-section { padding-top: 16px; }
+  body.gra-takeover[data-view="agentsTab"] .world-section::before { top: 2px; }
+  body.gra-takeover[data-view="agentsTab"] .mission-controls {
+    margin-top: 4px;
+    padding-top: 4px;
+  }
+}
+
+/* Landscape: the same tightening, so the page is no taller than the plain one. There the
+   task board is a narrow column beside the cards and the taller of the two sets the
+   height; wider buttons and padding would squeeze the task text into more lines. */
+@media (orientation: landscape) {
+  body.gra-takeover[data-view="agentsTab"] h1::before { font-size: clamp(28px, 3.4vw, 46px); }
+  body.gra-takeover[data-view="agentsTab"] h1::after { margin-top: 2px; }
+  body.gra-takeover[data-view="agentsTab"] .view-tabs { padding-block: 3px; }
+
+  body.gra-takeover[data-view="agentsTab"] #taskPanel {
+    position: relative;   /* keeps its heading inside the narrow column */
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    gap: 6px;
+    padding: 20px 6px 6px;
+    border-top-width: 5px !important;
+  }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel::before { top: 3px; left: 8px; right: 8px; }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel::after { display: none; }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel .task-list { gap: 6px; padding: 3px; }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel .task {
+    min-height: 60px;
+    padding: 6px 18px 6px 7px;
+    border-left-width: 4px;
+  }
+  body.gra-takeover[data-view="agentsTab"] #taskPanel .task::before { right: 4px; bottom: 3px; font-size: 15px; }
+
+  body.gra-takeover[data-view="agentsTab"] #charContainer {
+    row-gap: 14px;
+    padding-top: 2px;
+    padding-bottom: 6px;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char {
+    padding: 26px 10px 8px;
+    border-top-width: 6px !important;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char::before { top: 4px; }
+  body.gra-takeover[data-view="agentsTab"] .char::after { top: 7px; }
+  body.gra-takeover[data-view="agentsTab"] .char .char-portrait {
+    width: 80px;
+    height: 94px;
+    padding: 3px;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char .stat {
+    min-height: 24px;
+    margin: 1px 0;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char .stat .value { padding: 1px 6px; }
+  body.gra-takeover[data-view="agentsTab"] .char .tracker-row {
+    margin: 4px 0 2px;
+    padding: 4px 7px;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char :is(.triangle, .triangle-down) {
+    width: 34px;
+    height: 34px;
+  }
+  body.gra-takeover[data-view="agentsTab"] .char .counter-input { height: 34px; }
+  body.gra-takeover[data-view="agentsTab"] .char .activity-meter { margin-top: 5px; }
+  body.gra-takeover[data-view="agentsTab"] .char .net-indicator { padding-block: 1px; }
+
+  body.gra-takeover[data-view="agentsTab"] .world-section { padding-top: 16px; }
+  body.gra-takeover[data-view="agentsTab"] .world-section::before { top: 2px; }
+  body.gra-takeover[data-view="agentsTab"] .mission-controls {
+    margin-top: 0;
+    padding-top: 6px;
+  }
+}
+
 /* Motion is enabled explicitly by the controller so ?motion=reduced remains static
    even when the operating system itself does not request reduced motion. */
 /* The overlay steps as well (see the street plan above): 24 ticks a second for the quick
