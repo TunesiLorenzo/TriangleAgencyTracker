@@ -387,7 +387,7 @@ function popup() {
     { opacity: 0, transform: `translateX(${fromLeft ? -40 : 40}px)`, filter: 'blur(4px)' },
     { opacity: 1, transform: 'none', filter: 'none' }
   ], { duration: 280, easing: 'cubic-bezier(.2,.9,.3,1.2)' });
-  card.querySelector('.gra-nav-progress span').animate({ width: ['0%', '100%'] }, { duration: life, easing: 'linear', fill: 'both' });
+  card.querySelector('.gra-nav-progress span').animate({ transform: ['scaleX(0)', 'scaleX(1)'] }, { duration: life, easing: 'linear', fill: 'both' });
   later(life, () => {
     card.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(6px)', filter: 'blur(3px)' }],
       { duration: 220, fill: 'forwards' }).onfinish = remove;

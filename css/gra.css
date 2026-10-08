@@ -80,10 +80,14 @@ body.gra-takeover .gra-map-background { opacity: 1; }
   stroke-width: 5px;
 }
 
+/* Only the pan is a transform the compositor can move by itself. Anything animated inside
+   the SVG repaints the whole full-screen drawing on the main thread, so those animations
+   tick in steps on one shared 12-per-second grid instead of 60 times a second: the dashes
+   creep about 1px a step, which looks the same. */
 body.gra-takeover.gra-motion-enabled .gra-map-background svg { animation: gra-street-pan 24s ease-in-out infinite alternate; }
-body.gra-takeover.gra-motion-enabled .gra-map-major-roads path { animation: gra-street-flow 5s linear infinite; }
-body.gra-takeover.gra-motion-enabled .gra-map-ring-road ellipse { animation: gra-ring-flow 9s linear infinite; }
-body.gra-takeover.gra-motion-enabled .gra-map-junctions circle { animation: gra-junction-pulse 2.6s ease-in-out infinite alternate; }
+body.gra-takeover.gra-motion-enabled .gra-map-major-roads path { animation: gra-street-flow 5s steps(60) infinite; }
+body.gra-takeover.gra-motion-enabled .gra-map-ring-road ellipse { animation: gra-ring-flow 9s steps(108) infinite; }
+body.gra-takeover.gra-motion-enabled .gra-map-junctions circle { animation: gra-junction-pulse 2.5s steps(30) infinite alternate; }
 
 #graTakeoverOverlay {
   --gra-green: #77ff72;
@@ -477,7 +481,7 @@ body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-t
 .gra-navigation-card strong { margin-top: 2px; color: #fff; font-size: clamp(13px, 1.4vw, 18px); letter-spacing: 1px; }
 .gra-navigation-card small { margin-top: 8px; color: rgba(234,255,223,.5); font-size: 7px; letter-spacing: .8px; }
 .gra-nav-progress { height: 3px; margin-top: 8px; overflow: hidden; background: rgba(119,255,114,.14); }
-.gra-nav-progress span { display: block; width: 64%; height: 100%; background: var(--gra-green); box-shadow: 0 0 8px var(--gra-green); }
+.gra-nav-progress span { display: block; width: 64%; height: 100%; transform-origin: left; background: var(--gra-green); box-shadow: 0 0 8px var(--gra-green); }
 
 .gra-takeover-message {
   position: fixed;
@@ -636,6 +640,13 @@ body.gra-takeover .view-tab[aria-selected="true"] {
   color: #07150b !important;
   background: #ffd333 !important;
   box-shadow: inset 0 -3px rgba(0,0,0,.3) !important;
+}
+
+/* These panels are all but opaque here, so the chaos blur of what is behind them
+   (effects.css) would be paid for on every frame without being seen. */
+html.chaos-atmosphere body.gra-takeover :is(.char, .world, .graph-box, #taskPanel) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 body.gra-takeover .modal-backdrop {
@@ -1096,10 +1107,13 @@ body.gra-takeover[data-view="agentsTab"] #nextMissionButton::after {
 
 /* Motion is enabled explicitly by the controller so ?motion=reduced remains static
    even when the operating system itself does not request reduced motion. */
-#graTakeoverOverlay.gra-motion .gra-route { animation: gra-route-flow 5s linear infinite; }
-#graTakeoverOverlay.gra-motion .gra-route-branch { animation-duration: 7s; animation-direction: reverse; }
-#graTakeoverOverlay.gra-motion .gra-route-warning { animation-duration: 3.4s; }
-#graTakeoverOverlay.gra-motion .gra-map-grid { animation: gra-map-drift 18s linear infinite; }
+/* The routes and the grid repaint a full-screen layer at every tick, so they step on a
+   shared grid too: the routes run fast enough to want 30 a second, the grid drifts 3px a
+   second and is fine with 15. */
+#graTakeoverOverlay.gra-motion .gra-route { animation: gra-route-flow 5s steps(150) infinite; }
+#graTakeoverOverlay.gra-motion .gra-route-branch { animation-duration: 7s; animation-timing-function: steps(210); animation-direction: reverse; }
+#graTakeoverOverlay.gra-motion .gra-route-warning { animation-duration: 3.4s; animation-timing-function: steps(102); }
+#graTakeoverOverlay.gra-motion .gra-map-grid { animation: gra-map-drift 18s steps(270) infinite; }
 #graTakeoverOverlay.gra-motion .gra-circuit-one { animation: gra-circuit-float 12s ease-in-out infinite; }
 #graTakeoverOverlay.gra-motion .gra-circuit-two { animation: gra-circuit-float 15s ease-in-out -4s infinite reverse; }
 #graTakeoverOverlay.gra-motion .gra-circuit::after { animation: gra-circuit-spin 26s linear infinite; }
@@ -1117,7 +1131,8 @@ body.gra-takeover[data-view="agentsTab"] #nextMissionButton::after {
 @keyframes gra-circuit-spin { to { transform: rotate(360deg); } }
 @keyframes gra-lanes { to { transform: translateY(92px); } }
 @keyframes gra-signal { 0%, 32% { opacity: 1; } 33%, 100% { opacity: .2; } }
-@keyframes gra-nav-progress { 0%, 100% { width: 38%; } 50% { width: 92%; } }
+/* The bar is 64% wide: scaled between 38% and 92% of its track without relaying out the card. */
+@keyframes gra-nav-progress { 0%, 100% { transform: scaleX(.594); } 50% { transform: scaleX(1.4375); } }
 @keyframes gra-street-pan {
   0% { transform: scale(1.08) translate3d(-1.8%, -1%, 0) rotate(-.35deg); }
   100% { transform: scale(1.13) translate3d(2%, 1.5%, 0) rotate(.4deg); }

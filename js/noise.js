@@ -18,10 +18,11 @@ export const noise = (function() {
 
   let enabled = false;
   let running = false;
-  let rafId = null;
-  // Reused low-resolution buffer; allocating a canvas per frame churned the GC.
-  const temp = document.createElement('canvas');
-  const tempCtx = temp.getContext('2d');
+  let timerId = 0;
+  // The grain is a small bitmap that the browser stretches over the screen (a few
+  // thousand pixels a frame); a screen-sized bitmap redrawn each time cost far more.
+  let image = null;
+  let pixels = null;
 
   // --- Default settings ---
   const state = {
@@ -31,48 +32,29 @@ export const noise = (function() {
     color: null,          // optional RGBA tint
     fps: 12               // grain redraw rate; film grain reads better (and costs far less) below 60fps
   };
-  let lastDraw = 0;
 
-  // --- Initialize canvas ---
+  // --- Size the bitmap: the screen's device pixels times `frequency` ---
   function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(window.innerWidth * dpr);
-    canvas.height = Math.floor(window.innerHeight * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = Math.max(16, Math.min(512, Math.floor(window.innerWidth * dpr * state.frequency)));
+    const h = Math.max(16, Math.min(512, Math.floor(window.innerHeight * dpr * state.frequency)));
+    if (canvas.width === w && canvas.height === h && image) return;
+    canvas.width = w;
+    canvas.height = h;
+    image = ctx.createImageData(w, h);
+    pixels = new Uint32Array(image.data.buffer);
   }
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
   // --- Draw one frame ---
   function drawNoise() {
-    const w = Math.max(16, Math.min(512, Math.floor(canvas.width * state.frequency)));
-    const h = Math.max(16, Math.min(512, Math.floor(canvas.height * state.frequency)));
-
-    const img = ctx.createImageData(w, h);
-    const data = img.data;
-
-    for (let i = 0; i < w * h; i++) {
-      const idx = i * 4;
-      if (Math.random() < state.density) {
-        const v = Math.floor(Math.random() * 255);
-        data[idx] = v;
-        data[idx + 1] = v;
-        data[idx + 2] = v;
-        data[idx + 3] = 255;
-      } else {
-        data[idx + 0] = 0;
-        data[idx + 1] = 0;
-        data[idx + 2] = 0;
-        data[idx + 3] = 0;
-      }
+    const density = state.density;
+    for (let i = 0; i < pixels.length; i++) {
+      // opaque grey (the same value in every channel, so byte order does not matter), or clear
+      pixels[i] = Math.random() < density ? (0xff000000 | (Math.floor(Math.random() * 255) * 0x010101)) >>> 0 : 0;
     }
-
-    if (temp.width !== w) temp.width = w;
-    if (temp.height !== h) temp.height = h;
-    tempCtx.putImageData(img, 0, 0);
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(temp, 0, 0, canvas.width, canvas.height);
+    ctx.putImageData(image, 0, 0);
 
     if (state.color) {
       ctx.fillStyle = state.color;
@@ -84,38 +66,34 @@ export const noise = (function() {
     canvas.style.opacity = state.intensity;
   }
 
-  function loop(now = performance.now()) {
-    rafId = null;
+  // A timer at the grain's own rate, rather than a 60-per-second frame callback that
+  // skipped most of its turns.
+  function loop() {
+    timerId = 0;
     if (!enabled || state.intensity <= 0 || document.hidden) {
       running = false;
       canvas.style.opacity = 0;
       return;
     }
     running = true;
-    if (now - lastDraw >= 1000 / state.fps - 4) {
-      lastDraw = now;
-      drawNoise();
-    } else {
-      canvas.style.opacity = state.intensity;
-    }
-    rafId = requestAnimationFrame(loop);
+    drawNoise();
+    timerId = window.setTimeout(loop, 1000 / state.fps);
+  }
+
+  function stopLoop() {
+    window.clearTimeout(timerId);
+    timerId = 0;
+    running = false;
   }
 
   function ensureLoop() {
-    if (!enabled || running || rafId || state.intensity <= 0 || document.hidden) return;
-    running = true;
-    lastDraw = 0;
-    rafId = requestAnimationFrame(loop);
+    if (!enabled || running || timerId || state.intensity <= 0 || document.hidden) return;
+    loop();
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = null;
-      running = false;
-    } else {
-      ensureLoop();
-    }
+    if (document.hidden) stopLoop();
+    else ensureLoop();
   });
 
   // --- Public API ---
@@ -126,25 +104,26 @@ export const noise = (function() {
     },
     stop() {
       enabled = false;
-      running = false;
-      if (rafId) cancelAnimationFrame(rafId);
+      stopLoop();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      rafId = null;
       canvas.style.opacity = 0;
     },
     setIntensity(v) {
       state.intensity = Math.max(0, Math.min(1, Number(v) || 0));
       if (state.intensity > 0) {
+        // Between redraws the grain still follows the level as it eases.
+        if (running) canvas.style.opacity = state.intensity;
         ensureLoop();
       } else {
-        if (rafId) cancelAnimationFrame(rafId);
-        rafId = null;
-        running = false;
+        stopLoop();
         canvas.style.opacity = 0;
       }
     },
     setDensity(v) { state.density = Math.max(0, Math.min(1, Number(v) || 0)); },
-    setFrequency(v) { state.frequency = Math.max(0.01, Math.min(0.5, Number(v) || 0.05)); },
+    setFrequency(v) {
+      state.frequency = Math.max(0.01, Math.min(0.5, Number(v) || 0.05));
+      resizeCanvas();
+    },
     setColor(rgba) { state.color = rgba || null; },
     setFps(v) { state.fps = Math.max(1, Math.min(60, Number(v) || 12)); },
     setContainerPosition(pos) { canvas.style.position = pos || 'fixed'; },

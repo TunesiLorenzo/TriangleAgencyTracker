@@ -20,9 +20,15 @@ const counters = {
   escaped:       { id: 'escapedCounter',       value: 0 }
 };
 
+// The backgrounds are 4K masters with a 1080p copy next to each. Decoding 4K costs four
+// times as much, so only a display that can actually show it gets the master.
+const videoSuffix = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) > 2560 ? '' : '_1080';
+const videoFile = name => `./images/bck_${name}${videoSuffix}.mp4`;
+
 let video = { strongAtChaos: 2, fadeSeconds: 5 };
 let currentVideo = 1;
-let currentVideoSource = './images/bck_calm.mp4';
+let currentVideoSource = videoFile('calm');
+document.getElementById('bgVideo1').src = currentVideoSource;
 let pauseTimer = 0;
 let fadingVideo = null;
 
@@ -30,9 +36,15 @@ function backgroundVideos() {
   return [document.getElementById('bgVideo1'), document.getElementById('bgVideo2')].filter(Boolean);
 }
 
+/** The G.R.A. takeover hides both videos behind its street plan (gra.css): no point decoding them. */
+function videoShown() {
+  return motionAllowed() && document.documentElement.dataset.session === 'open' && !document.hidden
+    && !document.body.classList.contains('gra-takeover');
+}
+
 function syncBackgroundVideoPlayback() {
   const active = currentVideo === 1 ? document.getElementById('bgVideo1') : document.getElementById('bgVideo2');
-  const shouldPlay = motionAllowed() && document.documentElement.dataset.session === 'open' && !document.hidden;
+  const shouldPlay = videoShown();
   backgroundVideos().forEach(videoElement => {
     if (shouldPlay && (videoElement === active || videoElement === fadingVideo)) videoElement.play().catch(() => {});
     else videoElement.pause();
@@ -93,6 +105,7 @@ export function initWorld() {
   });
   document.addEventListener('session-changed', syncBackgroundVideoPlayback);
   document.addEventListener('visibilitychange', syncBackgroundVideoPlayback);
+  document.addEventListener('gra-takeover-changed', syncBackgroundVideoPlayback);
   syncBackgroundVideoPlayback();
 }
 
@@ -128,7 +141,7 @@ export function finishMissionWorld(outcome) {
 }
 
 function getBackgroundVideo() {
-  return counters.chaos.value >= video.strongAtChaos ? './images/bck_strong.mp4' : './images/bck_calm.mp4';
+  return videoFile(counters.chaos.value >= video.strongAtChaos ? 'strong' : 'calm');
 }
 
 function updateBackgroundVideo() {
@@ -145,9 +158,7 @@ function updateBackgroundVideo() {
   // back-and-forth swap), so it resumes instead of reloading from the start.
   const url = new URL(newSource, location.href).href;
   if (incoming.src !== url) incoming.src = url;
-  if (motionAllowed() && document.documentElement.dataset.session === 'open' && !document.hidden) {
-    incoming.play().catch(() => {});
-  }
+  if (videoShown()) incoming.play().catch(() => {});
   const fadeMs = Math.max(0, video.fadeSeconds * 1000);
   incoming.style.transition = `opacity ${fadeMs}ms`;
   outgoing.style.transition = `opacity ${fadeMs}ms`;

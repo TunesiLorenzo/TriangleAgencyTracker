@@ -86,6 +86,8 @@ export function initGraTakeover() {
   const setActive = next => {
     active = !!next;
     document.body.classList.toggle('gra-takeover', active);
+    // world.js stops decoding the background videos while the street plan covers them.
+    document.dispatchEvent(new CustomEvent('gra-takeover-changed'));
     if (active) {
       heading?.setAttribute('aria-label', 'Autoverrox — Grande Raccordo Adimensionale. Interface control acquired.');
     } else {

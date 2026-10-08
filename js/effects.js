@@ -58,6 +58,7 @@ function applyLevelStyles(level) {
   root.setProperty('--panel-blur', `${(level * a.panelBlur).toFixed(2)}px`);
 
   if (scanline) {
+    scanline.style.willChange = level >= 0.002 ? 'transform' : '';
     scanline.style.height = `${10 + 70 * level}px`;
     scanline.style.opacity = motionAllowed() ? (level * 0.8).toFixed(3) : 0;
     scanline.style.background = 'rgba(255,255,255,0.05)';
@@ -129,7 +130,8 @@ function updateCrt(dt, level) {
   if (!scanline || level < 0.002 || !motionAllowed()) return;
   state.crtBottom += (90 + tuning.atmosphere.crtSpeed * level) * dt;
   if (state.crtBottom > window.innerHeight) state.crtBottom = 0;
-  scanline.style.bottom = `${state.crtBottom.toFixed(1)}px`;
+  // Moved with a transform: changing `bottom` laid out and repainted the glow at every frame.
+  scanline.style.transform = `translateY(${(-state.crtBottom).toFixed(1)}px)`;
 }
 
 function frame(now) {
