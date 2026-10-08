@@ -68,6 +68,7 @@
 .gra-popup strong { font-size: clamp(14px, 1.5vw, 20px); line-height: 1.15; }
 .gra-popup small { font-size: 8px; }
 /* The bar counts the pop-up's time down instead of pulsing. */
+body.gra-takeover #graTakeoverOverlay .gra-popup .gra-nav-progress span,
 #graTakeoverOverlay .gra-popup .gra-nav-progress span { width: 100%; transform: scaleX(0); animation: none; }
 .gra-popup-alert { border-left-color: var(--gra-amber) !important; }
 .gra-popup-alert .gra-nav-brand,

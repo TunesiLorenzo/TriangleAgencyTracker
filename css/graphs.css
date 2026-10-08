@@ -116,7 +116,6 @@ canvas {
   pointer-events:none;
   border-radius:8px;
   background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.03));
-  mix-blend-mode: screen;
   filter: blur(6px);
   transform: rotate(-6deg);
   opacity:0.9;
@@ -129,7 +128,6 @@ canvas {
   pointer-events:none;
   background: radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.4), rgba(255,255,255,0.00) 50%);
   border-radius: 10px;
-  mix-blend-mode: screen;
   filter: blur(8px);
   opacity:0.9;
 }

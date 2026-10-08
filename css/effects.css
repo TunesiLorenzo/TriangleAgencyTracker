@@ -166,10 +166,18 @@
 /* treat everything except .backFace as the front content */
 .char > *:not(.backFace) {
   transform-origin: 50% 50%;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
   transition: transform 420ms cubic-bezier(.2,.9,.3,1), opacity 320ms;
 }
+
+/* The front only needs its back hidden while a card is turned or turning (charSystem.js
+   sets .flipping for the turn). Left on all the time, it made every element of every card
+   a separate layer for the graphics card to clip and put together on each frame, which
+   was the largest single cost of the Agents tab. */
+.char:is(.flipped, .flipping) > *:not(.backFace) {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.char:not(.flipped, .flipping) .backFace { visibility: hidden; }
 
 /* back face styling (initially hidden, rotated) */
 .char .backFace {
@@ -406,7 +414,8 @@
   width: 45%;
   height: 140%;
   pointer-events: none;
-  mix-blend-mode: screen;
+  /* plain blending: for a near-white band it gives the same picture as `screen`, without
+     the extra pass a blend mode costs on every frame */
   background: linear-gradient(
     90deg,
     rgba(255,255,255,0) 0%,
@@ -445,7 +454,8 @@
   inset: 0;
   pointer-events: none;
   z-index: 30;
-  mix-blend-mode: multiply; /* darken content underneath */
+  /* Black over the card darkens it exactly as `multiply` did, and the gradient is soft
+     enough without a blur: both cost a separate pass on every frame of the flicker. */
   /* the edges only: the middle of the card stays readable */
   background: radial-gradient(
     ellipse at 50% 45%,
@@ -454,9 +464,7 @@
     rgba(0,0,0,0.9) 100%
   );
   opacity: 0.8;
-  filter: blur(4px);
   transform-origin: center;
-  will-change: opacity, transform;
   /* two animations:
      - flicker (short irregular dips in opacity -> momentary illumination)
      - breathe (slow subtle movement so it doesn't feel static)
@@ -518,7 +526,6 @@
 @media (max-width: 600px) {
   .vignette-overlay {
     opacity: 0.82;
-    filter: blur(4px) saturate(0.85);
   }
 }
 

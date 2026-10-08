@@ -383,7 +383,14 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   flipBtn.className = 'flip-btn';
   flipBtn.textContent = '↻';
   flipBtn.title = 'Flip card';
-  flipBtn.onclick = () => { c.classList.toggle('flipped'); };
+  let flipTimer = 0;
+  flipBtn.onclick = () => {
+    c.classList.toggle('flipped');
+    // effects.css hides the backs of both faces only while the card turns (420ms).
+    c.classList.add('flipping');
+    clearTimeout(flipTimer);
+    flipTimer = setTimeout(() => c.classList.remove('flipping'), 460);
+  };
 
   // Back face - contains Prime Directive (debit/demerit) and Encouraged Behavior (credit/merit)
   const backFace = document.createElement('div');

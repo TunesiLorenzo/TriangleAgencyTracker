@@ -43,7 +43,9 @@ body.gra-takeover .gra-map-background { opacity: 1; }
   width: 100%;
   height: 100%;
   overflow: visible;
-  filter: drop-shadow(0 0 6px rgba(77,255,112,.18));
+  /* No glow filter here, on the route lines or on the lane markings further down: a filter
+     on a screen-sized layer is worked out again for every frame anything on screen moves,
+     and those three faint glows cost more than the rest of the skin together. */
   transform: scale(1.08) translate3d(0, 0, 0);
 }
 
@@ -80,14 +82,16 @@ body.gra-takeover .gra-map-background { opacity: 1; }
   stroke-width: 5px;
 }
 
-/* Only the pan is a transform the compositor can move by itself. Anything animated inside
-   the SVG repaints the whole full-screen drawing on the main thread, so those animations
-   tick in steps on one shared 12-per-second grid instead of 60 times a second: the dashes
-   creep about 1px a step, which looks the same. */
-body.gra-takeover.gra-motion-enabled .gra-map-background svg { animation: gra-street-pan 24s ease-in-out infinite alternate; }
-body.gra-takeover.gra-motion-enabled .gra-map-major-roads path { animation: gra-street-flow 5s steps(60) infinite; }
-body.gra-takeover.gra-motion-enabled .gra-map-ring-road ellipse { animation: gra-ring-flow 9s steps(108) infinite; }
-body.gra-takeover.gra-motion-enabled .gra-map-junctions circle { animation: gra-junction-pulse 2.5s steps(30) infinite alternate; }
+/* Every frame in which something moves has the whole screen put together again, and on a
+   laptop's integrated graphics that is what the skin costs: measured, each of these
+   animations running smoothly took a third to half of a processor core by itself. They all
+   move slowly, so they tick in steps() instead, a few times a second: the plan pans 3px a
+   second at 12 ticks, and the dashes (whose every tick redraws the whole plan) creep 2px
+   at 6. */
+body.gra-takeover.gra-motion-enabled .gra-map-background svg { animation: gra-street-pan 24s steps(288) infinite alternate; }
+body.gra-takeover.gra-motion-enabled .gra-map-major-roads path { animation: gra-street-flow 5s steps(30) infinite; }
+body.gra-takeover.gra-motion-enabled .gra-map-ring-road ellipse { animation: gra-ring-flow 9s steps(54) infinite; }
+body.gra-takeover.gra-motion-enabled .gra-map-junctions circle { animation: gra-junction-pulse 2.5s steps(15) infinite alternate; }
 
 #graTakeoverOverlay {
   --gra-green: #77ff72;
@@ -353,7 +357,6 @@ body.gra-transitioning:not(.gra-takeover) #graTakeoverOverlay > :not(.gra-toll-t
   width: 100%;
   height: 100%;
   opacity: .55;
-  filter: drop-shadow(0 0 5px rgba(119,255,114,.45));
 }
 
 .gra-route {
@@ -709,7 +712,6 @@ body.gra-takeover[data-view="agentsTab"] #agentsView::before {
   background:
     linear-gradient(90deg, transparent 0 49.65%, rgba(255,211,51,.34) 49.65% 50.35%, transparent 50.35%) 0 0 / 33.333% 100%,
     repeating-linear-gradient(90deg, transparent 0 8%, rgba(238,255,225,.11) 8% 11%, transparent 11% 17%) 0 8px / 100% 2px no-repeat;
-  filter: drop-shadow(0 0 8px rgba(119,255,114,.15));
 }
 
 /* Mission/task strip = overhead motorway message board. */
@@ -1107,23 +1109,22 @@ body.gra-takeover[data-view="agentsTab"] #nextMissionButton::after {
 
 /* Motion is enabled explicitly by the controller so ?motion=reduced remains static
    even when the operating system itself does not request reduced motion. */
-/* The routes and the grid repaint a full-screen layer at every tick, so they step on a
-   shared grid too: the routes run fast enough to want 30 a second, the grid drifts 3px a
-   second and is fine with 15. */
-#graTakeoverOverlay.gra-motion .gra-route { animation: gra-route-flow 5s steps(150) infinite; }
-#graTakeoverOverlay.gra-motion .gra-route-branch { animation-duration: 7s; animation-timing-function: steps(210); animation-direction: reverse; }
-#graTakeoverOverlay.gra-motion .gra-route-warning { animation-duration: 3.4s; animation-timing-function: steps(102); }
-#graTakeoverOverlay.gra-motion .gra-map-grid { animation: gra-map-drift 18s steps(270) infinite; }
-#graTakeoverOverlay.gra-motion .gra-circuit-one { animation: gra-circuit-float 12s ease-in-out infinite; }
-#graTakeoverOverlay.gra-motion .gra-circuit-two { animation: gra-circuit-float 15s ease-in-out -4s infinite reverse; }
-#graTakeoverOverlay.gra-motion .gra-circuit::after { animation: gra-circuit-spin 26s linear infinite; }
-#graTakeoverOverlay.gra-motion .gra-road-perspective::before,
-#graTakeoverOverlay.gra-motion .gra-road-perspective::after,
-#graTakeoverOverlay.gra-motion .gra-road-perspective span { animation: gra-lanes 2.4s linear infinite; }
-#graTakeoverOverlay.gra-motion .gra-light { animation: gra-signal 4.8s steps(1, end) infinite; }
-#graTakeoverOverlay.gra-motion .gra-light-amber { animation-delay: 1.6s; }
-#graTakeoverOverlay.gra-motion .gra-light-green { animation-delay: 3.2s; }
-#graTakeoverOverlay.gra-motion .gra-nav-progress span { animation: gra-nav-progress 3.5s ease-in-out infinite; }
+/* The overlay steps as well (see the street plan above): 24 ticks a second for the quick
+   route lines and lane markings, 12 for the slow grid, circuits and progress bar. */
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-route { animation: gra-route-flow 5s steps(120) infinite; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-route-branch { animation-duration: 7s; animation-timing-function: steps(168); animation-direction: reverse; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-route-warning { animation-duration: 3.5s; animation-timing-function: steps(84); }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-map-grid { animation: gra-map-drift 18s steps(216) infinite; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-circuit-one { animation: gra-circuit-float 12s steps(72) infinite; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-circuit-two { animation: gra-circuit-float 15s steps(90) -4s infinite reverse; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-circuit::after { animation: gra-circuit-spin 26s steps(312) infinite; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-road-perspective::before,
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-road-perspective::after,
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-road-perspective span { animation: gra-lanes 2.5s steps(60) infinite; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-light { animation: gra-signal 4.8s steps(1, end) infinite; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-light-amber { animation-delay: 1.6s; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-light-green { animation-delay: 3.2s; }
+body.gra-takeover #graTakeoverOverlay.gra-motion .gra-nav-progress span { animation: gra-nav-progress 3.5s steps(21) infinite; }
 
 @keyframes gra-route-flow { to { stroke-dashoffset: -100; } }
 @keyframes gra-map-drift { to { background-position: 65px 69px, -59px -51px; } }
@@ -1139,7 +1140,7 @@ body.gra-takeover[data-view="agentsTab"] #nextMissionButton::after {
 }
 @keyframes gra-street-flow { to { stroke-dashoffset: -70; } }
 @keyframes gra-ring-flow { to { stroke-dashoffset: 88; } }
-@keyframes gra-junction-pulse { to { opacity: .35; filter: drop-shadow(0 0 12px #ffd333); } }
+@keyframes gra-junction-pulse { to { opacity: .35; } }
 @keyframes gra-toll-arrive { from { opacity: 0; filter: blur(9px); } to { opacity: 1; filter: none; } }
 @keyframes gra-toll-clear {
   from { opacity: 1; filter: none; }

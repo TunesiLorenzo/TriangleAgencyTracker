@@ -31,6 +31,11 @@ const state = {
 
 const jitter = { x: 0, y: 0, r: 0, tx: 0, ty: 0, tr: 0, nextRetarget: 0, burstUntil: 0, glitching: false };
 
+// The shake and the CRT band move the whole page, so each of their frames has the screen
+// put together again. 30 a second looks the same as 60 for a drift of a pixel or two and
+// costs the graphics card half as much.
+const FRAME_MS = 1000 / 30;
+
 const rand = () => Math.random() * 2 - 1;
 const easeFactor = (dt, tau) => 1 - Math.exp(-dt / Math.max(0.001, tau));
 
@@ -135,6 +140,10 @@ function updateCrt(dt, level) {
 }
 
 function frame(now) {
+  if (state.lastTime && now - state.lastTime < FRAME_MS - 4) {
+    requestAnimationFrame(frame);
+    return;
+  }
   // Clamp dt so returning to a background tab doesn't jump everything.
   const dt = Math.min(0.1, Math.max(0, (now - (state.lastTime || now)) / 1000));
   state.lastTime = now;
