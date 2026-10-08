@@ -51,7 +51,9 @@ function applyLevelStyles(level) {
   const { scanline, overlay, vignette } = state.els;
   const a = tuning.atmosphere;
 
-  const root = document.documentElement.style;
+  const documentRoot = document.documentElement;
+  documentRoot.classList.toggle('chaos-atmosphere', level >= 0.002);
+  const root = documentRoot.style;
   root.setProperty('--chaos-level', level.toFixed(3));
   root.setProperty('--panel-blur', `${(level * a.panelBlur).toFixed(2)}px`);
 
@@ -143,12 +145,29 @@ function frame(now) {
   updateJitter(now, dt, state.level);
   updateCrt(dt, state.level);
 
+  // At zero Chaos there is nothing changing. Let the browser and GPU sleep until
+  // a counter, risk, setting or mute state wakes this loop again.
+  const active = Math.abs(goal - state.level) >= 0.001 || state.level >= 0.002 || glitchActive();
+  state.els.wrapper?.classList.toggle('atmosphere-motion', active && motionAllowed());
+  if (active && !document.hidden) {
+    requestAnimationFrame(frame);
+  } else {
+    state.running = false;
+    state.lastTime = 0;
+  }
+}
+
+function ensureFrame() {
+  if (state.running || document.hidden) return;
+  state.running = true;
+  state.lastTime = 0;
   requestAnimationFrame(frame);
 }
 
 function updateTarget() {
   const maxChaos = Math.max(1, Number(tuning.atmosphere.maxChaos) || 16);
   state.target = Math.min(1, Math.max(0, state.chaos / maxChaos));
+  ensureFrame();
 }
 
 /** Bind the effect targets and start the single animation loop. */
@@ -169,15 +188,21 @@ export function initEffects({ wrapper, scanline, overlay, vignette, title }) {
   });
 
   // Mission Risk comes from the dashboard.
-  document.addEventListener('risk-changed', event => { state.risk = event.detail.level; });
+  document.addEventListener('risk-changed', event => {
+    state.risk = event.detail.level;
+    ensureFrame();
+  });
 
   // Re-apply level styles when the reduced-motion preference flips.
-  reducedMotion?.addEventListener?.('change', () => { state.appliedLevel = -1; });
+  reducedMotion?.addEventListener?.('change', () => {
+    state.appliedLevel = -1;
+    ensureFrame();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) ensureFrame();
+  });
 
-  if (!state.running) {
-    state.running = true;
-    requestAnimationFrame(frame);
-  }
+  ensureFrame();
 }
 
 // Two colour-shifted copies of the title, shown only while it tears.
@@ -212,6 +237,7 @@ export function setChaosEffectsMuted(muted, source = 'gra') {
   else mutedBy.delete(source);
   state.muted = mutedBy.size > 0;
   document.documentElement.classList.toggle('chaos-effects-muted', state.muted);
+  ensureFrame();
 }
 
 /** Set the chaos value; the rendered intensity eases toward it. */

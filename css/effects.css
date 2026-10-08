@@ -602,7 +602,7 @@
 
 /* Panels blur whatever is behind them in proportion to chaos, so tinted cards
    stay readable over a busy background. */
-.char, .world, .graph-box, #taskPanel {
+html.chaos-atmosphere :is(.char, .world, .graph-box, #taskPanel) {
   backdrop-filter: blur(var(--panel-blur, 0px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 0px));
 }

@@ -123,7 +123,7 @@ function showAutomaticFileOn(handle) {
 }
 
 function showServerSaveOn() {
-  setAutomaticFileStatus('Desktop Save: On', 'Automatically saving the team on the tracker computer. Click to disconnect.');
+  setAutomaticFileStatus('Tracker Save: On', 'Automatically saving the team in the tracker data folder. Click to disconnect.');
 }
 
 function loadServerSaveState() {
@@ -169,7 +169,7 @@ async function putServerSave({ overwrite = false } = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (response.status === 409 || data.conflict) {
-    const error = new Error(data.message || 'The desktop copy changed');
+    const error = new Error(data.message || 'The tracker copy changed');
     error.name = 'SaveConflictError';
     error.version = data.version ?? null;
     throw error;
@@ -182,7 +182,7 @@ async function putServerSave({ overwrite = false } = {}) {
   serverSaveReady = true;
   storeServerSaveState();
   showServerSaveOn();
-  if (!fileSaveAnnounced) toast('Auto-saving on the tracker computer');
+  if (!fileSaveAnnounced) toast('Auto-saving in the tracker data folder');
   fileSaveAnnounced = true;
   return true;
 }
@@ -197,13 +197,13 @@ async function writeSettingsToServer() {
     storeServerSaveState();
     fileSaveAnnounced = false;
     if (error.name === 'SaveConflictError') {
-      setAutomaticFileStatus('Resolve Desktop Save', 'The desktop copy changed elsewhere. Click to choose which copy to keep.');
-      toast('The desktop save changed in another viewer. Nothing was overwritten; click Resolve Desktop Save.', { kind: 'warn', duration: 12000 });
+      setAutomaticFileStatus('Resolve Tracker Save', 'The tracker copy changed elsewhere. Click to choose which copy to keep.');
+      toast('The tracker save changed in another viewer. Nothing was overwritten; click Resolve Tracker Save.', { kind: 'warn', duration: 12000 });
     } else {
-      setAutomaticFileStatus('Reconnect Desktop Save', 'The tracker computer could not be reached. Click to retry.');
-      toast('The desktop save is temporarily offline. Changes are safe in this browser and will wait for reconnect.', { kind: 'warn', duration: 10000 });
+      setAutomaticFileStatus('Reconnect Tracker Save', 'The tracker computer could not be reached. Click to retry.');
+      toast('The tracker save is temporarily offline. Changes are safe in this browser and will wait for reconnect.', { kind: 'warn', duration: 10000 });
     }
-    console.error('Failed to save the team on the tracker computer', error);
+    console.error('Failed to save the team in the tracker data folder', error);
     return false;
   }
 }
@@ -496,7 +496,7 @@ async function initServerSave() {
   automaticSaveBackend = 'server';
   serverSaveState = loadServerSaveState();
   if (!serverSaveState.linked) {
-    setAutomaticFileStatus('Connect Desktop Save', 'Keep an automatic team save on the tracker computer.');
+    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in the tracker data folder.');
     return false;
   }
 
@@ -505,7 +505,7 @@ async function initServerSave() {
     if (serverSaveState.dirty) {
       if (remote.version !== serverSaveState.version) {
         serverSaveReady = false;
-        setAutomaticFileStatus('Resolve Desktop Save', 'Both this browser and the desktop copy changed. Click to choose which one to keep.');
+        setAutomaticFileStatus('Resolve Tracker Save', 'Both this browser and the tracker copy changed. Click to choose which one to keep.');
         return false;
       }
       serverSaveReady = true;
@@ -524,15 +524,15 @@ async function initServerSave() {
     return true;
   } catch (error) {
     serverSaveReady = false;
-    setAutomaticFileStatus('Reconnect Desktop Save', 'Could not reach the team save on the tracker computer. Click to retry.');
-    console.error('Failed to restore the desktop team save', error);
+    setAutomaticFileStatus('Reconnect Tracker Save', 'Could not reach the team save in the tracker data folder. Click to retry.');
+    console.error('Failed to restore the tracker team save', error);
     return false;
   }
 }
 
 /**
  * Restore the automatic team save. With the tracker server running there is one save for every
- * browser, the copy on the tracker computer, also for a browser on that computer itself. A file
+ * browser, the copy in the tracker data folder, also for a browser on that computer itself. A file
  * picked in the browser is for a tracker served without it, and for a browser that linked one
  * before: that link is kept until it is unlinked.
  */
@@ -550,7 +550,7 @@ export async function initAutomaticFileSave(button, { serverAvailable = false } 
   try {
     automaticFileHandle = await readStoredFileHandle();
     if (!automaticFileHandle) {
-      // A browser already saving on the tracker computer stays with it while the server is away,
+      // A browser already saving in the tracker data folder stays with it while the server is away,
       // so what changes here in the meantime is still sent there, not to some other file.
       if (trackerServer || loadServerSaveState().linked) return initServerSave();
       setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
@@ -577,15 +577,15 @@ function askServerSaveChoice(remote) {
   return new Promise(resolve => {
     const body = document.createElement('p');
     body.className = 'modal-message';
-    body.textContent = `The tracker computer already holds ${describeSettings(remote.team)}. Load that copy, or explicitly replace it with the team currently in this browser.`;
+    body.textContent = `The tracker data folder already holds ${describeSettings(remote.team)}. Load that copy, or explicitly replace it with the team currently in this browser.`;
     let choice = null;
     openModal({
-      title: 'Desktop save conflict',
+      title: 'Tracker save conflict',
       content: body,
       closeLabel: 'Cancel',
       actions: [
-        { label: 'Replace Desktop Copy', onClick: () => { choice = 'browser'; } },
-        { label: 'Load Desktop Copy', variant: 'primary', onClick: () => { choice = 'desktop'; } }
+        { label: 'Replace Tracker Copy', onClick: () => { choice = 'browser'; } },
+        { label: 'Load Tracker Copy', variant: 'primary', onClick: () => { choice = 'desktop'; } }
       ],
       onClose: () => resolve(choice)
     });
@@ -644,9 +644,9 @@ async function connectServerSave() {
     return putServerSave();
   } catch (error) {
     serverSaveReady = false;
-    setAutomaticFileStatus('Reconnect Desktop Save', 'Could not reach the tracker computer. Click to retry.');
-    toast('Could not connect the desktop team save. Your browser-local data is unchanged.', { kind: 'error', duration: 7000 });
-    console.error('Failed to connect the desktop team save', error);
+    setAutomaticFileStatus('Reconnect Tracker Save', 'Could not reach the tracker server. Click to retry.');
+    toast('Could not connect the tracker team save. Your browser-local data is unchanged.', { kind: 'error', duration: 7000 });
+    console.error('Failed to connect the tracker team save', error);
     return false;
   }
 }
@@ -659,8 +659,8 @@ async function unlinkAutomaticSaveFile() {
     serverSyncedTeam = null;
     fileSaveAnnounced = false;
     storeServerSaveState();
-    setAutomaticFileStatus('Connect Desktop Save', 'Keep an automatic team save on the tracker computer.');
-    toast('Disconnected the desktop save. The desktop copy and this browser copy were both kept.', { duration: 6000 });
+    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in the tracker data folder.');
+    toast('Disconnected the tracker save. The tracker copy and this browser copy were both kept.', { duration: 6000 });
     return false;
   }
 
@@ -672,9 +672,9 @@ async function unlinkAutomaticSaveFile() {
   automaticFileReady = false;
   fileSaveAnnounced = false;
   if (trackerServer) {
-    // With the file gone, the shared save on the tracker computer is the one on offer.
+    // With the file gone, the shared save in the tracker data folder is the one on offer.
     automaticSaveBackend = 'server';
-    setAutomaticFileStatus('Connect Desktop Save', 'Keep an automatic team save on the tracker computer.');
+    setAutomaticFileStatus('Connect Tracker Save', 'Keep an automatic team save in the tracker data folder.');
   } else {
     setAutomaticFileStatus('Connect Save File', 'Choose a JSON file to keep updated automatically.');
   }
@@ -690,7 +690,7 @@ async function unlinkAutomaticSaveFile() {
     action: {
       label: 'Undo',
       onClick: () => {
-        // another file, or the desktop save, was connected in the meantime
+        // another file, or the tracker save, was connected in the meantime
         if (automaticFileHandle || serverSaveState.linked) return;
         automaticSaveBackend = 'native';
         automaticFileHandle = handle;

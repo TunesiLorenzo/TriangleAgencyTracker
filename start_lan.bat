@@ -4,7 +4,8 @@ setlocal EnableExtensions
 rem Triangle Agency LAN launcher
 rem
 rem Usage:
-rem   start_lan.bat all      Start LightRPG and Triangle on this computer.
+rem   start_lan.bat laptop  Start everything on this computer.
+rem   start_lan.bat all      Alias for laptop mode.
 rem   start_lan.bat room     Start LightRPG here and open the tracker PC's page.
 rem   start_lan.bat tracker  Start Triangle here and use LightRPG on ROOM_HOST.
 rem   start_lan.bat help     Show this help without starting anything.
@@ -15,6 +16,9 @@ rem is renamed, for example:
 rem   set ROOM_HOST=New-Room-Laptop
 rem   set TRACKER_HOST=New-Tracker-PC
 rem   start_lan.bat tracker
+rem
+rem Optional second argument: folder for tracker_config.json and team_save.json.
+rem Example: start_lan.bat laptop "G:\My Drive\Triangle Agency"
 
 if not defined ROOM_HOST set "ROOM_HOST=Laptop-Lorenzo"
 if not defined TRACKER_HOST set "TRACKER_HOST=DESKTOP-LORENZO"
@@ -23,6 +27,7 @@ if not defined PYTHON_EXE set "PYTHON_EXE=python"
 set "TRACKER_DIR=%~dp0"
 set "LIGHTRPG_DIR=%~dp0..\LightRPG"
 set "MODE=%~1"
+if not "%~2"=="" set "TRACKER_DATA_DIR=%~f2"
 
 if not defined MODE (
     if /I "%COMPUTERNAME%"=="%ROOM_HOST%" (
@@ -36,6 +41,7 @@ if /I "%MODE%"=="help" goto :help
 if /I "%MODE%"=="--help" goto :help
 if /I "%MODE%"=="/?" goto :help
 if /I "%MODE%"=="all" goto :all
+if /I "%MODE%"=="laptop" goto :all
 if /I "%MODE%"=="room" goto :room
 if /I "%MODE%"=="tracker" goto :tracker
 
@@ -44,16 +50,19 @@ echo.
 goto :help_error
 
 :all
-echo Triangle Agency LAN launcher - ALL mode
+echo Triangle Agency LAN launcher - LAPTOP / ALL mode
 echo   This computer: %COMPUTERNAME%
 echo   Room hostname: %ROOM_HOST%
-echo   Starting both servers locally; no LAN IP address is hardcoded.
+echo   Starting all services locally; no LAN IP address is required.
+if defined TRACKER_DATA_DIR echo   Data folder: %TRACKER_DATA_DIR%
 echo.
 
 call :require_python
 if errorlevel 1 goto :failed
 call :start_local_lights
 if errorlevel 1 goto :failed
+call :start_local_voicemeeter
+if errorlevel 1 echo WARNING: The local VoiceMeeter bridge could not be started.
 
 rem Wait for LightRPG before Triangle starts. This also stops Triangle's own
 rem optional auto-start feature from racing a second LightRPG process.
@@ -79,6 +88,7 @@ echo.
 echo LAN viewer:  http://%COMPUTERNAME%:5002/
 echo LAN settings: http://%COMPUTERNAME%:5002/settings
 echo LAN lights:   http://%COMPUTERNAME%:5000/
+echo Local audio:  http://127.0.0.1:5003/api/status
 goto :done
 
 :room
@@ -95,6 +105,8 @@ call :require_python
 if errorlevel 1 goto :failed
 call :start_local_lights
 if errorlevel 1 goto :failed
+call :start_local_voicemeeter
+if errorlevel 1 echo WARNING: The local VoiceMeeter bridge could not be started.
 call :wait_for_lights
 if errorlevel 1 (
     echo WARNING: LightRPG did not answer within 30 seconds.
@@ -115,6 +127,7 @@ echo Triangle Agency LAN launcher - TRACKER mode
 echo   Tracker computer: %COMPUTERNAME%
 echo   LightRPG computer: %ROOM_HOST%
 echo   LightRPG address:  http://%ROOM_HOST%:5000
+if defined TRACKER_DATA_DIR echo   Data folder:       %TRACKER_DATA_DIR%
 echo.
 
 call :require_python
@@ -137,6 +150,35 @@ echo.
 echo Other LAN devices can use http://%COMPUTERNAME%:5002/
 echo The tracker browser is left closed on this server PC; use the room laptop as the viewer.
 goto :done
+
+:start_local_voicemeeter
+call :is_voicemeeter_bridge_running
+if not errorlevel 1 (
+    echo VoiceMeeter bridge is already running locally on port 5003.
+    exit /b 0
+)
+call :is_local_port_open 5003
+if not errorlevel 1 (
+    echo ERROR: Port 5003 is occupied by something other than the VoiceMeeter bridge.
+    exit /b 1
+)
+if not exist "%TRACKER_DIR%voicemeeter_bridge.py" (
+    echo ERROR: The VoiceMeeter bridge was not found in:
+    echo        %TRACKER_DIR%
+    exit /b 1
+)
+echo Starting the local VoiceMeeter bridge...
+start "VoiceMeeter bridge" /D "%TRACKER_DIR%" "%PYTHON_EXE%" -u voicemeeter_bridge.py --allow-origin "http://%TRACKER_HOST%:5002" --allow-origin "http://%COMPUTERNAME%:5002" --allow-origin "http://localhost:5002"
+if errorlevel 1 (
+    echo ERROR: Windows could not start the VoiceMeeter bridge.
+    exit /b 1
+)
+call :wait_for_voicemeeter_bridge
+if errorlevel 1 (
+    echo ERROR: The VoiceMeeter bridge did not answer within 10 seconds.
+    exit /b 1
+)
+exit /b 0
 
 :start_local_lights
 call :is_lights_running
@@ -174,7 +216,7 @@ if not errorlevel 1 (
     echo Triangle Agency Tracker is already running locally on port 5002.
     exit /b 0
 )
-echo Restarting Triangle Agency Tracker because it is using the wrong LightRPG address...
+echo Restarting Triangle Agency Tracker because its service or data-folder settings changed...
 powershell.exe -NoProfile -Command "try { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:5002/api/shutdown' -TimeoutSec 3 ^| Out-Null } catch {}; for ($i = 0; $i -lt 20; $i++) { try { Invoke-RestMethod -Uri 'http://127.0.0.1:5002/api/config' -TimeoutSec 1 ^| Out-Null } catch { exit 0 }; Start-Sleep -Milliseconds 500 }; exit 1" >nul 2>&1
 if errorlevel 1 (
     echo ERROR: The old tracker server did not stop. Close its window and run this launcher again.
@@ -223,6 +265,10 @@ if not errorlevel 1 exit /b 0
 echo ERROR: Triangle Agency Tracker dependencies could not be installed.
 exit /b 1
 
+:is_voicemeeter_bridge_running
+powershell.exe -NoProfile -Command "try { $reply = Invoke-RestMethod -Uri 'http://127.0.0.1:5003/api/status' -TimeoutSec 2; if ($reply.service -eq $true) { exit 0 } } catch {}; exit 1" >nul 2>&1
+exit /b %errorlevel%
+
 :is_lights_running
 powershell.exe -NoProfile -Command "try { $reply = Invoke-RestMethod -Uri 'http://127.0.0.1:5000/api/status' -TimeoutSec 2; if ($reply.ok -eq $true) { exit 0 } } catch {}; exit 1" >nul 2>&1
 exit /b %errorlevel%
@@ -232,7 +278,7 @@ powershell.exe -NoProfile -Command "try { $reply = Invoke-RestMethod -Uri 'http:
 exit /b %errorlevel%
 
 :is_tracker_target
-powershell.exe -NoProfile -Command "try { $reply = Invoke-RestMethod -Uri 'http://127.0.0.1:5002/api/lights/status' -TimeoutSec 4; if ($reply.url -eq '%LIGHTRPG_URL%') { exit 0 } } catch {}; exit 1" >nul 2>&1
+powershell.exe -NoProfile -Command "try { $lights = Invoke-RestMethod -Uri 'http://127.0.0.1:5002/api/lights/status' -TimeoutSec 4; $config = Invoke-RestMethod -Uri 'http://127.0.0.1:5002/api/config' -TimeoutSec 4; $expected = if ([string]::IsNullOrWhiteSpace($env:TRACKER_DATA_DIR)) { $env:TRACKER_DIR } else { $env:TRACKER_DATA_DIR }; $expected = [IO.Path]::GetFullPath($expected).TrimEnd('\'); if (($lights.url -eq $env:LIGHTRPG_URL) -and ($config.dataDir.TrimEnd('\') -eq $expected)) { exit 0 } } catch {}; exit 1" >nul 2>&1
 exit /b %errorlevel%
 
 :is_remote_lights_running
@@ -246,6 +292,14 @@ exit /b %errorlevel%
 :is_local_port_open
 powershell.exe -NoProfile -Command "$client = New-Object System.Net.Sockets.TcpClient; try { $connected = $client.ConnectAsync('127.0.0.1', %~1).Wait(750); if ($connected -and $client.Connected) { exit 0 } } catch {} finally { $client.Dispose() }; exit 1" >nul 2>&1
 exit /b %errorlevel%
+
+:wait_for_voicemeeter_bridge
+for /L %%G in (1,1,10) do (
+    call :is_voicemeeter_bridge_running
+    if not errorlevel 1 exit /b 0
+    timeout /t 1 /nobreak >nul 2>&1
+)
+exit /b 1
 
 :wait_for_lights
 for /L %%G in (1,1,30) do (
@@ -266,10 +320,11 @@ exit /b 1
 :help
 echo Triangle Agency LAN launcher
 echo.
-echo Usage: %~nx0 [all^|room^|tracker^|help]
+echo Usage: %~nx0 [laptop^|all^|room^|tracker^|help] [data-folder]
 echo.
-echo   all      Start LightRPG and Triangle locally, then open both pages.
-echo   room     Start LightRPG locally and open Triangle on TRACKER_HOST.
+echo   laptop  Start everything locally. Optional data-folder holds settings and team save.
+echo   all      Alias for laptop mode.
+echo   room     Start LightRPG and the VoiceMeeter bridge; open the remote tracker.
 echo   tracker  Start Triangle locally, using LightRPG on ROOM_HOST.
 echo.
 echo Defaults:
@@ -278,6 +333,7 @@ echo   TRACKER_HOST=%TRACKER_HOST%
 echo   No mode = room on ROOM_HOST; tracker on every other computer.
 echo.
 echo Hostnames are resolved by Windows, so DHCP address changes need no edits.
+echo Example: %~nx0 laptop "G:\My Drive\Triangle Agency"
 exit /b 0
 
 :help_error

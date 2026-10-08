@@ -27,7 +27,8 @@ function removeReducedMotionRules(container) {
 
 /** Remove CSS reduced-motion overrides before the login or dashboard begins animating. */
 export function initMotionPreference() {
-  if (!motionAllowed()) return;
-  document.documentElement.dataset.motion = 'full';
+  const allowed = motionAllowed();
+  document.documentElement.dataset.motion = allowed ? 'full' : 'reduced';
+  if (!allowed) return;
   [...document.styleSheets].forEach(removeReducedMotionRules);
 }

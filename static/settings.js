@@ -16,6 +16,7 @@ import { sendLightCue } from '/js/lights.js';
 import { playSlot, resolveSlot } from '/js/soundEffects.js';
 import { SYNTHS } from '/js/synth.js';
 import { COMPETENCY_INFO } from '/js/competencies.js';
+import { setVoiceMeeterLevel } from '/js/voicemeeter.js';
 
 const TAB_KEY = 'ta-settings-tab';
 const BUTTON_GROUP_KEY = 'ta-settings-button-group';
@@ -104,13 +105,10 @@ const EFFECT_GROUPS = [
     ]
   },
   {
-    key: 'voicemeeter', title: 'VoiceMeeter music level', eyebrow: 'TEST',
-    hint: 'Fades one strip of VoiceMeeter on another computer, to try out turning the music down from the tracker. The tracker server sends the command over the network (VBAN text), so VoiceMeeter needs VBAN switched on with an incoming text stream of this name. Nothing answers back: "Sent" means the command left the server, not that VoiceMeeter took it.',
+    key: 'voicemeeter', title: 'VoiceMeeter music level', eyebrow: 'LOCAL TEST',
+    hint: 'Fades one strip through the VoiceMeeter bridge running on this laptop. start_lan.bat starts the bridge in room and all modes. The command goes from this browser straight to 127.0.0.1, without crossing the LAN or visiting the desktop server.',
     fields: [
-      { key: 'host', label: 'Computer running VoiceMeeter', type: 'text' },
-      { key: 'port', label: 'VBAN port', type: 'text' },
-      { key: 'stream', label: 'Incoming stream name', type: 'text' },
-      { key: 'strip', label: 'Strip (first is 0)', min: 0, max: 7, step: 1 },
+      { key: 'strip', label: 'Strip (first is 0)', min: 0, max: 15, step: 1 },
       { key: 'drop', label: 'Dropped level', min: -60, max: 0, step: 1, unit: 'dB' },
       { key: 'normal', label: 'Normal level', min: -60, max: 12, step: 1, unit: 'dB' },
       { key: 'fadeSeconds', label: 'Fade', min: 0, max: 10, step: 0.5, unit: 's', zeroLabel: 'at once' },
@@ -899,16 +897,25 @@ async function init() {
 
     const action = event.target.closest('[data-server-action]');
     if (action) {
-      // The values on screen go along, so a setting changed a moment ago is the one tried.
       const [group, key] = action.dataset.serverAction.split('.');
-      fetch(`/api/${group}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...draft.effects[group], action: key })
-      })
-        .then(response => response.json())
-        .then(data => setStatus(data.message, data.ok ? 'saved' : 'error'))
-        .catch(() => setStatus('Could not reach the tracker server', 'error'));
+      if (group === 'voicemeeter') {
+        setVoiceMeeterLevel(key, draft.effects.voicemeeter)
+          .then(data => setStatus(data.message, 'saved'))
+          .catch(error => setStatus(error.message || 'VoiceMeeter bridge is not running on this laptop', 'error'));
+      } else {
+        // Other one-shot actions belong to the tracker server.
+        fetch('/api/' + group, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...draft.effects[group], action: key })
+        })
+          .then(async response => {
+            const data = await response.json();
+            if (!response.ok || !data.ok) throw new Error(data.message || 'Command failed');
+            setStatus(data.message, 'saved');
+          })
+          .catch(() => setStatus('Could not reach the tracker server', 'error'));
+      }
     }
 
     const trigger = event.target.closest('[data-trigger]');

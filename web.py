@@ -4,12 +4,13 @@ Two front-ends share one local Flask server (same layout as MTG_Table):
   /          the tracker viewer shown on the table screen (static index.html)
   /settings  the setup page: sound assignments and effect tuning
 
-Settings live in tracker_config.json next to this file. The viewer polls
-/api/config and applies changes live, so tuning on /settings (from this PC or a
-phone on the same network) shows up on the display without a reload.
+Settings live in tracker_config.json in the configured data folder. The viewer
+polls /api/config and applies changes live, so tuning on /settings shows up on
+the display without a reload. TRACKER_DATA_DIR can place both tracker_config.json
+and team_save.json on a synced, mapped or removable drive.
 Tracker data (agents, tasks, counters) stays in the viewer's browser storage and can
-also be mirrored atomically to team_save.json by viewers that connect Desktop Save: one
-shared copy for every browser, on this PC or on the LAN.
+also be mirrored atomically to team_save.json by viewers that connect Tracker Save:
+one shared copy for every browser, on this computer or on the LAN.
 Previous cases (HD scans of each mission's Rapporto) are too big for that, so they
 live in cases/ next to this file, indexed by cases/cases.json. A team file carries the
 case index only; /api/cases/archive exports and restores the whole archive, scans
@@ -27,8 +28,6 @@ import os
 import re
 import secrets
 import shutil
-import socket
-import struct
 import threading
 import zipfile
 from pathlib import Path
@@ -39,10 +38,17 @@ from werkzeug.exceptions import HTTPException
 import lights
 
 BASE_DIR = Path(__file__).resolve().parent
+_data_dir_setting = os.environ.get("TRACKER_DATA_DIR", "").strip()
+DATA_DIR = Path(_data_dir_setting).expanduser().resolve() if _data_dir_setting else BASE_DIR
+try:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+except OSError as error:
+    raise RuntimeError(f"Tracker data folder is unavailable: {DATA_DIR}") from error
+
 AUDIO_DIR = BASE_DIR / "audio"
 UPLOAD_FOLDERS = {"uploads": AUDIO_DIR / "uploads", "Competencies": AUDIO_DIR / "Competencies"}
-CONFIG_FILE = BASE_DIR / "tracker_config.json"
-TEAM_SAVE_FILE = BASE_DIR / "team_save.json"
+CONFIG_FILE = DATA_DIR / "tracker_config.json"
+TEAM_SAVE_FILE = DATA_DIR / "team_save.json"
 CASES_DIR = BASE_DIR / "cases"
 CASES_FILE = CASES_DIR / "cases.json"
 BADGE_DIR = BASE_DIR / "images" / "badge"   # the Manager's photo on the login screen badge
@@ -108,7 +114,7 @@ def load_team_save():
     except FileNotFoundError:
         return None
     if not isinstance(team, dict):
-        raise ValueError("The desktop team save is not a settings object")
+        raise ValueError("The team save is not a settings object")
     return team
 
 
@@ -376,10 +382,19 @@ for folder in ("css", "js", "audio", "images", "various", "cases", "Materiale", 
 # -----------------------------
 @app.get("/api/config")
 def get_config():
-    # The sound list rides along so viewers can match audio/Competencies/<Name>_Bad|_Good files.
+    # Polling viewers send their known revision. Avoid walking audio/ and sending the
+    # full settings object every two seconds when nothing has changed.
+    known_revision = request.args.get("revision", type=int)
     with config_lock:
-        return jsonify({"ok": True, **config_state, "sounds": list_sounds()})
-
+        if known_revision == config_state["revision"]:
+            return jsonify({
+                "ok": True,
+                "unchanged": True,
+                "revision": config_state["revision"],
+                "dataDir": str(DATA_DIR),
+            })
+        # A fresh or changed config includes sounds so competency and GRA discovery update together.
+        return jsonify({"ok": True, **config_state, "sounds": list_sounds(), "dataDir": str(DATA_DIR)})
 
 @app.post("/api/config")
 def set_config():
@@ -432,7 +447,7 @@ def put_team_save():
                 "conflict": True,
                 "exists": current is not None,
                 "version": current_version,
-                "message": "The desktop team save changed in another viewer",
+                "message": "The tracker team save changed in another viewer",
             }), 409
         write_json_file(TEAM_SAVE_FILE, team)
         return jsonify({"ok": True, "version": team_save_version(team)})
@@ -818,48 +833,6 @@ def lights_cue():
         raise ValueError("Unknown light target")
     light_bridge.submit(cue, ambient, target)
     return jsonify({"ok": True})
-
-
-# -----------------------------
-# VOICEMEETER (music level on the room computer)
-# -----------------------------
-# VoiceMeeter takes plain-text commands over its VBAN network protocol: one UDP packet with
-# a 28-byte header and the command behind it. UDP sends no answer, so a packet that went out
-# says nothing about whether VoiceMeeter was listening.
-vban_frame = 0
-vban_lock = threading.Lock()
-
-
-def send_vban_text(host, port, stream, command):
-    global vban_frame
-    with vban_lock:
-        vban_frame += 1
-        frame = vban_frame
-    # "VBAN", text sub-protocol (0x40) at its usual rate index, UTF-8, stream name, frame counter
-    header = b"VBAN" + bytes([0x52, 0, 0, 0x10]) + stream.encode("utf-8")[:16].ljust(16, b"\0") + struct.pack("<L", frame)
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as link:
-        link.sendto(header + command.encode("utf-8"), (host, port))
-
-
-@app.post("/api/voicemeeter")
-def voicemeeter_command():
-    """Fade one VoiceMeeter strip to its dropped or its normal level (the tester on /settings)."""
-    payload = request.get_json(silent=True) or {}
-    host = str(payload.get("host") or "").strip()
-    if not host:
-        raise ValueError("Set the name of the computer running VoiceMeeter first")
-    port = int(payload.get("port") or 6980)
-    stream = str(payload.get("stream") or "Command1").strip()
-    strip = int(payload.get("strip") or 0)
-    level = float(payload.get("drop" if payload.get("action") == "drop" else "normal") or 0)
-    milliseconds = int(float(payload.get("fadeSeconds") or 0) * 1000)
-    target = f"Strip[{strip}]"
-    command = f"{target}.FadeTo=({level:.1f}, {milliseconds});" if milliseconds > 0 else f"{target}.Gain={level:.1f};"
-    try:
-        send_vban_text(host, port, stream, command)
-    except socket.gaierror:
-        raise ValueError(f'No computer called "{host}" was found on the network') from None
-    return jsonify({"ok": True, "message": f"Sent to {host}:{port} ({stream}): {command}"})
 
 
 # -----------------------------

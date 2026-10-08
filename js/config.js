@@ -319,14 +319,12 @@ export const DEFAULT_CONFIG = {
       flatlineSeconds: 6,  // ...then it is stopped for this long, and the display with it
       flatlineVolume: 0.5  // the heart monitor's long tone meanwhile; 0 = a silent flatline
     },
-    voicemeeter: {         // the music's strip in VoiceMeeter on the room computer (web.py sends the commands)
-      host: 'Laptop-Lorenzo', // that computer's name or address
-      port: '6980',        // VoiceMeeter's VBAN port...
-      stream: 'Command1',  // ...and the name of its incoming text stream
-      strip: 4,            // counted from 0, left to right
-      drop: -20,           // dB the strip goes to when dropped...
-      normal: 0,           // ...and when restored
-      fadeSeconds: 2       // 0 = at once
+    voicemeeter: {         // local bridge on the room laptop controls its VoiceMeeter engine
+      bridgePort: 5003,     // loopback-only HTTP service started by start_lan.bat
+      strip: 4,             // counted from 0, left to right
+      drop: -20,            // dB the strip goes to when dropped...
+      normal: 0,            // ...and when restored
+      fadeSeconds: 2        // 0 = at once
     },
     meritLock: {
       enabled: false,      // agent cards show a padlock instead of this mission's merit and demerit counts
@@ -485,8 +483,9 @@ export function onConfigChange(listener) {
   return () => listeners.delete(listener);
 }
 
-async function fetchConfig() {
-  const response = await fetch('/api/config', { cache: 'no-store' });
+async function fetchConfig(knownRevision = null) {
+  const query = Number.isInteger(knownRevision) ? `?revision=${knownRevision}` : '';
+  const response = await fetch(`/api/config${query}`, { cache: 'no-store' });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
@@ -507,20 +506,43 @@ export async function startConfigSync({ pollMs = 2000 } = {}) {
   }
 
   channel?.addEventListener('message', event => {
-    if (event.data?.revision > revision) apply(event.data.config, event.data.revision);
+    if (event.data?.revision > revision) {
+      if (event.data.sounds) setSoundFiles(event.data.sounds);
+      apply(event.data.config, event.data.revision);
+    }
   });
 
-  setInterval(async () => {
+  let pollTimer = 0;
+  let pollInFlight = false;
+  const schedulePoll = delay => {
+    clearTimeout(pollTimer);
+    pollTimer = window.setTimeout(poll, delay);
+  };
+  const poll = async () => {
+    if (pollInFlight || document.hidden) {
+      schedulePoll(pollMs);
+      return;
+    }
+    pollInFlight = true;
     try {
-      const data = await fetchConfig();
-      setSoundFiles(data.sounds);
-      if (data.revision !== revision) apply(data.config, data.revision);
+      const data = await fetchConfig(revision);
+      if (!data.unchanged) {
+        setSoundFiles(data.sounds);
+        if (data.revision !== revision) apply(data.config, data.revision);
+      }
     } catch { /* server stopped; keep the last settings */ }
-  }, pollMs);
+    finally {
+      pollInFlight = false;
+      schedulePoll(pollMs);
+    }
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) schedulePoll(0);
+  });
+  schedulePoll(pollMs);
 
   return current;
 }
-
 /** Save the full settings object and notify other open pages. */
 export async function saveConfig(config) {
   const response = await fetch('/api/config', {
@@ -531,7 +553,7 @@ export async function saveConfig(config) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
   apply(config, data.revision);
-  channel?.postMessage({ config, revision: data.revision });
+  channel?.postMessage({ config, revision: data.revision, sounds: soundFiles });
   return data.revision;
 }
 

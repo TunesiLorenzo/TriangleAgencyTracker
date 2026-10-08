@@ -26,6 +26,8 @@ const SEAL_FLOOR = 0.11;   // where an empty bar rests, as a share of its track:
 const SEAL_REACH = 0.56;   // how much further along the longest bar rests, leaving room to overshoot
 const SEAL_DRIFT = 0.33;   // how far a bar wanders either way: over half the gap between empty and longest
 const SEAL_EASE_MS = 700;  // the drift fades in on lock and settles onto the real bars on reveal
+const SEAL_VISIBLE_FPS = 20; // the drift is slow; 60 full canvas redraws/s add no useful detail
+const SEAL_HIDDEN_FPS = 2;
 // A status line under the sealed bars, which never quite settles either.
 const SEAL_NOTES = ['MERIT FLUX CONTINUUM NOT CONVERGED', 'AGENT BEHAVIOR: PROBABILISTIC PROJECTION'];
 const SEAL_NOTE_SECONDS = 7;   // each note resolves out of noise, holds, then breaks up for the next
@@ -40,6 +42,7 @@ let lastChaosBucket = 0;
 let sealed = false;
 let sealAmount = 0;        // 0 = real bars, 1 = full drift
 let sealFrame = 0;
+let sealTimer = 0;
 let sealTick = 0;          // time of the previous drift frame
 const els = {};
 
@@ -57,7 +60,7 @@ function setupCanvas(canvas) {
     w: Math.max(1, Math.round(bounds.width || canvas.width)),
     h: Math.max(1, Math.round(bounds.height || canvas.height))
   };
-  const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   canvas.style.setProperty('--canvas-w', `${logical.w}px`);
   canvas.width = Math.round(logical.w * dpr);
   canvas.height = Math.round(logical.h * dpr);
@@ -203,28 +206,37 @@ function drawSealNote(ctx, w, cy, size, seconds) {
   ctx.globalAlpha = 1;
 }
 
+function scheduleSeal() {
+  const visible = !document.hidden && !!els.hist.ctx.canvas.offsetParent;
+  const fps = visible ? SEAL_VISIBLE_FPS : SEAL_HIDDEN_FPS;
+  sealTimer = window.setTimeout(() => {
+    sealTimer = 0;
+    sealFrame = requestAnimationFrame(sealStep);
+  }, 1000 / fps);
+}
+
 function sealStep(now) {
+  sealFrame = 0;
   const step = (now - sealTick) / SEAL_EASE_MS;
   sealTick = now;
   sealAmount = Math.min(1, Math.max(0, sealAmount + (sealed ? step : -step)));
   const moving = sealed || sealAmount > 0;
-  // The dashboard is not laid out on the other tabs (layout.css): only the settled chart is
-  // worth drawing there.
-  if (!moving || els.hist.ctx.canvas.offsetParent) renderAgentPerformance();
-  sealFrame = moving ? requestAnimationFrame(sealStep) : 0;
+  // The dashboard has no layout on other tabs. Keep time there at a very low
+  // cadence, then return to 20 FPS as soon as the chart is visible.
+  if (els.hist.ctx.canvas.offsetParent && !document.hidden) renderAgentPerformance();
+  if (moving) scheduleSeal();
 }
 
-/** Follow the lock: keep the bars moving while sealed, and let a reveal settle on the real ones. */
+/** Follow the lock: animate at the chart's own modest cadence, and let a reveal settle. */
 function runSeal() {
   if (!motionAllowed()) {
-    // Reduced motion: a still chart, drifted differently each time it is redrawn.
     sealAmount = sealed ? 1 : 0;
     renderAgentPerformance();
     return;
   }
-  if (sealFrame) return;
+  if (sealFrame || sealTimer) return;
   sealTick = performance.now();
-  sealFrame = requestAnimationFrame(sealStep);
+  scheduleSeal();
 }
 
 /* ---------- Agent Performance (was: histogram) ---------- */

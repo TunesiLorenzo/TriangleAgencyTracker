@@ -56,6 +56,7 @@ function setState(next) {
       clockTimer = setInterval(showTime, 1000);
     }
   }
+  document.dispatchEvent(new CustomEvent('session-changed', { detail: { state: next, open } }));
 }
 
 /** Where the background's triangle sits: the logo's centre and its frame's outer circumradius, in px. */

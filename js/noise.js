@@ -16,6 +16,7 @@ export const noise = (function() {
   document.body.appendChild(canvas);
   const ctx = canvas.getContext('2d');
 
+  let enabled = false;
   let running = false;
   let rafId = null;
   // Reused low-resolution buffer; allocating a canvas per frame churned the GC.
@@ -84,11 +85,14 @@ export const noise = (function() {
   }
 
   function loop(now = performance.now()) {
-    if (!running) return;
-    // Invisible at zero intensity: skip the full-screen redraw entirely.
-    if (state.intensity <= 0) {
+    rafId = null;
+    if (!enabled || state.intensity <= 0 || document.hidden) {
+      running = false;
       canvas.style.opacity = 0;
-    } else if (now - lastDraw >= 1000 / state.fps - 4) { // slack so 60Hz frames hit the target rate
+      return;
+    }
+    running = true;
+    if (now - lastDraw >= 1000 / state.fps - 4) {
       lastDraw = now;
       drawNoise();
     } else {
@@ -97,21 +101,48 @@ export const noise = (function() {
     rafId = requestAnimationFrame(loop);
   }
 
+  function ensureLoop() {
+    if (!enabled || running || rafId || state.intensity <= 0 || document.hidden) return;
+    running = true;
+    lastDraw = 0;
+    rafId = requestAnimationFrame(loop);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      running = false;
+    } else {
+      ensureLoop();
+    }
+  });
+
   // --- Public API ---
   return {
     start() {
-      if (running) return;
-      running = true;
-      loop();
+      enabled = true;
+      ensureLoop();
     },
     stop() {
+      enabled = false;
       running = false;
       if (rafId) cancelAnimationFrame(rafId);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       rafId = null;
       canvas.style.opacity = 0;
     },
-    setIntensity(v) { state.intensity = Math.max(0, Math.min(1, Number(v) || 0)); },
+    setIntensity(v) {
+      state.intensity = Math.max(0, Math.min(1, Number(v) || 0));
+      if (state.intensity > 0) {
+        ensureLoop();
+      } else {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = null;
+        running = false;
+        canvas.style.opacity = 0;
+      }
+    },
     setDensity(v) { state.density = Math.max(0, Math.min(1, Number(v) || 0)); },
     setFrequency(v) { state.frequency = Math.max(0.01, Math.min(0.5, Number(v) || 0.05)); },
     setColor(rgba) { state.color = rgba || null; },

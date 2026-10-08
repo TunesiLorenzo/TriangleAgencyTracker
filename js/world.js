@@ -3,6 +3,7 @@ import { initEffects, setEffectsChaos } from './effects.js';
 import { playEvent } from './soundEffects.js';
 import { saveSettings } from './storage.js';
 import { backgroundhue } from './witnesseffects.js';
+import { motionAllowed } from './motion.js';
 
 const bgController = backgroundhue(document.getElementById('backgroundHue'));
 const crtLine = document.getElementById('crtScanline');
@@ -23,6 +24,20 @@ let video = { strongAtChaos: 2, fadeSeconds: 5 };
 let currentVideo = 1;
 let currentVideoSource = './images/bck_calm.mp4';
 let pauseTimer = 0;
+let fadingVideo = null;
+
+function backgroundVideos() {
+  return [document.getElementById('bgVideo1'), document.getElementById('bgVideo2')].filter(Boolean);
+}
+
+function syncBackgroundVideoPlayback() {
+  const active = currentVideo === 1 ? document.getElementById('bgVideo1') : document.getElementById('bgVideo2');
+  const shouldPlay = motionAllowed() && document.documentElement.dataset.session === 'open' && !document.hidden;
+  backgroundVideos().forEach(videoElement => {
+    if (shouldPlay && (videoElement === active || videoElement === fadingVideo)) videoElement.play().catch(() => {});
+    else videoElement.pause();
+  });
+}
 
 function bump(element, direction) {
   element.classList.remove('bump-up', 'bump-down');
@@ -76,6 +91,9 @@ export function initWorld() {
     bgController.configure(config.effects.witnessHue);
     updateBackgroundVideo();
   });
+  document.addEventListener('session-changed', syncBackgroundVideoPlayback);
+  document.addEventListener('visibilitychange', syncBackgroundVideoPlayback);
+  syncBackgroundVideoPlayback();
 }
 
 export function setWorldData(data = {}) {
@@ -127,17 +145,25 @@ function updateBackgroundVideo() {
   // back-and-forth swap), so it resumes instead of reloading from the start.
   const url = new URL(newSource, location.href).href;
   if (incoming.src !== url) incoming.src = url;
-  incoming.play().catch(() => {});
+  if (motionAllowed() && document.documentElement.dataset.session === 'open' && !document.hidden) {
+    incoming.play().catch(() => {});
+  }
   const fadeMs = Math.max(0, video.fadeSeconds * 1000);
   incoming.style.transition = `opacity ${fadeMs}ms`;
   outgoing.style.transition = `opacity ${fadeMs}ms`;
   incoming.style.opacity = 1;
   outgoing.style.opacity = 0;
   currentVideo = currentVideo === 1 ? 2 : 1;
+  fadingVideo = outgoing;
+  syncBackgroundVideoPlayback();
 
   // Pause the outgoing video only once it is fully faded out (it used to freeze
   // 1s into the 5s fade). A newer swap cancels this, so a video that is fading
   // back in is never paused.
   clearTimeout(pauseTimer);
-  pauseTimer = setTimeout(() => outgoing.pause(), fadeMs + 100);
+  pauseTimer = setTimeout(() => {
+    outgoing.pause();
+    if (fadingVideo === outgoing) fadingVideo = null;
+    pauseTimer = 0;
+  }, fadeMs + 100);
 }

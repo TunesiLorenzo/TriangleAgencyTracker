@@ -7,6 +7,7 @@
 // without WebGL the stage keeps its plain CSS background.
 
 const MAX_SIDE = 1280;   // longest side of the drawing buffer in px; the canvas is scaled up to the screen
+const FRAME_MS = 1000 / 30; // fluid motion with half as many full-screen shader draws
 
 const VERTEX_SHADER = `
 attribute vec2 position;
@@ -162,6 +163,7 @@ export function createBackdrop(canvas, { focus, animate }) {
   let running = false;
   let frameId = 0;
   let last = 0;
+  let lastDraw = 0;
   let heat = 0;
   let ring = { at: -Infinity, color: RING_COLORS.red };
   const controls = {
@@ -175,6 +177,7 @@ export function createBackdrop(canvas, { focus, animate }) {
       running = true;
       if (frameId) return;
       last = performance.now();
+      lastDraw = 0;
       frameId = requestAnimationFrame(frame);
     },
     stop() {
@@ -228,7 +231,10 @@ export function createBackdrop(canvas, { focus, animate }) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     heat += (controls.heat - heat) * (1 - Math.exp(-dt * 3));
-    if (!document.hidden) draw(now);
+    if (!document.hidden && now - lastDraw >= FRAME_MS) {
+      lastDraw = now;
+      draw(now);
+    }
     // Without motion one still frame is enough; a resize draws it again.
     if (animate()) frameId = requestAnimationFrame(frame);
   }

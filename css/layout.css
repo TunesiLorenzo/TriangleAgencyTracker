@@ -42,6 +42,12 @@ body {
 
 #backgroundHue .secondary-background { opacity: 0; }
 
+/* Reduced-motion mode skips 4K video decoding and uses the existing 1080p still. */
+html[data-motion="reduced"] #backgroundHue {
+  background: #000 url('../images/bck.png') center / cover no-repeat;
+}
+html[data-motion="reduced"] #backgroundHue video { display: none; }
+
 
 /* The shake moves and tilts #pageWrapper a few px every frame. A transformed box counts
    toward the page's scrollable size, so a page that just fits the window gained and lost
@@ -52,9 +58,9 @@ body {
 /* page wrapper for jitter - keep jitter transforms isolated */
 #pageWrapper {
   min-height: 100svh;
-  will-change: transform;
   transform-origin: center center;
 }
+#pageWrapper.atmosphere-motion { will-change: transform; }
 
 
 /* The branch panel, the graphs and Next Mission belong to the Agents tab (app.js sets data-view). */
