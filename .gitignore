@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 .agents/
 tracker_config.json
+tracker_config.unreadable-*.json
 team_save.json
 *.json.tmp
 Materiale/

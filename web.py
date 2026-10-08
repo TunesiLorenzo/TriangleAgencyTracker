@@ -96,10 +96,28 @@ def load_config():
         return
     except (OSError, ValueError):
         app.logger.exception("tracker_config.json is unreadable; starting from defaults")
+        set_aside_config()
         return
     if isinstance(saved, dict) and isinstance(saved.get("config"), dict):
         config_state["config"] = saved["config"]
-        config_state["revision"] = int(saved.get("revision") or 0)
+        try:
+            config_state["revision"] = int(saved.get("revision") or 0)
+        except (TypeError, ValueError):
+            config_state["revision"] = 0
+    else:
+        app.logger.error("tracker_config.json holds no settings; starting from defaults")
+        set_aside_config()
+
+
+def set_aside_config():
+    """Move a settings file that cannot be used out of the way, so the next save does not replace it."""
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    aside = CONFIG_FILE.with_name(f"tracker_config.unreadable-{stamp}.json")
+    try:
+        os.replace(CONFIG_FILE, aside)
+        app.logger.warning("The unusable settings file was kept as %s", aside.name)
+    except OSError:
+        app.logger.exception("The unusable settings file could not be set aside")
 
 
 def team_save_version(team):
@@ -404,7 +422,18 @@ def set_config():
     config = payload.get("config")
     if not isinstance(config, dict):
         raise ValueError("Expected a settings object")
+    expected = payload.get("expectedRevision")
+    overwrite = payload.get("overwrite") is True
     with config_lock:
+        # Settings are sent whole, so a page that missed a change would undo it. Such a save is
+        # rejected unless the overwrite is explicit, as for the team save.
+        if not overwrite and expected != config_state["revision"]:
+            return jsonify({
+                "ok": False,
+                "conflict": True,
+                "revision": config_state["revision"],
+                "message": "The settings changed on another page",
+            }), 409
         config_state["config"] = config
         config_state["revision"] += 1
         write_json_file(CONFIG_FILE, config_state)

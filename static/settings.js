@@ -10,7 +10,8 @@
 import {
   BUTTON_GROUPS, COMPETENCIES, DEFAULT_CONFIG, GRA_CHAOS_EFFECTS, LIGHT_ACTIONS, LIGHT_EFFECTS, LIGHT_EVENTS,
   LIGHT_TARGETS, RISK_LEVELS, SOUND_EVENTS, competencyFile, getConfig, isCompetencyFolderFile,
-  mergeConfig, onConfigChange, saveConfig, setLocalConfig, setSoundFiles, startConfigSync
+  getConfigRevision, mergeConfig, onConfigChange, reloadConfig, saveConfig, setLocalConfig, setSoundFiles,
+  startConfigSync
 } from '/js/config.js';
 import { sendLightCue } from '/js/lights.js';
 import { playSlot, resolveSlot } from '/js/soundEffects.js';
@@ -222,6 +223,9 @@ let sounds = [];
 let saveTimer = 0;
 let saving = false;
 let savePromise = null;
+let draftRevision = -1;   // the saved revision the draft was last in step with
+// The saved settings changed under this page's edits. Nothing more is sent until one copy is chosen.
+let conflicted = false;
 let buttonGroup = BUTTON_GROUPS[0].key;   // the Buttons submenu on show
 
 const $ = selector => document.querySelector(selector);
@@ -241,12 +245,19 @@ function setStatus(text, state) {
   status.dataset.state = state;
 }
 
-function persistConfig(config) {
+function showConflict(on) {
+  conflicted = on;
+  $('#saveConflict').hidden = !on;
+  if (on) setStatus('Changed on another page — nothing was overwritten', 'error');
+}
+
+function persistConfig(config, { overwrite = false } = {}) {
   // Keep saves in order. A slider edit may schedule another save while the previous
   // request is still in flight, and a loaded file must always be written last.
   const previous = savePromise;
   const request = (previous ? previous.catch(() => {}) : Promise.resolve())
-    .then(() => saveConfig(config));
+    .then(() => saveConfig(config, { expectedRevision: draftRevision, overwrite }))
+    .then(saved => { draftRevision = saved; });
   savePromise = request;
   saving = true;
   return request.finally(() => {
@@ -259,6 +270,7 @@ function persistConfig(config) {
 
 function scheduleSave() {
   setLocalConfig(draft);
+  if (conflicted) return;   // edits stay on this page until a copy is chosen
   setStatus('Saving…', 'saving');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
@@ -268,9 +280,32 @@ function scheduleSave() {
       if (!savePromise) setStatus('Saved', 'saved');
     } catch (error) {
       console.error(error);
-      if (!savePromise) setStatus('Not saved — is the server running?', 'error');
+      if (error.name === 'SaveConflictError') showConflict(true);
+      else if (!savePromise && !conflicted) setStatus('Not saved — is the server running?', 'error');
     }
   }, 350);
+}
+
+/** Settle a conflict: take the saved settings, or replace them with the ones on this page. */
+async function resolveConflict(keepMine) {
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  if (savePromise) await savePromise.catch(() => {});
+  try {
+    if (keepMine) {
+      setStatus('Saving…', 'saving');
+      await persistConfig(structuredClone(draft), { overwrite: true });
+    } else {
+      draft = structuredClone(await reloadConfig());
+      draftRevision = getConfigRevision();
+      renderAll();
+    }
+    showConflict(false);
+    setStatus('Saved', 'saved');
+  } catch (error) {
+    console.error(error);
+    setStatus('Could not reach the tracker server — nothing was overwritten', 'error');
+  }
 }
 
 /* ---------- portable settings file ---------- */
@@ -356,8 +391,10 @@ async function loadSettingsFromFile(file) {
   saveTimer = 0;
   if (savePromise) await savePromise.catch(() => {});
   setStatus('Loading settings file…', 'saving');
-  await persistConfig(imported);
+  // Replacing the saved settings is what was just confirmed, whatever they have become.
+  await persistConfig(imported, { overwrite: true });
   draft = structuredClone(imported);
+  showConflict(false);
   renderAll();
   setStatus('Settings file loaded', 'saved');
 }
@@ -875,12 +912,18 @@ async function init() {
   renderAll();
   setStatus('Saved', 'saved');
 
-  // Adopt changes saved from another device, unless this page has edits in flight.
+  // Adopt changes saved from another device, unless this page has edits in flight. Those are
+  // then built on settings that have moved on, which their save reports as a conflict.
   onConfigChange(config => {
-    if (saveTimer || saving || JSON.stringify(config) === JSON.stringify(draft)) return;
+    if (saveTimer || saving || conflicted) return;
+    draftRevision = getConfigRevision();
+    if (JSON.stringify(config) === JSON.stringify(draft)) return;
     draft = structuredClone(config);
     renderAll();
   });
+
+  $('#loadSavedSettings').addEventListener('click', () => resolveConflict(false));
+  $('#keepMySettings').addEventListener('click', () => resolveConflict(true));
 
   document.addEventListener('input', handleEdit);
   document.addEventListener('change', handleEdit);

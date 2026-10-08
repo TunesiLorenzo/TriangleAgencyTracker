@@ -543,14 +543,34 @@ export async function startConfigSync({ pollMs = 2000 } = {}) {
 
   return current;
 }
-/** Save the full settings object and notify other open pages. */
-export async function saveConfig(config) {
+/** The revision of the saved settings last received from, or written to, the server. */
+export function getConfigRevision() { return revision; }
+
+/** Read the saved settings again now, dropping anything set with setLocalConfig. */
+export async function reloadConfig() {
+  const data = await fetchConfig();
+  setSoundFiles(data.sounds);
+  apply(data.config, data.revision);
+  return current;
+}
+
+/**
+ * Save the full settings object and notify other open pages. `expectedRevision` is the
+ * revision the object was built on: if the saved settings have moved on since, nothing is
+ * written and a SaveConflictError is thrown, unless `overwrite` asks for the replacement.
+ */
+export async function saveConfig(config, { expectedRevision = revision, overwrite = false } = {}) {
   const response = await fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ config })
+    body: JSON.stringify({ config, expectedRevision, overwrite })
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 409 || data.conflict) {
+    const error = new Error(data.message || 'The settings changed on another page');
+    error.name = 'SaveConflictError';
+    throw error;
+  }
   if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
   apply(config, data.revision);
   channel?.postMessage({ config, revision: data.revision, sounds: soundFiles });
@@ -562,8 +582,15 @@ export async function saveConfig(config) {
  * read first, so an edit made on /settings a moment ago is not sent back out of date.
  */
 export async function updateConfig(mutate) {
-  const data = await fetchConfig();
-  const config = mergeConfig(DEFAULT_CONFIG, data.config);
-  mutate(config);
-  return saveConfig(config);
+  for (let attempt = 0; ; attempt++) {
+    const data = await fetchConfig();
+    const config = mergeConfig(DEFAULT_CONFIG, data.config);
+    mutate(config);
+    try {
+      return await saveConfig(config, { expectedRevision: data.revision });
+    } catch (error) {
+      // Saved from elsewhere between the read and the write: make the change again on that copy.
+      if (error.name !== 'SaveConflictError' || attempt >= 3) throw error;
+    }
+  }
 }

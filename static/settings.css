@@ -47,7 +47,10 @@ header {
   flex-wrap: wrap;
   padding: 6px 4px;
 }
-.header-right { display: flex; align-items: center; gap: 12px; }
+.header-right { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+/* shown while the saved settings and this page's edits disagree */
+.save-conflict { display: inline-flex; gap: 6px; }
+.save-conflict[hidden] { display: none; }
 h1 { margin: 2px 0 0; font-size: 2rem; letter-spacing: -0.02em; }
 h2 { margin: 3px 0 0; font-size: 1.2rem; }
 h3 { margin: 0 0 8px; font-size: 1rem; }
