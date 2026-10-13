@@ -6,7 +6,7 @@
 
 import { confirmDialog, openModal, toast } from './ui.js';
 import { playButton, soundStartDelay } from './soundEffects.js';
-import { getConfig } from './config.js';
+import { getConfig, getSnapshot, whenConfigLoaded } from './config.js';
 import { motionAllowed } from './motion.js';
 
 const MAX_SCAN_BYTES = 100 * 1024 * 1024;   // mirrors MAX_CASE_BYTES in web.py
@@ -187,6 +187,15 @@ async function api(path, options) {
   try { data = await response.json(); } catch { /* not JSON: no tracker server here */ }
   if (!response.ok || !data?.ok) throw new Error(data?.message || `Request failed (${response.status})`);
   return data;
+}
+
+/** Every filed case, oldest first. A published copy has no server: its archive is the snapshot's. */
+async function fetchCases() {
+  // The tab remembered from the last visit is drawn before the settings have loaded.
+  await whenConfigLoaded();
+  const published = getSnapshot();
+  if (published) return structuredClone(published.cases || []);
+  return (await api('/api/cases')).cases || [];
 }
 
 // ---------- envelope ----------
@@ -384,6 +393,10 @@ function showRapporto(entry, onClose) {
   range.addEventListener('change', async () => {
     const file = currentFile();
     const brightness = Number(range.value);
+    if (getSnapshot()) {   // a published copy: for this visit only
+      file.brightness = brightness;
+      return;
+    }
     range.disabled = true;
     try {
       const saved = await api(`/api/cases/${encodeURIComponent(entry.id)}/files/${encodeURIComponent(file.id)}`, {
@@ -454,9 +467,12 @@ function showRapporto(entry, onClose) {
     className: 'case-viewer',
     closeLabel: 'Close',
     actions: [
-      { label: 'Delete case', variant: 'danger', onClick: () => { setTimeout(() => deleteCase(entry)); } },
-      { label: 'Delete page', variant: 'danger', onClick: () => { deleteCurrentPage(); return false; } },
-      { label: 'Edit / add pages', onClick: () => { setTimeout(() => openCaseEditForm(entry)); } },
+      // Filing, editing and deleting go through the tracker server: a published copy only shows.
+      ...(getSnapshot() ? [] : [
+        { label: 'Delete case', variant: 'danger', onClick: () => { setTimeout(() => deleteCase(entry)); } },
+        { label: 'Delete page', variant: 'danger', onClick: () => { deleteCurrentPage(); return false; } },
+        { label: 'Edit / add pages', onClick: () => { setTimeout(() => openCaseEditForm(entry)); } }
+      ]),
       { label: 'Open original', onClick: () => { window.open(scanUrl(currentFile()), '_blank', 'noopener'); return false; } }
     ],
     onClose
@@ -913,24 +929,26 @@ function renderArchive(cases, highlight) {
     desk.appendChild(el('p', 'cases-empty', 'No cases filed yet. After each mission, file the pages of its Rapporto di Fine Incarico here.'));
   }
 
-  const add = el('button', 'cases-add', '+ File a new case');
-  add.type = 'button';
-  add.addEventListener('click', openCaseForm);
-  desk.appendChild(add);
+  if (!getSnapshot()) {
+    const add = el('button', 'cases-add', '+ File a new case');
+    add.type = 'button';
+    add.addEventListener('click', openCaseForm);
+    desk.appendChild(add);
 
-  // Moving the whole archive between terminals: one .zip with the index and every scan.
-  const transfer = el('div', 'cases-transfer');
-  const exportButton = el('button', 'cases-transfer-button', 'Export Archive');
-  exportButton.type = 'button';
-  exportButton.title = 'Download every filed case and its scans as one .zip';
-  exportButton.disabled = !cases.length;
-  exportButton.addEventListener('click', () => downloadCaseArchive(exportButton));
-  const loadButton = el('button', 'cases-transfer-button', 'Load Archive');
-  loadButton.type = 'button';
-  loadButton.title = 'Restore cases and scans from an exported .zip';
-  loadButton.addEventListener('click', () => uploadCaseArchive(cases.length));
-  transfer.append(exportButton, loadButton);
-  desk.appendChild(transfer);
+    // Moving the whole archive between terminals: one .zip with the index and every scan.
+    const transfer = el('div', 'cases-transfer');
+    const exportButton = el('button', 'cases-transfer-button', 'Export Archive');
+    exportButton.type = 'button';
+    exportButton.title = 'Download every filed case and its scans as one .zip';
+    exportButton.disabled = !cases.length;
+    exportButton.addEventListener('click', () => downloadCaseArchive(exportButton));
+    const loadButton = el('button', 'cases-transfer-button', 'Load Archive');
+    loadButton.type = 'button';
+    loadButton.title = 'Restore cases and scans from an exported .zip';
+    loadButton.addEventListener('click', () => uploadCaseArchive(cases.length));
+    transfer.append(exportButton, loadButton);
+    desk.appendChild(transfer);
+  }
 
   const vault = el('section', 'cases-vault');
   vault.setAttribute('aria-label', 'Previous cases secure archive');
@@ -1014,8 +1032,8 @@ function renderArchive(cases, highlight) {
  * well and the pages line up again by filename.
  */
 export async function exportCaseArchive() {
-  const { cases } = await api('/api/cases');
-  return (cases || []).map(entry => ({
+  const cases = await fetchCases();
+  return cases.map(entry => ({
     id: entry.id,
     number: entry.number,
     name: entry.name,
@@ -1061,7 +1079,7 @@ export async function renderPreviousCases({ highlight } = {}) {
   if (!view) return;
   const current = ++request;
   try {
-    const { cases } = await api('/api/cases');
+    const cases = await fetchCases();
     if (current !== request) return;
     renderArchive(cases, highlight);
     // The save file tracks the archive, so a filed, edited or deleted case lands in it too.

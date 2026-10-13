@@ -2,6 +2,7 @@ import { addChar, chooseAgent, getAgentStats, getCharElements, resetChar, update
 import { initDashboard, resetDashboard } from './dashboard.js';
 import {
   connectAutomaticSaveFile,
+  holdTeam,
   initAutomaticFileSave,
   initLocalStorage,
   loadCharacterFile,
@@ -14,7 +15,7 @@ import {
   syncCaseArchive
 } from './storage.js';
 import { initTaskPanel, resetTasks } from './tasks.js';
-import { isServerAvailable, startConfigSync } from './config.js';
+import { getSnapshot, isServerAvailable, startConfigSync } from './config.js';
 import { initRelationships, renderRelationships } from './relationships.js';
 import { initAnomalies, renderAnomalies } from './anomalies.js';
 import { awardMissionDistinctions, initAgency, renderAgency, resetAgency } from './agency.js';
@@ -257,8 +258,15 @@ async function init() {
   initMeritLock();
 
   initLocalStorage();
-  // With the tracker server this may load the team save kept on its computer before anything is rendered.
-  await initAutomaticFileSave(document.getElementById('autoSaveFileButton'), { serverAvailable: isServerAvailable() });
+  const snapshot = getSnapshot();
+  if (snapshot) {
+    // A published copy: the snapshot's team, and no file to load another from or save it in.
+    holdTeam(snapshot.team);
+    ['loadTeamButton', 'autoSaveFileButton'].forEach(id => { document.getElementById(id).hidden = true; });
+  } else {
+    // With the tracker server this may load the team save kept on its computer before anything is rendered.
+    await initAutomaticFileSave(document.getElementById('autoSaveFileButton'), { serverAvailable: isServerAvailable() });
+  }
   bindControls();
   initWorld();
   // After initWorld: its title layers are copies of the title, which must not hold the trace yet.

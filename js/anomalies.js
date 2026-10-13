@@ -1,6 +1,7 @@
 import { ANOMALY_ABILITIES } from './anomalyData.js';
 import { normalizeAbilityState } from './anomalyState.js';
 import { getCharElements } from './charSystem.js';
+import { getSnapshot } from './config.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { saveSettings } from './storage.js';
 import { createUnderground } from './underground.js';
@@ -194,7 +195,7 @@ function abilityFull(card, ability, key, custom = false) {
       } } });
     }));
     body.append(controls);
-  } else {
+  } else if (!getSnapshot()) {   // the rulebook scans of Materiale/ are not part of a published copy
     const source = el('a', 'anomaly-source', 'Scheda originale');
     source.href = `./Materiale/Anomalia_lista.pdf#page=${ability.page}`;
     source.target = '_blank'; source.rel = 'noopener';

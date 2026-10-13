@@ -134,7 +134,8 @@
           <div><span class="eyebrow">BETWEEN EVENTS</span><h2>Ambient light</h2></div>
           <button type="button" class="play" data-test-light="ambient" aria-label="Apply the ambient light">&#9654;</button>
         </div>
-        <p class="hint">The lights go back to this after an event cue with a hold time. "Nothing" leaves them on the last cue.</p>
+        <p class="hint">After an event cue with a hold time the lights go back to how they were before it. LightRPG tells the tracker what each light is on,
+          including what you pick by hand on its page. This is only the fallback for a light LightRPG knows nothing about, and what &#9654; applies. "Nothing" leaves such a light on the cue.</p>
         <div id="lightAmbient"></div>
       </div>
 
@@ -154,7 +155,7 @@
         <div class="section-heading">
           <div><span class="eyebrow">NEXT MISSION</span><h2>Mission outcome lights</h2></div>
         </div>
-        <p class="hint">Choose the colour or LightRPG effect used when a mission ends with the anomaly captured, killed or escaped. Each cue can return to the ambient light after its hold time.</p>
+        <p class="hint">Choose the colour or LightRPG effect used when a mission ends with the anomaly captured, killed or escaped. After its hold time each cue puts the lights back as they were.</p>
         <div id="missionOutcomeLightSlots" class="slot-list"></div>
       </div>
 
@@ -163,7 +164,7 @@
           <div><span class="eyebrow">TRACKER EVENTS</span><h2>Event lights</h2></div>
           <button id="resetLights" type="button" class="secondary small">Reset</button>
         </div>
-        <p class="hint">"Hold" returns to the ambient light after that many seconds; "keep" leaves the cue on until the next one.
+        <p class="hint">"Hold" puts the lights back as they were after that many seconds; "keep" leaves the cue on, and it becomes what later cues go back to.
           Bulbs take a moment per change, so a new cue replaces one still waiting.</p>
         <div id="lightSlots" class="slot-list"></div>
       </div>

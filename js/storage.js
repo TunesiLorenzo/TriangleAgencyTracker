@@ -28,6 +28,23 @@ let savesSuspended = false;
 // Supplied by app.js: reads the case archive off the server so it can ride along in the
 // save file. Injected rather than imported to keep storage.js free of a circular import.
 let readCaseArchive = null;
+// A published copy keeps its team here instead of in browser storage (JSON, like the stored
+// one): every visit starts from the snapshot and what a visitor changes goes with the page.
+let heldTeam = null;
+
+function readStoredTeam() {
+  return heldTeam ?? localStorage.getItem(STORAGE_KEY);
+}
+
+function writeStoredTeam(json) {
+  if (heldTeam !== null) heldTeam = json;
+  else localStorage.setItem(STORAGE_KEY, json);
+}
+
+/** Run on this team for the life of the page, leaving the one saved in this browser alone. */
+export function holdTeam(team) {
+  heldTeam = JSON.stringify(team || {});
+}
 
 function isEditableElement(element) {
   return element instanceof HTMLInputElement
@@ -420,7 +437,7 @@ function chooseJsonFile(onData, invalidMessage) {
 }
 
 export function loadSettings() {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = readStoredTeam();
   if (!raw) return null;
   try {
     return JSON.parse(raw);
@@ -456,7 +473,7 @@ export function updateSettings(mutate) {
     const settings = loadSettings() || {};
     if (!settings.world || typeof settings.world !== 'object') settings.world = {};
     mutate(settings);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    writeStoredTeam(JSON.stringify(settings));
     queueAutomaticFileSave();
     return true;
   } catch (error) {
@@ -955,7 +972,7 @@ export function saveSettingsFile(filename) {
       String(now.getMinutes()).padStart(2, '0'),
       String(now.getSeconds()).padStart(2, '0')
     ].join('');
-    downloadJson(localStorage.getItem(STORAGE_KEY) || '{}', filename || `rpgSettings-${stamp}.json`);
+    downloadJson(readStoredTeam() || '{}', filename || `rpgSettings-${stamp}.json`);
     return true;
   } catch (error) {
     console.error('Failed to export settings', error);

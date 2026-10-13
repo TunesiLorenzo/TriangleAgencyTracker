@@ -85,7 +85,7 @@ export const LIGHT_EFFECTS = [
 ];
 
 /**
- * A light cue; `seconds` > 0 returns to the ambient light afterwards. `led` is the LED
+ * A light cue; `seconds` > 0 puts the lights back as they were afterwards (lights.py). `led` is the LED
  * strip's hue for White and bulb effects (a Colour cue shows its own hue there); the strip
  * always runs at full saturation and brightness.
  */
@@ -487,6 +487,27 @@ export function setLocalConfig(config) {
 }
 export function isServerAvailable() { return serverAvailable; }
 
+// A published copy (build_static.py) has no server behind it: the settings, the team and the
+// case archive come from one snapshot file beside the page, and nothing done there is kept.
+const SNAPSHOT_FILE = './snapshot.json';
+let snapshot = null;
+let markLoaded;
+const loaded = new Promise(resolve => { markLoaded = resolve; });
+/** The snapshot of a published copy: { config, revision, sounds, team, cases }, or null. */
+export function getSnapshot() { return snapshot; }
+/** Resolves once startConfigSync knows where the page comes from: the server, a snapshot or neither. */
+export function whenConfigLoaded() { return loaded; }
+
+async function fetchSnapshot() {
+  try {
+    const response = await fetch(SNAPSHOT_FILE, { cache: 'no-cache' });
+    const data = response.ok ? await response.json() : null;
+    return data?.format === 'triangle-agency-snapshot' ? data : null;
+  } catch {
+    return null;   // a plain static server without one: the defaults
+  }
+}
+
 /** Call listener now and on every change. Returns an unsubscribe function. */
 export function onConfigChange(listener) {
   listeners.add(listener);
@@ -504,7 +525,8 @@ async function fetchConfig(knownRevision = null) {
 /**
  * Load settings and keep them live: instant updates from a settings tab in the
  * same browser (BroadcastChannel) and polling for changes made on another device.
- * Without the Flask server (e.g. a plain static server) the defaults are used.
+ * Without the Flask server (e.g. a plain static server) the settings are those of the
+ * snapshot beside the page, or the defaults when there is none.
  */
 export async function startConfigSync({ pollMs = 2000 } = {}) {
   try {
@@ -513,8 +535,15 @@ export async function startConfigSync({ pollMs = 2000 } = {}) {
     apply(data.config, data.revision);
   } catch {
     serverAvailable = false;
+    snapshot = await fetchSnapshot();
+    if (snapshot) {
+      setSoundFiles(snapshot.sounds);
+      apply(snapshot.config, snapshot.revision);
+    }
+    markLoaded();
     return current;
   }
+  markLoaded();
 
   channel?.addEventListener('message', event => {
     if (event.data?.revision > revision) {

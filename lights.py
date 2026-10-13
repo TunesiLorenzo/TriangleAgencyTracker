@@ -10,7 +10,13 @@ A cue is what one tracker event does to the lights:
      "hue": 0-360, "saturation": 0-100, "brightness": 1-100,
      "temperature": 2500-6500, "effect": "bulb:<name>" | "strip:<name>",
      "led": 0-360, the LED strip's hue for "white" and bulb effects,
-     "seconds": 0 = keep it, else return to the ambient cue after that long}
+     "seconds": 0 = keep it, else put the lights back as they were after that long}
+
+A timed cue is a flash over whatever the room was showing. Just before it, the bridge
+asks LightRPG what each light is on (/api/state: the last look set through LightRPG, by
+its own page as much as by the tracker) and puts that back afterwards. A light LightRPG
+knows nothing about goes to the ambient cue instead, as does everything when LightRPG is
+too old to answer. Scenes are not flashes: they leave the room as they end.
 
 The LED strip is not a bulb: it has no white and dimmed or pastel colours look wrong
 on it, so it always runs at 100% saturation and brightness. A colour cue shows its hue
@@ -117,16 +123,10 @@ def call(method, path, payload=None, timeout=REQUEST_TIMEOUT):
         raise LightRPGError(f"LightRPG is not reachable at {LIGHTRPG_URL}") from error
 
 
-def strip_color(hue):
-    """The LED strip in one colour, always at full saturation and brightness."""
-    call("POST", "/api/color", {"hue": hue, "saturation": 100, "brightness": 100, "target": "strip"})
-
-
 def strip_breathe(hue):
-    """The LED strip fading in and out in the controller's colour nearest to this hue."""
+    """The strip look that fades in and out in the controller's colour nearest to this hue."""
     effect = min(STRIP_BREATHE, key=lambda entry: abs((hue - entry[0] + 180) % 360 - 180))[1]
-    # Brightness 100: the strip keeps that setting for every colour that follows.
-    call("POST", "/api/strip/effect", {"effect": effect, "speed": 50, "brightness": 100})
+    return ("effect", effect, 50)
 
 
 def scene_cue(session, key):
@@ -218,10 +218,10 @@ class LightBridge:
             self.condition.wait_for(lambda: self.pending is None and not self.busy, timeout)
 
     def _worker(self):
-        restore = None   # (ambient, target) to apply when a timed cue runs out
+        restore = None   # (before, ambient, target, deadline): put the lights back when a timed cue runs out
         while True:
             with self.condition:
-                deadline = restore and restore[2]
+                deadline = restore and restore[3]
                 while self.pending is None:
                     remaining = None if not deadline else deadline - time.monotonic()
                     if remaining is not None and remaining <= 0:
@@ -231,19 +231,22 @@ class LightBridge:
                 self.busy = True
 
             if job is None:                       # the hold ran out with nothing new
-                ambient, target, _ = restore
+                before, ambient, target, _ = restore
                 restore = None
-                self._run(ambient, target)
+                self._run_restore(before, ambient, target)
             elif job[0] == "scene":
                 restore = None
                 self._run_scene(*job[1:])
             else:
                 _, cue, ambient, target = job
+                seconds = clamp(cue.get("seconds"), 0, 600, 0)
+                timed = seconds > 0 and cue.get("action", "none") != "none"
+                # A flash cutting another short is still over the room as it was before the first.
+                before = restore[0] if restore else self._state() if timed else None
                 restore = None
                 self._run(cue, target)
-                seconds = clamp(cue.get("seconds"), 0, 600, 0)
-                if seconds > 0 and ambient and ambient.get("action", "none") != "none":
-                    restore = (ambient, target, time.monotonic() + seconds)
+                if timed:
+                    restore = (before, ambient or {}, cue.get("target") or target, time.monotonic() + seconds)
 
             with self.condition:
                 self.busy = False
@@ -256,6 +259,64 @@ class LightBridge:
         except Exception as error:   # keep the worker alive whatever LightRPG says
             self.last_error = str(error)
             self.logger.warning("Light cue failed: %s", error)
+
+    def _state(self):
+        """What LightRPG says each light is showing: {"bulbs": {id: look or None}, "strip": look or None}, or None."""
+        try:
+            return call("GET", "/api/state", timeout=12)
+        except LightRPGError:
+            return None   # not reachable, or a LightRPG from before /api/state
+
+    def _run_restore(self, before, ambient, target):
+        try:
+            bulbs, strip = self._devices(target)
+            self._show(before, bulbs, strip, ambient)
+            self.last_error = ""
+        except Exception as error:
+            self.last_error = str(error)
+            self.logger.warning("Lights were not put back: %s", error)
+
+    def _show(self, state, bulbs, strip, fallback):
+        """Put these lights on the looks of a /api/state reply; a light it does not know gets the fallback cue."""
+        looks = (state or {}).get("bulbs") or {}
+        strip_look = (state or {}).get("strip")
+        # The strip first: a colour stops LightRPG's Room Wave, so it must not follow a bulb effect.
+        if strip and strip_look:
+            self._strip_look(strip_look)
+        effects = {}
+        for key in bulbs:
+            look = looks.get(key)
+            if not look:
+                continue
+            if look.get("mode") == "effect":
+                # Under an effect is the steady colour it runs on (Breathe pulses just that).
+                if look.get("base"):
+                    self._bulb_look(look["base"], [key])
+                effects.setdefault(json.dumps({k: v for k, v in look.items() if k not in ("mode", "base")}, sort_keys=True), []).append(key)
+            else:
+                self._bulb_look(look, [key])
+        for options, keys in effects.items():   # one request per effect: Room Wave runs across its bulbs
+            call("POST", "/api/bulb/effect", {**json.loads(options), "targets": keys, "sound": False})
+        self._send(fallback or {}, [key for key in bulbs if not looks.get(key)], bool(strip and not strip_look))
+
+    def _bulb_look(self, look, bulbs):
+        mode = look.get("mode")
+        if mode == "color":
+            call("POST", "/api/color", {"hue": look["hue"], "saturation": look["saturation"], "brightness": look["brightness"], "targets": bulbs})
+        elif mode == "white":
+            call("POST", "/api/bulb/white", {"temperature": look["temperature"], "brightness": look["brightness"], "targets": bulbs})
+        elif mode == "off":
+            call("POST", "/api/bulb/power", {"on": False, "targets": bulbs})
+
+    def _strip_look(self, look):
+        """The strip back on a look chosen by hand, exactly as it was (the tracker's own cues only ever send it full colours)."""
+        mode = look.get("mode")
+        if mode == "color":
+            call("POST", "/api/color", {"hue": look["hue"], "saturation": look["saturation"], "brightness": look["brightness"], "target": "strip"})
+        elif mode == "effect":
+            call("POST", "/api/strip/effect", {"effect": look["effect"], "speed": look["speed"], "brightness": look["brightness"]})
+        elif mode == "off":
+            call("POST", "/api/strip/power", {"on": False})
 
     def apply(self, cue, target):
         """Send one cue to LightRPG right now (blocking)."""
@@ -296,20 +357,15 @@ class LightBridge:
         hue = round(clamp(cue.get("hue"), 0, 360, 0))
         led = round(clamp(cue.get("led"), 0, 360, 30))
         if action == "color":
-            if bulbs:
-                call("POST", "/api/color", {"hue": hue, "saturation": round(clamp(cue.get("saturation"), 0, 100, 100)),
-                                            "brightness": brightness, "targets": bulbs})
+            self._bulbs(("color", hue, round(clamp(cue.get("saturation"), 0, 100, 100)), brightness), bulbs)
             if strip:
-                strip_color(hue)
+                self._strip(("color", hue))
         elif action == "white":
-            if bulbs:
-                temperature = round(clamp(cue.get("temperature"), 2500, 6500, 2700))
-                call("POST", "/api/bulb/white", {"temperature": temperature, "brightness": brightness, "targets": bulbs})
+            self._bulbs(("white", round(clamp(cue.get("temperature"), 2500, 6500, 2700)), brightness), bulbs)
             if strip:   # the strip has no white channel: it shows the cue's LED colour instead
-                strip_color(led)
+                self._strip(("color", led))
         elif action == "off":
-            if bulbs:
-                call("POST", "/api/bulb/power", {"on": False, "targets": bulbs})
+            self._bulbs(("off",), bulbs)
         elif action == "effect":
             kind, _, name = str(cue.get("effect", "")).partition(":")
             if kind == "bulb":
@@ -317,13 +373,39 @@ class LightBridge:
                     raise ValueError(f"Unknown bulb effect {name!r}")
                 # The strip first: a colour stops LightRPG's Room Wave, so it must not follow the effect.
                 if strip:
-                    strip_color(led)
-                if bulbs:
-                    call("POST", "/api/bulb/effect", {"effect": name, "targets": bulbs, "sound": False})
+                    self._strip(("color", led))
+                self._bulbs(("effect", name), bulbs)
             elif kind == "strip" and strip:
-                # Its brightness setting outlasts the effect, so anything below 100 would dim every later colour.
-                call("POST", "/api/strip/effect", {"effect": name, "speed": round(clamp(cue.get("speed"), 0, 100, 50)),
-                                                   "brightness": 100})
+                self._strip(("effect", name, round(clamp(cue.get("speed"), 0, 100, 50))))
+
+    def _bulbs(self, look, bulbs):
+        """Give these bulbs one look: ("color", hue, saturation, brightness), ("white", temperature,
+        brightness), ("effect", name) or ("off",)."""
+        if not bulbs:
+            return
+        kind = look[0]
+        if kind == "color":
+            call("POST", "/api/color", {"hue": look[1], "saturation": look[2], "brightness": look[3], "targets": bulbs})
+        elif kind == "white":
+            call("POST", "/api/bulb/white", {"temperature": look[1], "brightness": look[2], "targets": bulbs})
+        elif kind == "effect":
+            call("POST", "/api/bulb/effect", {"effect": look[1], "targets": bulbs, "sound": False})
+        else:
+            call("POST", "/api/bulb/power", {"on": False, "targets": bulbs})
+
+    def _strip(self, look):
+        """Give the LED strip one look: ("color", hue), ("effect", name, speed) or ("off",).
+
+        It is always at full saturation and brightness. An effect's brightness setting
+        outlasts it, so anything below 100 there would dim every later colour.
+        """
+        kind = look[0]
+        if kind == "color":
+            call("POST", "/api/color", {"hue": look[1], "saturation": 100, "brightness": 100, "target": "strip"})
+        elif kind == "effect":
+            call("POST", "/api/strip/effect", {"effect": look[1], "speed": look[2], "brightness": 100})
+        else:
+            call("POST", "/api/strip/power", {"on": False})
 
     # ---------- scenes ----------
     def _run_scene(self, name, session, target):
@@ -348,32 +430,35 @@ class LightBridge:
                 self.condition.wait(remaining)
         raise Superseded
 
-    def _bulbs_off(self, bulbs):
-        if bulbs:
-            call("POST", "/api/bulb/power", {"on": False, "targets": bulbs})
-
     def _standby_look(self, standby, bulbs):
         """What Log Out leaves behind: the centre bulb on the standby light, the side bulbs off."""
         if CENTER_BULB in bulbs:
             if standby.get("action", "none") in ("none", "off"):
-                self._bulbs_off([CENTER_BULB])
+                self._bulbs(("off",), [CENTER_BULB])
             else:
                 self._send(standby, [CENTER_BULB], False)
-        self._bulbs_off([key for key in bulbs if key in SIDE_BULBS])
+        self._bulbs(("off",), [key for key in bulbs if key in SIDE_BULBS])
 
     def _scene_powerOn(self, session, bulbs, strip):
-        """Pulse between the standby look, which is how Log Out left the room, and a colour."""
+        """Pulse between what the room is showing and a colour.
+
+        Without LightRPG's word on that, the standby look stands in: it is how Log Out left the room.
+        """
         pulse = scene_cue(session, "powerOn")
         if pulse.get("action", "none") == "none":
             return
         standby = scene_cue(session, "standby")
+        before = self._state()
         if strip:
-            strip_breathe(round(clamp(pulse.get("hue"), 0, 360, 0)))
+            self._strip(strip_breathe(round(clamp(pulse.get("hue"), 0, 360, 0))))
         deadline = time.monotonic() + PULSE_LIMIT
         while time.monotonic() < deadline:
             self._send(pulse, bulbs, False)
             self._pause(PULSE_HOLD)
-            self._standby_look(standby, bulbs)
+            if before:
+                self._show(before, bulbs, False, None)
+            else:
+                self._standby_look(standby, bulbs)
             self._pause(PULSE_HOLD)
 
     def _scene_login(self, session, bulbs, strip):
@@ -388,9 +473,9 @@ class LightBridge:
         if bulbs:
             # LightRPG's Breathe pulses whatever colour the bulbs are on, from dim to full.
             self._send({**cue, "brightness": 100}, bulbs, False)
-            call("POST", "/api/bulb/effect", {"effect": "breathe", "targets": bulbs, "sound": False})
+            self._bulbs(("effect", "breathe"), bulbs)
         if strip:
-            strip_breathe(round(clamp(cue.get("hue"), 0, 360, 0)))
+            self._strip(strip_breathe(round(clamp(cue.get("hue"), 0, 360, 0))))
 
     def _scene_shutdown(self, session, bulbs, strip):
         standby = scene_cue(session, "standby")
@@ -399,9 +484,9 @@ class LightBridge:
         # flash of the colour it had.
         if fades:
             self._send({**standby, "brightness": 1}, [CENTER_BULB], False)
-        self._bulbs_off(bulbs)
+        self._bulbs(("off",), bulbs)
         if strip:
-            call("POST", "/api/strip/power", {"on": False})
+            self._strip(("off",))
         self._pause(clamp(session.get("blackout"), 0, 30, 2))
         if not fades:
             return

@@ -13,7 +13,7 @@
 // The room lights follow the screen switching on, the login screen and Log Out (the scenes
 // of lights.py, set under Session lights on /settings).
 
-import { getConfig, onConfigChange } from './config.js';
+import { getConfig, isServerAvailable, onConfigChange } from './config.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { playButton, powerOffAudio, soundStartDelay } from './soundEffects.js';
@@ -526,6 +526,7 @@ async function powerOff() {
 
 /** Stop the server after the picture and sound finish, leaving this page black. */
 async function stopServer() {
+  if (!isServerAvailable()) return;
   try {
     const response = await fetch('/api/shutdown', { method: 'POST' });
     if (!response.ok) return;
