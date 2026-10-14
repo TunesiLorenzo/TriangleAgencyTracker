@@ -12,8 +12,10 @@
 // are on the Login tab there. Ctrl + left-click skips the sequence and opens the tracker.
 // The room lights follow the screen switching on, the login screen and Log Out (the scenes
 // of lights.py, set under Session lights on /settings).
+// A published copy is signed into by a read-only Agent instead (becomeAgent): a number drawn
+// for the visit, a redacted badge, a warning once it is read, and no retina scan.
 
-import { getConfig, getSnapshot, isServerAvailable, onConfigChange } from './config.js';
+import { getConfig, getSnapshot, isServerAvailable, onConfigChange, whenConfigLoaded } from './config.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { playButton, powerOffAudio, soundStartDelay } from './soundEffects.js';
@@ -26,8 +28,8 @@ const PURGE_SECONDS = 4;   // Log Out: the countdown before the CRT switches off
 const POWER_OFF_MS = 1100;
 const POWER_ON_MS = 1400;  // page load: the black screen switching on, the same collapse backwards
 const WARM_UP_MS = 3500;   // the picture wobbling under crawling scanlines once it is on
-const USERNAME = 'Manager#56776544';
 const PASSWORD = '*'.repeat(14);
+const RESTRICTED_MS = 5000;   // a published copy: the read-only warning after the badge
 
 // Without motion every beat is short: the steps still show, nothing travels.
 const wait = ms => new Promise(resolve => setTimeout(resolve, motionAllowed() ? ms : Math.min(ms, 150)));
@@ -41,6 +43,8 @@ let signedInWaiters = [];
 let clockTimer = 0;
 let backdrop = null;      // the moving background; null without WebGL
 let badge = null;         // the badge on its lanyard (loginBadge.js)
+let username = 'Manager#56776544';
+let agent = false;        // a published copy's read-only Agent, not the Manager
 
 function setState(next) {
   state = next;
@@ -120,7 +124,7 @@ function setStatus(text, { ok = false } = {}) {
 /** Back to an untouched login screen. Called while the screen is hidden, so nothing animates. */
 function resetScreen() {
   els.screen.classList.remove('is-scanner-open', 'is-lens-open', 'is-scanning', 'is-matched',
-    'is-verified', 'is-granted', 'is-badge-shown', 'is-badge-reading', 'is-badge-read', 'is-reader-done', 'is-badge-leaving');
+    'is-verified', 'is-granted', 'is-restricted', 'is-badge-shown', 'is-badge-reading', 'is-badge-read', 'is-reader-done', 'is-badge-leaving');
   els.screen.style.removeProperty('--scan');
   badge.reset();
   backdrop?.reset();
@@ -138,7 +142,7 @@ function resetScreen() {
 /** The badge's barcode, drawn from the ID so it is the same every time. */
 function buildBarcode() {
   const widths = [2, 1, 1];
-  for (const digit of USERNAME.replace(/\D/g, '')) {
+  for (const digit of username.replace(/\D/g, '')) {
     widths.push(1 + (digit % 3), 1 + ((digit >> 1) % 2), 1 + ((digit * 7) % 3), 1);
   }
   widths.push(1, 1, 2);
@@ -148,6 +152,33 @@ function buildBarcode() {
     if (index % 2) bar.className = 'gap';
     return bar;
   }));
+}
+
+/**
+ * A published copy is looked at, never run: whoever opens it signs in as AGENT# and a
+ * five-digit number drawn for this visit. The badge carries the same number, a redacted
+ * picture and the Agent's lines of the markup (data-agent).
+ */
+function becomeAgent() {
+  agent = true;
+  const id = String(10000 + Math.floor(Math.random() * 90000));
+  username = `AGENT#${id}`;
+  const { screen } = els;
+  screen.classList.add('is-agent');
+  screen.querySelectorAll('[data-agent]').forEach(node => { node.textContent = node.dataset.agent; });
+  screen.querySelector('.login-badge').setAttribute('aria-label', 'Agent badge');
+  screen.querySelector('.login-badge-id').textContent = `#${id}`;
+  screen.querySelector('.login-reader-id').textContent = `#${id} · Read only`;
+  buildBarcode();
+}
+
+/** After an Agent's badge: a blinking red warning over the whole terminal, RESTRICTED_MS long (reduced motion too). */
+async function restrictedWarning() {
+  els.screen.classList.add('is-restricted');
+  if (backdrop) backdrop.heat = 0.4;
+  backdrop?.ring();
+  await new Promise(resolve => setTimeout(resolve, RESTRICTED_MS));
+  els.screen.classList.remove('is-restricted');
 }
 
 /** The print running down both sides of the lanyard. */
@@ -417,11 +448,12 @@ async function signIn(event) {
   setState('authenticating');
   const t = applyTiming();
   const { screen, fields } = els;
+  await whenConfigLoaded();   // a click that came before the page knew it is a published copy
 
   // Typing sounds wait for a sleeping amplifier, so start once they can be heard.
   await wait(Math.max(t.typingStart, soundStartDelay()));
   setStatus('Transmitting credentials…');
-  await typeInto(fields[0], USERNAME, t.userCharacter);
+  await typeInto(fields[0], username, t.userCharacter);
   await wait(t.fieldGap);
   await typeInto(fields[1], PASSWORD, t.passwordCharacter);
   fields.forEach(field => field.classList.add('is-done'));
@@ -446,24 +478,38 @@ async function signIn(event) {
   screen.classList.add('is-badge-read');
   playButton('session', 'badgeRead');
   backdrop?.ring();
-  setStatus('Badge accepted · Retina scan required');
+  if (agent) {
+    setStatus('Badge accepted · Limited access');
+    await restrictedWarning();
+    // An Agent's badge is all the terminal asks for: no retina scan.
+    badge.eject(t.badgeEject);
+    screen.classList.add('is-reader-done');
+    await wait(t.badgeEject);
+    screen.classList.add('is-verified');
+    playButton('session', 'verified');
+    backdrop?.ring('green');
+    setStatus('Access granted · Read only mode', { ok: true });
+    await wait(t.verifiedHold);
+  } else {
+    setStatus('Badge accepted · Retina scan required');
 
-  // The reader pushes the badge back out and sinks away as the retina scanner rises.
-  liftPanel();
-  badge.eject(t.badgeEject);
-  screen.classList.add('is-reader-done', 'is-scanner-open');
-  playButton('session', 'scannerOpen');
-  await wait(t.scannerRise);
-  screen.classList.add('is-lens-open');
-  await wait(t.lensOpen);
-  setStatus('Hold still · Scanning retina');
-  await scan(t);
+    // The reader pushes the badge back out and sinks away as the retina scanner rises.
+    liftPanel();
+    badge.eject(t.badgeEject);
+    screen.classList.add('is-reader-done', 'is-scanner-open');
+    playButton('session', 'scannerOpen');
+    await wait(t.scannerRise);
+    screen.classList.add('is-lens-open');
+    await wait(t.lensOpen);
+    setStatus('Hold still · Scanning retina');
+    await scan(t);
 
-  screen.classList.add('is-matched', 'is-verified');
-  playButton('session', 'verified');
-  backdrop?.ring('green');
-  setStatus('Identity confirmed · Welcome back, Manager', { ok: true });
-  await wait(t.verifiedHold);
+    screen.classList.add('is-matched', 'is-verified');
+    playButton('session', 'verified');
+    backdrop?.ring('green');
+    setStatus('Identity confirmed · Welcome back, Manager', { ok: true });
+    await wait(t.verifiedHold);
+  }
   screen.classList.add('is-granted');
   playButton('session', 'granted');
   if (backdrop) backdrop.heat = 1;
@@ -598,6 +644,7 @@ export function initLogin() {
   });
   buildBarcode();
   printLanyard();
+  whenConfigLoaded().then(() => { if (getSnapshot()) becomeAgent(); });
   badge = createBadgeRig({
     badge: screen.querySelector('.login-badge'),
     swing: screen.querySelector('.login-badge-swing'),

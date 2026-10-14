@@ -35,3 +35,84 @@ html[data-read-only] #logoutButton {
 html[data-read-only] #logoutButton svg { width: 18px; height: 18px; }
 html[data-read-only] #logoutButton:hover,
 html[data-read-only] #logoutButton:focus-visible { background: rgba(255,59,48,0.45); }
+
+/* A press on anything locked: UNAUTHORIZED ACCESS across the whole screen, at a slight
+   tilt drawn each time (readOnly.js). */
+.unauthorized-warning {
+  position: fixed;
+  inset: 0;
+  z-index: 10045;   /* over the tracker, its dialogs and the silence layer; under the login screen */
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, rgba(140,0,0,0.4), rgba(60,0,0,0.2) 55%, transparent 85%);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 300ms ease, visibility 0s linear 300ms;
+}
+.unauthorized-warning.is-shown {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 80ms ease;
+}
+.unauthorized-warning p {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 160vmax;   /* wider than the screen whatever the tilt */
+  margin: 0;
+  padding: clamp(12px, 3vh, 34px) 0;
+  border-block: 4px solid #ff3b30;
+  background: rgba(150,0,0,0.85);
+  box-shadow: 0 0 24px rgba(255,59,48,0.8), 0 0 80px rgba(255,59,48,0.45);
+  color: #fff;
+  font-size: clamp(18px, 5.5vw, 96px);
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px #ff3b30, 0 0 40px rgba(255,59,48,0.8);
+  white-space: nowrap;
+  transform: translate(-50%, -50%) rotate(var(--tilt, -3deg));
+  animation: unauthorized-pulse 360ms ease-in-out infinite alternate;
+}
+.unauthorized-warning p span {
+  display: block;
+  margin-top: 0.35em;
+  font-size: 0.32em;
+  letter-spacing: 0.2em;
+}
+@keyframes unauthorized-pulse {
+  to { opacity: 0.7; scale: 1.03; }
+}
+html[data-motion="reduced"] .unauthorized-warning p { animation: none; }
+
+/* The third violation: the whole page flashes red a few times, then the logout (readOnly.js). */
+.session-terminated {
+  position: fixed;
+  inset: 0;
+  z-index: 10046;   /* over the warning banner; under the login screen */
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(200,0,0,0.75);
+  pointer-events: none;
+  animation: session-terminated-flash calc(var(--terminated-ms, 2400ms) / 4) steps(1, end) 4;
+  animation-fill-mode: forwards;
+}
+.session-terminated p {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(22px, 6vw, 110px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px #ff3b30, 0 0 40px rgba(255,59,48,0.9), 0 0 4px #000;
+}
+@keyframes session-terminated-flash {
+  0%   { background: rgba(200,0,0,0.75); opacity: 1; }
+  60%  { background: rgba(80,0,0,0.25); opacity: 0.35; }
+  100% { background: rgba(200,0,0,0.75); opacity: 1; }
+}
+html[data-motion="reduced"] .session-terminated { animation: none; }

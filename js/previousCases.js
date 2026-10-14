@@ -2,7 +2,7 @@
 // Responsibilities: the Previous Cases tab. Every filed mission is a TOP SECRET envelope;
 // opening one shows the scanned pages of its Rapporto di Fine Incarico, and the button at
 // the bottom files new pages. HD scans are far too big for browser storage, so they live on
-// disk in cases/ next to the app and go through the tracker server (/api/cases).
+// disk in data/cases/ beside the app and go through the tracker server (/api/cases).
 
 import { confirmDialog, openModal, toast } from './ui.js';
 import { playButton, soundStartDelay } from './soundEffects.js';
@@ -1088,7 +1088,7 @@ export async function renderPreviousCases({ highlight } = {}) {
     if (current !== request) return;
     console.error('Failed to load previous cases', error);
     view.replaceChildren(el('p', 'cases-empty',
-      'The case archive needs the tracker server. Start it with start_server.bat and reload this page.'));
+      'The case archive needs the tracker server. Start it with run_locally.bat and reload this page.'));
   }
 }
 

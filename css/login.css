@@ -279,8 +279,9 @@ html:not([data-session="open"]) body { overflow: hidden; }
 .login-status { color: rgba(255,255,255,0.7); transition: color 200ms ease; }
 .login-status.is-ok { color: var(--login-ok); }
 
-/* After Log Out: a full-screen warning counting down to the server stopping (login.js). */
-.login-severed {
+/* After Log Out: a full-screen warning counting down to the server stopping (login.js).
+   The same look warns a published copy's Agent of their read-only access. */
+:is(.login-severed, .login-restricted) {
   position: absolute;
   inset: 0;
   z-index: 5;
@@ -301,15 +302,15 @@ html:not([data-session="open"]) body { overflow: hidden; }
 }
 .login-screen:is([data-state="severed"], [data-state="powering-off"]) .login-severed { display: flex; }
 /* warning bands above and below the message */
-.login-severed::before,
-.login-severed::after {
+:is(.login-severed, .login-restricted)::before,
+:is(.login-severed, .login-restricted)::after {
   content: '';
   width: min(900px, 90vw);
   height: 3px;
   background: var(--login-red);
   box-shadow: 0 0 12px var(--login-red), 0 0 30px rgba(255,59,48,0.6);
 }
-.login-severed p { margin: 0; }
+:is(.login-severed, .login-restricted) p { margin: 0; }
 .login-severed-title {
   font-size: clamp(30px, 6.4vw, 104px);
   letter-spacing: 0.12em;
@@ -339,6 +340,33 @@ html:not([data-session="open"]) body { overflow: hidden; }
   line-height: 1;
   text-shadow: 0 0 16px #ff3b30, 0 0 60px rgba(255,59,48,0.85);
   animation: login-severed-glow 1s ease-in-out infinite;
+}
+
+/* A published copy, once the Agent's badge is read: blinks for five seconds (login.js). */
+.login-screen.is-restricted .login-restricted { display: flex; }
+.login-restricted::before,
+.login-restricted::after,
+.login-restricted-title,
+.login-restricted-mode { animation: login-restricted-blink 1s steps(1, end) infinite; }
+.login-restricted-title {
+  font-size: clamp(22px, 4.6vw, 80px);
+  letter-spacing: 0.1em;
+  line-height: 1.05;
+  text-shadow: 0 0 12px rgba(255,59,48,0.95), 0 0 40px rgba(255,59,48,0.6);
+}
+.login-restricted-mode {
+  color: #fff;
+  font-size: clamp(20px, 3.6vw, 60px);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  text-shadow: 0 0 16px #ff3b30, 0 0 50px rgba(255,59,48,0.85);
+}
+.login-restricted-warning {
+  color: rgba(255,255,255,0.75);
+  font-size: clamp(11px, 1.4vw, 20px);
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
 }
 
 /* At zero: squeeze the image into a bright centre line, then extinguish it.
@@ -1044,6 +1072,13 @@ html:not([data-session="open"]) body { overflow: hidden; }
 /* the Manager's own picture from /settings replaces the silhouette */
 .login-badge-photo.has-picture svg,
 .login-badge-photo:not(.has-picture) .login-badge-picture { display: none; }
+/* a published copy's Agent (login.js): the silhouette blacked out and stamped, whatever the picture */
+.login-screen:not(.is-agent) .login-badge-redacted,
+.login-screen.is-agent .login-badge-photo > :not(.login-badge-redacted) { display: none; }
+.login-screen.is-agent .login-badge-redacted { display: block; }
+.login-redaction-bar { fill: #050505; }
+.login-redaction-stamp rect { fill: rgba(184,22,14,0.12); stroke: #d0281e; stroke-width: 3; }
+.login-redaction-stamp text { fill: #d0281e; font-size: 14px; font-weight: 800; }
 .login-badge-role {
   margin: 0.6em 0 0;
   font-size: 1.55em;
@@ -1079,6 +1114,7 @@ html:not([data-session="open"]) body { overflow: hidden; }
   background: #b8160e;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
+.login-screen.is-agent .login-badge-pips i:nth-child(n+2) { opacity: 0.18; }   /* Level 1 */
 .login-badge-barcode {
   display: flex;
   align-self: stretch;
@@ -1171,6 +1207,7 @@ html:not([data-session="open"]) body { overflow: hidden; }
 @keyframes login-led { from { opacity: 0.55; } to { opacity: 1; } }
 @keyframes login-severed-glow { 50% { opacity: 0.55; text-shadow: 0 0 4px rgba(255,59,48,0.6); } }
 @keyframes login-severed-in { from { opacity: 0; } }
+@keyframes login-restricted-blink { 50% { opacity: 0.12; } }
 @keyframes login-spin { to { transform: rotate(360deg); } }
 @keyframes login-beam {
   from { top: 0; }
@@ -1203,6 +1240,10 @@ html:not([data-session="open"]) body { overflow: hidden; }
   .login-reader-msg b,
   .login-severed-title,
   .login-severed-count b,
+  .login-restricted::before,
+  .login-restricted::after,
+  .login-restricted-title,
+  .login-restricted-mode,
   .login-screen.is-scanning .login-scanner::before { animation: none; }
   .login-panel,
   .login-lid,

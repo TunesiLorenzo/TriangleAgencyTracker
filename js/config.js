@@ -331,7 +331,7 @@ export const DEFAULT_CONFIG = {
       flatlineVolume: 0.5  // the heart monitor's long tone meanwhile; 0 = a silent flatline
     },
     voicemeeter: {         // local bridge on the room laptop controls its VoiceMeeter engine
-      bridgePort: 5003,     // loopback-only HTTP service started by start_lan.bat
+      bridgePort: 5003,     // loopback-only HTTP service started by run_locally.bat
       strip: 4,             // counted from 0, left to right
       drop: -20,            // dB the strip goes to when dropped...
       normal: 0,            // ...and when restored
