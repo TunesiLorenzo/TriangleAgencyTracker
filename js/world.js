@@ -21,8 +21,11 @@ const counters = {
 };
 
 // The backgrounds are 4K masters with a 1080p copy next to each. Decoding 4K costs four
-// times as much, so only a display that can actually show it gets the master.
-const videoSuffix = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) > 2560 ? '' : '_1080';
+// times as much, so only a display that can actually show it gets the master; never a
+// phone or tablet, whatever its pixels, as it pays for the decoding in battery and heat.
+const showsMaster = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) > 2560
+  && !matchMedia('(pointer: coarse)').matches;
+const videoSuffix = showsMaster ? '' : '_1080';
 const videoFile = name => `./images/bck_${name}${videoSuffix}.mp4`;
 
 let video = { strongAtChaos: 2, fadeSeconds: 5 };

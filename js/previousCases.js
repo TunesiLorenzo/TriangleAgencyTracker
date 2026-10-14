@@ -967,7 +967,7 @@ function renderArchive(cases, highlight) {
   warning.append(
     el('span', 'cases-vault-beacon'),
     el('strong', '', 'RESTRICTED ARCHIVE'),
-    el('small', '', 'Click to disengage security gates')
+    el('small', '', `${matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'} to disengage security gates`)
   );
   const seal = el('span', 'cases-vault-seal');
   seal.append(el('span', '', '▲'), el('small', '', 'CASE FILES'));

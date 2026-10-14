@@ -116,3 +116,181 @@ html[data-motion="reduced"] .unauthorized-warning p { animation: none; }
   100% { background: rgba(200,0,0,0.75); opacity: 1; }
 }
 html[data-motion="reduced"] .session-terminated { animation: none; }
+
+/* A message from the Manager to a signed-in player (access.js): left on their account, or
+   sent live on their channel. Typed out; a click shows the rest, the next click closes it. */
+.transmission {
+  position: fixed;
+  inset: 0;
+  z-index: 10047;   /* over the warnings; under the login screen */
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: radial-gradient(ellipse at center, rgba(60,0,0,0.55), rgba(0,0,0,0.82) 70%);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+  animation: transmission-in 300ms ease-out both;
+}
+.transmission[hidden] { display: none; }
+.transmission-panel {
+  width: min(640px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: clamp(18px, 4vw, 32px);
+  border: 2px solid #ff3b30;
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255,255,255,0.03) 0 2px, transparent 2px 4px),
+    rgba(12,4,4,0.95);
+  box-shadow: 0 0 30px rgba(255,59,48,0.45), inset 0 0 40px rgba(255,59,48,0.08);
+  color: #fff;
+}
+.transmission-panel p { margin: 0; }
+.transmission-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #ff5a4f;
+  font-size: clamp(14px, 2.2vw, 20px);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(255,59,48,0.8);
+}
+.transmission-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 8px #ff3b30;
+  animation: transmission-blink 1s steps(1, end) infinite;
+}
+.transmission-from {
+  margin-top: 6px !important;
+  color: rgba(255,255,255,0.55);
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.transmission-text {
+  min-height: 3em;
+  margin: 18px 0;
+  font-size: clamp(16px, 2.4vw, 21px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.transmission:not(.is-typed) .transmission-text::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  background: #fff;
+  animation: transmission-blink 0.8s steps(1, end) infinite;
+}
+/* the answer box, under the message */
+.transmission-reply { margin-bottom: 14px; }
+.transmission-reply[hidden] { display: none; }
+.transmission-answer {
+  display: block;
+  width: 100%;
+  min-height: 4.5em;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,59,48,0.55);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;   /* no zoom on phones */
+  line-height: 1.4;
+  resize: vertical;
+  cursor: text;
+}
+.transmission-answer:focus { outline: none; border-color: #ff3b30; box-shadow: 0 0 0 3px rgba(255,59,48,0.2); }
+.transmission-state { min-height: 1.2em; margin-top: 6px !important; color: rgba(255,255,255,0.6); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+.transmission-state.is-ok { color: #30d158; }
+.transmission-state.is-error { color: #ff6b62; }
+/* Reply · Transmit · Acknowledge, once the message is typed out */
+.transmission-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.transmission:not(.is-typed) .transmission-actions { visibility: hidden; }
+.transmission-actions button {
+  padding: 9px 18px;
+  border: 1px solid rgba(255,59,48,0.7);
+  border-radius: 6px;
+  background: rgba(255,59,48,0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.transmission-actions button:hover,
+.transmission-actions button:focus-visible { background: rgba(255,59,48,0.4); outline: none; }
+.transmission-actions button:disabled { opacity: 0.5; cursor: default; }
+.transmission-actions button[hidden] { display: none; }
+@keyframes transmission-in { from { opacity: 0; } }
+@keyframes transmission-blink { 50% { opacity: 0.25; } }
+html[data-motion="reduced"] :is(.transmission, .transmission-dot),
+html[data-motion="reduced"] .transmission-text::after { animation: none; }
+
+/* ---------- Phones ----------
+   Touch screens only (pointer: coarse), so a desktop window, however narrow, keeps the
+   layout above. The viewer has no buttons down the left and only DISCONNECT on the right,
+   so the title no longer has to keep clear of two button rows. */
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 760px) {
+  html[data-read-only] .top-buttons-right { top: 8px; right: 8px; max-width: none; }
+  html[data-read-only] #logoutButton {
+    gap: 6px;
+    padding: 6px 12px;
+    border-width: 1.5px;
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+  html[data-read-only] #logoutButton svg { width: 12px; height: 12px; }
+  html[data-read-only] h1 {
+    margin-top: 44px;
+    padding-inline: 4px;
+    font-size: clamp(20px, 6.6vw, 30px);
+  }
+  /* All five tabs on one row on most phones; a narrower one wraps them as before. */
+  html[data-read-only] .view-tab { padding: 5px 6px; font-size: 10px; letter-spacing: 0.3px; }
+}
+
+/* Phones on their side: the header shrinks to a strip, so the page starts on screen. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 540px) {
+  html[data-read-only] .top-buttons-right { top: 6px; right: 8px; }
+  html[data-read-only] #logoutButton {
+    gap: 6px;
+    padding: 5px 12px;
+    border-width: 1.5px;
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+  html[data-read-only] #logoutButton svg { width: 12px; height: 12px; }
+  html[data-read-only] h1 { margin: 6px 0 8px; font-size: 22px; line-height: 1.1; }
+  html[data-read-only] h1 br { display: none; }
+  html[data-read-only] .view-tabs { margin-bottom: 10px; }
+  html[data-read-only] .view-tab { padding: 5px 12px; font-size: 11px; }
+
+  /* Tasks above the agents, not squeezed into a column as tall as all of them. */
+  html[data-read-only] .workspace { grid-template-columns: minmax(0, 1fr); }
+  html[data-read-only] #taskPanel { justify-self: center; width: min(100%, 560px); }
+
+  /* The case viewer: its summary beside the page instead of above it. */
+  html[data-read-only] .modal-backdrop:has(.case-viewer) { padding: 6px; }
+  html[data-read-only] .modal-panel.case-viewer { height: calc(100dvh - 12px); padding: 10px 12px; }
+  html[data-read-only] .case-viewer .modal-title { margin-bottom: 6px; font-size: 14px; }
+  html[data-read-only] .case-viewer-body { flex-direction: row; }
+  html[data-read-only] .case-viewer-summary {
+    flex: 0 0 170px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+  html[data-read-only] .case-viewer-score { align-items: flex-start; text-align: left; }
+  html[data-read-only] .case-document { padding: 8px 16px 12px 10px; }
+}

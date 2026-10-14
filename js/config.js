@@ -410,6 +410,14 @@ export const DEFAULT_CONFIG = {
       windowOpen: 1.3,     // the triangle opening onto the main screen
       windowClose: 1.3     // Log Out: the same triangle closing
     }
+  },
+  // The players' sign-ins on the published copy (access.js), set on the Players tab of
+  // /settings. build_static.py publishes the accounts sealed with their own credentials.
+  players: {
+    server: 'https://ntfy.sh',  // the ntfy server carrying the notifications and live messages
+    notify: '',            // your channel on it: sign-ins, and what the players try to change
+    notifyGuests: true,    // also report visitors signed in without an account
+    accounts: []           // { username, password, charId, badge, inbox, message }
   }
 };
 
