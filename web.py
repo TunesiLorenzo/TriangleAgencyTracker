@@ -1,8 +1,10 @@
 """Web entrypoint for the Triangle Agency Tracker.
 
-Two front-ends share one local Flask server (same layout as MTG_Table):
+The front-ends share one local Flask server (same layout as MTG_Table):
   /          the tracker viewer shown on the table screen (static index.html)
   /settings  the setup page: sound assignments and effect tuning
+  /public    the read-only copy published to GitHub Pages, live from the tracker file
+  /publish   the same, with a bar to commit and push it (build_static.py)
 
 Settings and the team share one tracker file, triangle-agency-tracker.json in the
 configured data folder unless a viewer connecting Tracker Save put it elsewhere (the
@@ -35,9 +37,10 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
+import build_static
 import lights
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -985,6 +988,94 @@ def delete_case(case_id):
         for scan in scans:
             (CASES_DIR / scan).unlink(missing_ok=True)
     return jsonify({"ok": True})
+
+
+# -----------------------------
+# PUBLISHED COPY (GitHub Pages)
+# -----------------------------
+# build_static.py publishes a read-only copy of the viewer to GitHub Pages. /public serves
+# that copy from here, built live from the tracker file: what the players would see there,
+# on the LAN. /publish is the same page with a bar along the bottom that says what has
+# changed since the last publish, and commits and pushes it, which republishes the site.
+PUBLISH_PAGE_ADDITIONS = (
+    '  <link rel="stylesheet" href="/static/publish.css">\n'
+    '  <script src="/static/publish.js" defer></script>\n'
+)
+publish_lock = threading.Lock()
+
+
+def public_snapshot():
+    """snapshot.json as a publish would write it now."""
+    with store_lock:
+        path = tracker_file
+        settings = {"revision": config_state["revision"], "config": config_state["config"]}
+    team, _ = read_tracker_file(path)
+    with cases_lock:
+        cases = load_cases()
+    return build_static.make_snapshot(team or {}, settings, cases)
+
+
+@app.get("/public")
+def public_site_redirect():
+    # The page finds its files beside itself, which needs the trailing slash.
+    return redirect("/public/")
+
+
+@app.get("/public/")
+def public_site():
+    return send_from_directory(BASE_DIR, "index.html")
+
+
+@app.get(f"/public/{build_static.SNAPSHOT_FILE}")
+def public_site_snapshot():
+    return jsonify(public_snapshot())
+
+
+@app.get("/public/<path:filename>")
+def public_site_asset(filename):
+    """Only what a publish would include: the viewer's folders and the scans the archive names."""
+    folder, _, rest = filename.partition("/")
+    if folder in build_static.ASSET_FOLDERS and rest:
+        return send_from_directory(BASE_DIR / folder, rest)
+    if folder == "cases" and rest:
+        with cases_lock:
+            scans = build_static.case_scans(load_cases())
+        if rest in scans:
+            return send_from_directory(CASES_DIR, rest)
+    abort(404)
+
+
+@app.get("/publish")
+def publish_page():
+    """The /public page with the publish bar. <base> keeps its files coming from /public."""
+    page = (BASE_DIR / "index.html").read_text(encoding="utf-8")
+    page = page.replace("<head>", '<head>\n  <base href="/public/">', 1)
+    return page.replace("</head>", PUBLISH_PAGE_ADDITIONS + "</head>", 1)
+
+
+@app.get("/api/publish")
+def get_publish_status():
+    try:
+        return jsonify({"ok": True, **build_static.site_status(public_snapshot())})
+    except build_static.PublishError as error:
+        return jsonify({"ok": False, "message": str(error)}), 502
+
+
+@app.post("/api/publish")
+def publish_site():
+    """Commit the published copy to gh-pages and push it, which republishes the site."""
+    if not publish_lock.acquire(blocking=False):
+        return jsonify({"ok": False, "message": "A publish is already under way"}), 409
+    try:
+        snapshot = public_snapshot()
+        commit = build_static.publish(snapshot)
+        status = build_static.site_status(snapshot)
+    except build_static.PublishError as error:
+        return jsonify({"ok": False, "message": str(error)}), 502
+    finally:
+        publish_lock.release()
+    message = "Pushed. GitHub Pages updates in a minute or two" if commit else "Nothing to publish: GitHub Pages already shows this"
+    return jsonify({"ok": True, "message": message, **status})
 
 
 # -----------------------------

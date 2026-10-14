@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="./css/gra.css">
   <link rel="stylesheet" href="./css/graIncidents.css">
   <link rel="stylesheet" href="./css/silence.css">
+  <link rel="stylesheet" href="./css/readOnly.css">
 </head>
 <body>
   <div id="loginScreen" class="login-screen" data-state="standby" role="dialog" aria-modal="true" aria-label="Triangle Agency sign-in">
@@ -69,7 +70,7 @@
             <div class="login-reader-screen">
               <span class="login-reader-msg" data-step="idle">Insert badge <b>&#9660;</b></span>
               <span class="login-reader-msg" data-step="reading">Reading<span class="login-reader-bar"><span></span></span></span>
-              <span class="login-reader-msg" data-step="ok">ID accepted<small>#56776544 &middot; Level 5</small></span>
+              <span class="login-reader-msg" data-step="ok">ID accepted<small class="login-reader-id">#56776544 &middot; Level 5</small></span>
             </div>
             <div class="login-reader-leds"><i></i><i></i><i></i></div>
             <div class="login-reader-brand">
@@ -113,12 +114,22 @@
               <div class="login-badge-photo" aria-hidden="true">
                 <svg viewBox="0 0 100 125"><circle cx="50" cy="48" r="20"/><path d="M12 125 C12 92 31 78 50 78 C69 78 88 92 88 125 Z"/></svg>
                 <img class="login-badge-picture" alt="">
+                <!-- a published copy's Agent: no face on file -->
+                <svg class="login-badge-redacted" viewBox="0 0 100 125">
+                  <circle cx="50" cy="48" r="20"/><path d="M12 125 C12 92 31 78 50 78 C69 78 88 92 88 125 Z"/>
+                  <rect class="login-redaction-bar" x="0" y="38" width="100" height="17"/>
+                  <g class="login-redaction-stamp" transform="rotate(-16 50 76)">
+                    <rect x="9" y="64" width="82" height="24" rx="2"/>
+                    <text x="50" y="81.5" text-anchor="middle" textLength="70" lengthAdjust="spacingAndGlyphs">REDACTED</text>
+                  </g>
+                </svg>
               </div>
-              <p class="login-badge-role">Manager</p>
+              <!-- data-agent: what a published copy's Agent shows instead (login.js) -->
+              <p class="login-badge-role" data-agent="Agent">Manager</p>
               <p class="login-badge-id">#56776544</p>
               <dl class="login-badge-meta">
-                <div><dt>Clearance</dt><dd><span class="login-badge-pips" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="login-sr">Level 5 of 5</span></dd></div>
-                <div><dt>Division</dt><dd>Management</dd></div>
+                <div><dt>Clearance</dt><dd><span class="login-badge-pips" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="login-sr" data-agent="Level 1 of 5">Level 5 of 5</span></dd></div>
+                <div><dt>Division</dt><dd data-agent="Observation">Management</dd></div>
               </dl>
               <div class="login-badge-barcode" aria-hidden="true"></div>
               <p class="login-badge-fine">Property of the Agency &middot; If found, do not investigate</p>
@@ -177,6 +188,12 @@
         <p class="login-severed-title">Secure link severed</p>
         <p class="login-severed-sub">Connection traced</p>
         <p class="login-severed-count">Purged in <b class="login-purge-count">4</b></p>
+      </div>
+
+      <div class="login-restricted" role="alert">
+        <p class="login-restricted-title">Limited Authorized Access</p>
+        <p class="login-restricted-mode">Read only mode</p>
+        <p class="login-restricted-warning">Any transgression will result in termination</p>
       </div>
     </div>
     <div class="login-crt-lines" aria-hidden="true"></div>

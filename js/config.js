@@ -487,8 +487,9 @@ export function setLocalConfig(config) {
 }
 export function isServerAvailable() { return serverAvailable; }
 
-// A published copy (build_static.py) has no server behind it: the settings, the team and the
-// case archive come from one snapshot file beside the page, and nothing done there is kept.
+// A published copy (build_static.py, or its preview on the tracker server's /public) runs
+// without the server: the settings, the team and the case archive come from one snapshot
+// file beside the page, and nothing done there is kept.
 const SNAPSHOT_FILE = './snapshot.json';
 let snapshot = null;
 let markLoaded;
@@ -504,7 +505,7 @@ async function fetchSnapshot() {
     const data = response.ok ? await response.json() : null;
     return data?.format === 'triangle-agency-snapshot' ? data : null;
   } catch {
-    return null;   // a plain static server without one: the defaults
+    return null;   // the tracker server's viewer, or a plain static server without one
   }
 }
 
@@ -525,21 +526,26 @@ async function fetchConfig(knownRevision = null) {
 /**
  * Load settings and keep them live: instant updates from a settings tab in the
  * same browser (BroadcastChannel) and polling for changes made on another device.
- * Without the Flask server (e.g. a plain static server) the settings are those of the
- * snapshot beside the page, or the defaults when there is none.
+ * A published copy takes its settings from the snapshot beside the page, and is one even
+ * on the tracker server (its preview on /public): it never touches the server's API, so
+ * no saves, lights or shutdown. Without the Flask server and without a snapshot (e.g. a
+ * plain static server) the defaults are used.
  */
 export async function startConfigSync({ pollMs = 2000 } = {}) {
+  snapshot = await fetchSnapshot();
+  if (snapshot) {
+    serverAvailable = false;
+    setSoundFiles(snapshot.sounds);
+    apply(snapshot.config, snapshot.revision);
+    markLoaded();
+    return current;
+  }
   try {
     const data = await fetchConfig();
     setSoundFiles(data.sounds);
     apply(data.config, data.revision);
   } catch {
     serverAvailable = false;
-    snapshot = await fetchSnapshot();
-    if (snapshot) {
-      setSoundFiles(snapshot.sounds);
-      apply(snapshot.config, snapshot.revision);
-    }
     markLoaded();
     return current;
   }

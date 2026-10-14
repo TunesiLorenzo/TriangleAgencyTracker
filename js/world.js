@@ -156,7 +156,8 @@ function updateBackgroundVideo() {
 
   // Reuse the element's current video when it already holds this source (a quick
   // back-and-forth swap), so it resumes instead of reloading from the start.
-  const url = new URL(newSource, location.href).href;
+  // baseURI, as the src attribute resolves it: /publish serves the page from /public via <base>.
+  const url = new URL(newSource, document.baseURI).href;
   if (incoming.src !== url) incoming.src = url;
   if (videoShown()) incoming.play().catch(() => {});
   const fadeMs = Math.max(0, video.fadeSeconds * 1000);

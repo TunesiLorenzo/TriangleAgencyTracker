@@ -16,6 +16,7 @@ import {
 } from './storage.js';
 import { initTaskPanel, resetTasks } from './tasks.js';
 import { getSnapshot, isServerAvailable, startConfigSync } from './config.js';
+import { initReadOnly } from './readOnly.js';
 import { initRelationships, renderRelationships } from './relationships.js';
 import { initAnomalies, renderAnomalies } from './anomalies.js';
 import { awardMissionDistinctions, initAgency, renderAgency, resetAgency } from './agency.js';
@@ -263,6 +264,7 @@ async function init() {
     // A published copy: the snapshot's team, and no file to load another from or save it in.
     holdTeam(snapshot.team);
     ['loadTeamButton', 'autoSaveFileButton'].forEach(id => { document.getElementById(id).hidden = true; });
+    initReadOnly();
   } else {
     // With the tracker server this may load the team save kept on its computer before anything is rendered.
     await initAutomaticFileSave(document.getElementById('autoSaveFileButton'), { serverAvailable: isServerAvailable() });

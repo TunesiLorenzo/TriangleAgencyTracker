@@ -1,0 +1,81 @@
+/* The publish bar on /publish (static/publish.js). Only that page loads this: /public and
+   the copy on GitHub Pages never do. */
+
+#publishBar {
+  position: fixed;
+  z-index: 10100;   /* over the login screen too: publishing needs no sign-in */
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+  border-top: 1px solid color-mix(in srgb, var(--reality-color) 45%, transparent);
+  background: rgba(14, 14, 14, 0.96);
+  color: #ddd;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+body { padding-bottom: 64px; }
+
+.publish-tag {
+  flex: none;
+  color: var(--reality-color);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+#publishState { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #aaa; }
+#publishState.pending { color: #ffd60a; }
+#publishState.success { color: #5ed49a; }
+#publishState.error { color: #ffb0a8; white-space: normal; }
+
+#publishBar a,
+#publishBar button {
+  flex: none;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #555;
+  border-radius: 8px;
+  background: #262626;
+  color: #eee;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+#publishBar #publishButton {
+  border-color: var(--reality-color);
+  background: var(--reality-color);
+  color: #19170d;
+}
+#publishBar button:disabled { opacity: 0.4; }
+#publishBar [hidden] { display: none; }
+
+#publishDetails {
+  position: fixed;
+  z-index: 10100;
+  right: 18px;
+  bottom: 70px;
+  width: min(460px, calc(100vw - 36px));
+  max-height: 50vh;
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: rgba(14, 14, 14, 0.97);
+  color: #ccc;
+  font-size: 0.8rem;
+}
+#publishDetails h4 { margin: 0 0 6px; color: #fff; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; }
+#publishDetails ul { margin: 0 0 12px; padding-left: 18px; }
+#publishDetails li { word-break: break-all; }
+#publishDetails p { margin: 0 0 12px; }
+
+@media (max-width: 760px) {
+  #publishBar { flex-wrap: wrap; gap: 8px 10px; padding: 8px 12px; }
+  #publishState { flex-basis: 100%; order: 2; }
+  body { padding-bottom: 104px; }
+}
