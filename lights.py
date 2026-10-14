@@ -48,9 +48,11 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-# The standard two-computer layout keeps LightRPG beside the room display. The
-# launcher overrides this with loopback when both services intentionally share a PC.
-LIGHTRPG_URL = os.environ.get("LIGHTRPG_URL", "http://Laptop-Lorenzo:5000").rstrip("/")
+# LightRPG runs on this computer beside the tracker (run_locally.bat); LIGHTRPG_URL can
+# point at one elsewhere. TRIANGLE_LIGHTS=off (run_triangleOnly.bat) runs without lights:
+# cues and scenes are dropped and LightRPG is never started or stopped.
+LIGHTRPG_URL = os.environ.get("LIGHTRPG_URL", "http://127.0.0.1:5000").rstrip("/")
+ENABLED = os.environ.get("TRIANGLE_LIGHTS", "").strip().lower() != "off"
 LIGHTRPG_DIR = Path(os.environ.get("LIGHTRPG_DIR", Path(__file__).resolve().parent.parent / "LightRPG"))
 
 BULB_IDS = ("top_left", "center", "bottom_right")
@@ -167,6 +169,7 @@ class LightBridge:
         local = is_local_url(LIGHTRPG_URL)
         return {
             **self.status(fresh=True),
+            "enabled": ENABLED,
             "url": LIGHTRPG_URL,
             "local": local,
             "installed": installed,
@@ -177,6 +180,8 @@ class LightBridge:
 
     def start_lightrpg(self):
         """Launch LightRPG's web mode in its own console window, unless it already answers."""
+        if not ENABLED:
+            raise LightRPGError("The lights are off: the tracker was started without LightRPG")
         if self.status(fresh=True)["reachable"]:
             return "LightRPG is already running"
         if not is_local_url(LIGHTRPG_URL):
@@ -194,6 +199,8 @@ class LightBridge:
 
     def stop_lightrpg(self):
         """Ask LightRPG to stop, wherever it runs (Log Out, once the lights are done)."""
+        if not ENABLED:
+            return   # not ours: one started by hand keeps running
         try:
             call("POST", "/api/shutdown", timeout=5)
         except LightRPGError as error:
@@ -202,12 +209,16 @@ class LightBridge:
     # ---------- cues ----------
     def submit(self, cue, ambient, target):
         """Queue a cue; a cue still waiting to run is replaced, a timed one is cut short."""
+        if not ENABLED:
+            return
         with self.condition:
             self.pending = ("cue", cue, ambient, target)
             self.condition.notify_all()
 
     def submit_scene(self, name, session, target):
         """Queue a scene; like a cue, it replaces whatever is waiting or running."""
+        if not ENABLED:
+            return
         with self.condition:
             self.pending = ("scene", name, session, target)
             self.condition.notify_all()

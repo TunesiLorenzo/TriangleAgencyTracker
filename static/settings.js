@@ -120,7 +120,7 @@ const EFFECT_GROUPS = [
   },
   {
     key: 'voicemeeter', title: 'VoiceMeeter music level', eyebrow: 'LOCAL TEST',
-    hint: 'Fades one strip through the VoiceMeeter bridge running on this laptop. start_lan.bat starts the bridge in room and all modes. The command goes from this browser straight to 127.0.0.1, without crossing the LAN or visiting the desktop server.',
+    hint: 'Fades one strip through the VoiceMeeter bridge running on this laptop. run_locally.bat starts the bridge (run_triangleOnly.bat does not). The command goes from this browser straight to 127.0.0.1, without crossing the LAN or visiting the desktop server.',
     fields: [
       { key: 'strip', label: 'Strip (first is 0)', min: 0, max: 15, step: 1 },
       { key: 'drop', label: 'Dropped level', min: -60, max: 0, step: 1, unit: 'dB' },

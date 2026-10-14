@@ -26,6 +26,8 @@ import tempfile
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"       # the tracker file, unless TRACKER_DATA_DIR puts it elsewhere
+CASES_DIR = DATA_DIR / "cases"     # the case archive, published as cases/
 # Published as they are, beside index.html; of cases/, only the scans the archive names.
 ASSET_FOLDERS = ("css", "js", "audio", "images", "texts", "various")
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".webm"}   # as web.py's sound library
@@ -63,7 +65,7 @@ def read_tracker_file(path):
 
 
 def load_cases():
-    return (read_json(BASE_DIR / "cases" / "cases.json") or {}).get("cases") or []
+    return (read_json(CASES_DIR / "cases.json") or {}).get("cases") or []
 
 
 def list_sounds():
@@ -106,14 +108,19 @@ def snapshot_text(snapshot):
 
 
 def site_files(cases):
-    """(files, missing): every file of the published copy that comes from this folder, by its
-    path there (which is also its path here), and the scans the archive names but lacks."""
-    files = ["index.html"]
+    """(files, missing): every file of the published copy that comes from this folder, as
+    {path there: path here}, and the scans the archive names but lacks."""
+    files = {"index.html": "index.html"}
     for folder in ASSET_FOLDERS:
-        files += sorted(item.relative_to(BASE_DIR).as_posix() for item in (BASE_DIR / folder).rglob("*") if item.is_file())
+        for item in sorted((BASE_DIR / folder).rglob("*")):
+            if item.is_file():
+                files[item.relative_to(BASE_DIR).as_posix()] = item.relative_to(BASE_DIR).as_posix()
     missing = []
     for name in case_scans(cases):
-        (files if (BASE_DIR / "cases" / name).is_file() else missing).append(f"cases/{name}")
+        if (CASES_DIR / name).is_file():
+            files[f"cases/{name}"] = (CASES_DIR / name).relative_to(BASE_DIR).as_posix()
+        else:
+            missing.append(f"cases/{name}")
     return files, missing
 
 
@@ -122,9 +129,9 @@ def build(out, snapshot):
     files, missing = site_files(snapshot["cases"])
     if out.exists():
         shutil.rmtree(out)
-    for path in files:
+    for path, source in files.items():
         (out / path).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(BASE_DIR / path, out / path)
+        shutil.copy2(BASE_DIR / source, out / path)
     (out / SNAPSHOT_FILE).write_text(snapshot_text(snapshot), encoding="utf-8")
     # GitHub Pages: serve the folder as it is, without running it through Jekyll.
     (out / ".nojekyll").write_text("", encoding="utf-8")
@@ -150,7 +157,7 @@ def site_tree(snapshot, files, write=False):
     """The git tree of the published copy, hashed straight from this folder: no copy is
     made. With `write` its files are stored in the repository, ready to be pushed."""
     hash_args = ["hash-object", *(["-w"] if write else [])]
-    blobs = git(*hash_args, "--stdin-paths", stdin="\n".join(files), timeout=600).splitlines()
+    blobs = git(*hash_args, "--stdin-paths", stdin="\n".join(files.values()), timeout=600).splitlines()
     entries = [f"100644 blob {blob}\t{path}" for blob, path in zip(blobs, files)]
     entries.append(f"100644 blob {git(*hash_args, '--stdin', stdin=snapshot_text(snapshot))}\t{SNAPSHOT_FILE}")
     entries.append(f"100644 blob {git(*hash_args, '--stdin', stdin='')}\t.nojekyll")
@@ -188,7 +195,7 @@ def site_status(snapshot):
     files, missing = site_files(snapshot["cases"])
     tree = site_tree(snapshot, files)
     status = {"site": site_url(), "published": None, "changed": [], "data": [], "missing": missing,
-              "files": len(files) + 2, "size": sum((BASE_DIR / path).stat().st_size for path in files)}
+              "files": len(files) + 2, "size": sum((BASE_DIR / source).stat().st_size for source in files.values())}
     commit = published_commit()
     if commit is None:
         status["changed"] = [*files, SNAPSHOT_FILE, ".nojekyll"]
@@ -232,8 +239,8 @@ def publish(snapshot):
 def main():
     parser = argparse.ArgumentParser(description="Build a published, static copy of the viewer.")
     parser.add_argument("--out", default="dist", help="folder to write (default: dist); it is emptied first")
-    parser.add_argument("--data-dir", default=os.environ.get("TRACKER_DATA_DIR", "").strip() or str(BASE_DIR),
-                        help="folder holding the tracker file (default: TRACKER_DATA_DIR, else this folder)")
+    parser.add_argument("--data-dir", default=os.environ.get("TRACKER_DATA_DIR", "").strip() or str(DATA_DIR),
+                        help="folder holding the tracker file (default: TRACKER_DATA_DIR, else data/)")
     parser.add_argument("--publish", action="store_true", help=f"push the copy to the {BRANCH} branch of {REMOTE}")
     parser.add_argument("--status", action="store_true", help="say what a publish would change, and stop")
     args = parser.parse_args()

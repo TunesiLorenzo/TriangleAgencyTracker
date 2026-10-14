@@ -6,16 +6,19 @@ The front-ends share one local Flask server (same layout as MTG_Table):
   /public    the read-only copy published to GitHub Pages, live from the tracker file
   /publish   the same, with a bar to commit and push it (build_static.py)
 
-Settings and the team share one tracker file, triangle-agency-tracker.json in the
-configured data folder unless a viewer connecting Tracker Save put it elsewhere (the
-choice is remembered in tracker_location.json). TRACKER_DATA_DIR can place the data
-folder on a synced, mapped or removable drive. The viewer polls /api/config and applies
+Started by run_locally.bat (with LightRPG and the VoiceMeeter bridge) or
+run_triangleOnly.bat (alone, lights off), both through serve.py.
+
+Settings and the team share one tracker file, triangle-agency-tracker.json in the data
+folder (data/) unless a viewer connecting Tracker Save put it elsewhere (the choice is
+remembered in tracker_location.json). TRACKER_DATA_DIR can place the data folder on a
+synced, mapped or removable drive. The viewer polls /api/config and applies
 changes live, so tuning on /settings shows up on the display without a reload.
 Tracker data (agents, tasks, counters) stays in the viewer's browser storage and can
 also be mirrored atomically to the tracker file by viewers that connect Tracker Save:
 one shared copy for every browser, on this computer or on the LAN.
 Previous cases (HD scans of each mission's Rapporto) are too big for that, so they
-live in cases/ next to this file, indexed by cases/cases.json. A team file carries the
+live in data/cases/, indexed by data/cases/cases.json and served as /cases/. A team file carries the
 case index only; /api/cases/archive exports and restores the whole archive, scans
 included, as one .zip so it can move between terminals.
 The Manager's badge picture on the login screen is uploaded to images/badge/.
@@ -44,8 +47,10 @@ import build_static
 import lights
 
 BASE_DIR = Path(__file__).resolve().parent
+# What the tracker saves lives in data/, apart from the app itself (and out of git).
+DEFAULT_DATA_DIR = BASE_DIR / "data"
 _data_dir_setting = os.environ.get("TRACKER_DATA_DIR", "").strip()
-DATA_DIR = Path(_data_dir_setting).expanduser().resolve() if _data_dir_setting else BASE_DIR
+DATA_DIR = Path(_data_dir_setting).expanduser().resolve() if _data_dir_setting else DEFAULT_DATA_DIR
 try:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 except OSError as error:
@@ -60,8 +65,11 @@ LOCATION_FILE = DATA_DIR / "tracker_location.json"   # where the tracker file is
 # Settings and the team were two files before they shared the tracker file.
 LEGACY_CONFIG_FILE = DATA_DIR / "tracker_config.json"
 LEGACY_TEAM_FILE = DATA_DIR / "team_save.json"
-CASES_DIR = BASE_DIR / "cases"
+# Served as /cases/ all the same. Too big to follow TRACKER_DATA_DIR onto a synced drive.
+CASES_DIR = DEFAULT_DATA_DIR / "cases"
 CASES_FILE = CASES_DIR / "cases.json"
+# Where the tracker file and the archive were kept before data/, beside this file.
+OLD_DATA_FILES = ("triangle-agency-tracker.json", "tracker_location.json", "tracker_config.json", "team_save.json")
 BADGE_DIR = BASE_DIR / "images" / "badge"   # the Manager's photo on the login screen badge
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".webm"}
@@ -191,6 +199,35 @@ def set_aside(path):
         app.logger.warning("The unusable %s was kept as %s", path.name, aside.name)
     except OSError:
         app.logger.exception("The unusable %s could not be set aside", path.name)
+
+
+def move_old_data():
+    """Once: bring the tracker file and the case archive into data/ from beside this file,
+    where they were kept before. The tracker file a viewer chose is moved too when it was
+    in this folder, and stays where tracker_location.json says, relative to data/."""
+    moves = []
+    if not _data_dir_setting:
+        names = list(OLD_DATA_FILES) + [path.name for path in BASE_DIR.glob("*.unreadable-*.json")]
+        try:
+            stored = json.loads((BASE_DIR / "tracker_location.json").read_text(encoding="utf-8")).get("path")
+        except (OSError, ValueError, AttributeError):
+            stored = None
+        if isinstance(stored, str) and stored.strip() and not Path(stored).is_absolute():
+            names.append(stored)
+        for name in names:
+            source = (BASE_DIR / name).resolve()
+            if source.is_file() and source.is_relative_to(BASE_DIR):
+                moves.append((source, DATA_DIR / source.relative_to(BASE_DIR)))
+    old_cases = BASE_DIR / "cases"
+    if old_cases.is_dir():
+        moves.append((old_cases, CASES_DIR))
+    for source, target in moves:
+        if target.exists():
+            app.logger.warning("Not moving %s: %s already exists", source, target)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(target))
+        print(f"Moved {source.relative_to(BASE_DIR)} into {target.parent}", flush=True)
 
 
 def load_store():
@@ -507,11 +544,13 @@ def settings():
     return render_template("settings.html")
 
 
-for folder in ("css", "js", "audio", "images", "various", "cases", "Materiale", "texts"):
+ASSET_FOLDERS = {folder: BASE_DIR / folder for folder in ("css", "js", "audio", "images", "various", "Materiale", "texts")}
+ASSET_FOLDERS["cases"] = CASES_DIR
+for folder, path in ASSET_FOLDERS.items():
     app.add_url_rule(
         f"/{folder}/<path:filename>",
         endpoint=f"asset_{folder}",
-        view_func=lambda filename, folder=folder: send_from_directory(BASE_DIR / folder, filename),
+        view_func=lambda filename, path=path: send_from_directory(path, filename),
     )
 
 
@@ -1092,6 +1131,8 @@ def saved_light_settings():
 
 def autostart_lights():
     """Launch LightRPG with the tracker when /settings asks for it (off by default)."""
+    if not lights.ENABLED:
+        return "off (started without LightRPG)"
     saved = saved_light_settings()
     if not (saved.get("enabled") and saved.get("autoStart", True)):
         return None
@@ -1186,4 +1227,5 @@ def shutdown():
     return jsonify({"ok": True})
 
 
+move_old_data()
 load_store()

@@ -2,13 +2,16 @@ __pycache__/
 *.py[cod]
 .venv/
 .agents/
-tracker_config.json
-team_save.json
+# What the tracker saves: team, settings and the case archive (web.py).
+data/
+# Where those were kept before data/; the server moves them there on its next start.
 triangle-agency-tracker.json
 tracker_location.json
+tracker_config.json
+team_save.json
+cases/
 *.unreadable-*.json
 *.json.tmp
 Materiale/
-cases/
 images/badge/
 dist/
