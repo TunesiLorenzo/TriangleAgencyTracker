@@ -1,0 +1,218 @@
+/* layout.css */
+
+html, body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Optional: prevent child elements from creating scroll */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  color: #fff;
+  font-family: 'ITCAvantGarde', sans-serif;
+  overflow-x: hidden;
+  overflow-y: auto;
+  width: 100%;
+  background-color: #000;
+}
+
+/* background Hue container (fixed) */
+#backgroundHue {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+#backgroundHue video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#backgroundHue .secondary-background { opacity: 0; }
+
+/* Reduced-motion mode skips 4K video decoding and uses the existing 1080p still. */
+html[data-motion="reduced"] #backgroundHue {
+  background: #000 url('../images/bck.png') center / cover no-repeat;
+}
+html[data-motion="reduced"] #backgroundHue video { display: none; }
+
+
+/* The shake moves and tilts #pageWrapper a few px every frame. A transformed box counts
+   toward the page's scrollable size, so a page that just fits the window gained and lost
+   a scrollbar frame by frame. Clipping here keeps the shake out of the page size; clip
+   (unlike hidden) is no scroll container, so sticky elements still stick. */
+#pageFrame { overflow: clip; }
+
+/* page wrapper for jitter - keep jitter transforms isolated */
+#pageWrapper {
+  min-height: 100svh;
+  transform-origin: center center;
+}
+#pageWrapper.atmosphere-motion { will-change: transform; }
+
+
+/* The branch panel, the graphs and Next Mission belong to the Agents tab (app.js sets data-view). */
+body:not([data-view="agentsTab"]) .world-section,
+body:not([data-view="agentsTab"]) .mission-controls { display: none; }
+
+
+/* small layout helpers */
+.container {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  width: 100%;
+  min-height: 100svh;
+  padding: clamp(8px, 1.5vw, 24px);
+  position:relative;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(18px, 2.5vw, 36px);
+  width: 100%;
+}
+.top-buttons-right {
+  position:absolute;
+  top:10px;
+  right:10px;
+  display:flex;
+  gap:10px;
+  opacity:0.6;
+}
+.top-buttons-right button {
+  padding:5px 10px;
+  border-radius:6px;
+  background:#222;
+  border:none;
+  color:#fff;
+  cursor:pointer;
+}
+
+.top-buttons-left {
+  position:absolute;
+  top:10px;
+  left:10px;
+  display:flex;
+  gap:10px;
+  opacity:0.6;
+}
+.top-buttons-left button {
+  padding:5px 10px;
+  border-radius:6px;
+  background:#222;
+  border:none;
+  color:#fff;
+  cursor:pointer;
+}
+
+@media (max-width: 760px) {
+  .container {
+    gap: 12px;
+  }
+
+  .top-buttons-left,
+  .top-buttons-right {
+    position: static;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (orientation: portrait) {
+  html,
+  body {
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  #pageWrapper,
+  .container {
+    height: auto;
+    min-height: 100dvh;
+  }
+
+  .container {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(min-content, 1fr) auto auto auto;
+    align-items: stretch;
+    padding: clamp(8px, 1.2vw, 18px);
+    overflow: visible;
+  }
+
+  /* On Agents, cards/tasks size naturally and the 2x2 dashboard takes any spare height. */
+  body[data-view="agentsTab"] .container {
+    grid-template-rows: auto auto auto minmax(min-content, 1fr) auto auto;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: stretch;
+    align-content: start;
+    min-width: 0;
+    gap: clamp(8px, 1.4vh, 16px);
+    overflow: visible;
+  }
+
+  /* each group keeps to its half of the top edge and wraps instead of running into the other */
+  .top-buttons-left,
+  .top-buttons-right {
+    position: absolute;
+    width: auto;
+    max-width: calc(50% - 16px);
+    flex-wrap: wrap;
+    gap: 5px;
+    z-index: 5;
+  }
+
+  .top-buttons-left { justify-content: flex-start; }
+  .top-buttons-right { justify-content: flex-end; }
+
+  .top-buttons-left button,
+  .top-buttons-right button,
+  .top-buttons-right .nav-link {
+    padding: 5px 9px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  .top-buttons-left,
+  .top-buttons-right {
+    gap: 4px;
+  }
+
+  .top-buttons-left button,
+  .top-buttons-right button,
+  .top-buttons-right .nav-link {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  .workspace {
+    gap: 6px;
+  }
+}

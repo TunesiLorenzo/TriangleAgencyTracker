@@ -1,0 +1,6 @@
+/* cursor.css - the Agency's pointer: a red triangle tilted like an arrow, tip at the hotspot.
+   It replaces every cursor (links, text fields, disabled buttons, the login's wait), so it
+   wins over each component's own `cursor` with !important. Loaded last. */
+*, *::before, *::after {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpolygon points='2,2 21,9 9,21' fill='%23ff3b30' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 2 2, default !important;
+}

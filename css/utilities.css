@@ -1,0 +1,45 @@
+h1 {
+  /* the view tabs below the title supply the rest of the gap */
+  margin: clamp(40px, 6vw, 56px) 0 clamp(20px, 3vw, 40px);
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  h1 { margin-bottom: 12px; }
+}
+
+@media (orientation: portrait) {
+  h1 {
+    width: 100%;
+    /* clear the two wrapped rows of top buttons */
+    margin-top: clamp(72px, 9.5vw, 96px);
+    margin-bottom: clamp(8px, 1.4vh, 20px);
+    padding-inline: clamp(100px, 19vw, 210px);
+    font-size: clamp(32px, 6vw, 64px);
+    line-height: 1.05;
+  }
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  h1 {
+    padding-inline: clamp(120px, 26vw, 160px);
+    font-size: clamp(18px, 5vw, 26px);
+  }
+}
+
+.char,
+.world,
+.counter,
+.graph-box {
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.char:hover,
+.world:hover,
+.counter:hover,
+.graph-box:hover {
+  transform: translateY(-2px);
+}
+
+.char .thumb { z-index: 2; }

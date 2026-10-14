@@ -1,0 +1,37 @@
+/* A published copy is for looking only (js/readOnly.js): the buttons that add, remove or
+   advance things are gone. The controls that also show a value stay, frozen. */
+
+html[data-read-only] :is(
+  .top-buttons-left, .top-buttons-right > :not(#logoutButton), .session-controls,
+  .mission-controls, #restartTimelineButton,
+  .remove-btn, .death-btn, .add-task-btn, .task-del,
+  .rel-add, .rel-remove-page, .anomaly-custom-controls,
+  .agency-add, .agency-remove-item, .agency-step, .agency-distinction-revoke, .agency-distinction-award,
+  .agency-item-page-icon-edit
+) {
+  display: none;
+}
+
+/* Disabled dropdowns keep their normal colours: they are showing a value, not unavailable.
+   (Not inputs: the checkboxes are drawn by their labels over a hidden, opacity 0 box.) */
+html[data-read-only] select:disabled {
+  opacity: 1;
+  color: inherit;
+}
+
+/* Of the controls along the top, only Log Out is left, moved up there as DISCONNECT. */
+html[data-read-only] .top-buttons-right { opacity: 1; }
+html[data-read-only] #logoutButton {
+  gap: 10px;
+  padding: 12px 26px;
+  border: 2px solid var(--login-red);
+  background: rgba(255,59,48,0.18);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  opacity: 1;
+  box-shadow: 0 0 18px rgba(255,59,48,0.3);
+}
+html[data-read-only] #logoutButton svg { width: 18px; height: 18px; }
+html[data-read-only] #logoutButton:hover,
+html[data-read-only] #logoutButton:focus-visible { background: rgba(255,59,48,0.45); }

@@ -1,0 +1,14 @@
+# Anomaly tab: the poster carousel. Each poster appears as the Agency printed it, gets tagged
+# in blue marker, the Agency purges it, and the next one comes up.
+# One poster per line, the Agency's version before >> and what gets written over it after:
+#   Icon | Title | Slogan | picture (optional, in images/promo/) >> New title | New slogan
+# Empty lines and lines starting with # are ignored. Without a picture, the icon is the poster art.
+
+▲ | Eccellenza | Un’Anomalia catturata vale più di mille rapporti. | poster-eccellenza.jpg >> Eccezione | Un’Anomalia libera vale più di mille rapporti.
+⏱️ | Puntualità | Il Tempo è una risorsa aziendale. Non sprecarlo. | poster-puntualita.jpg >> Il Tempo è tuo | Smetti di timbrare.
+🤝 | Lavoro di squadra | Nessun Agente è un’isola. Tranne quando lo richiede il Caos. | poster-squadra.jpg >> Branco | Nessun Agente è un’isola. Siamo un arcipelago.
+👁️ | Discrezione | Ciò che i Testimoni non vedono, l’Agenzia non deve cancellarlo. | poster-discrezione.jpg >> Guarda | Quello che non devi vedere è quello che sei.
+📋 | Conformità | Le domande sono già state poste. Le risposte sono già state approvate. >> Chiedi ancora | Chi ha approvato le risposte?
+🔒 | Sicurezza | Una porta chiusa è una porta che protegge. >> Apri | Ogni serratura ha due lati.
+🧠 | Lucidità | Un pensiero non autorizzato è un pensiero sprecato. >> Sogna | Nessun pensiero è sprecato. Neanche quelli che temono.
+🏢 | Appartenenza | L’Agenzia è la tua famiglia. Le famiglie non si lasciano. >> Fuga | Le famiglie vere ti lasciano andare.

@@ -1,0 +1,11 @@
+# Phone: what a relationship in the Network (bond 9) texts (close, affectionate).
+# One message per line; one is picked at random. Empty lines and lines starting with # are ignored.
+# {agent} is replaced by the agent's name.
+
+Ti voglio bene, lo sai vero? ❤️
+Qualsiasi cosa ti serva, io ci sono.
+La cena è pronta. Torna a casa 🍝
+Qualunque cosa sia, ce la fai. Credo in te.
+Ti ho lasciato la luce accesa.
+{agent}, ricordati di dormire ogni tanto 💛
+Non so cosa fai tutto il giorno, ma sono qui.

@@ -1,0 +1,675 @@
+/* components.css - characters, world boxes, triangles and form elements */
+
+/* Generic panel/card base used by .char, .panel, .box, .graph-box, .world, .counter */
+.panel, .box, .graph-box, .char, .world, .counter {
+  background: linear-gradient(145deg, #2f2f2f 0%, #232323 40%, #1f1f1f 100%);
+  border-radius: 12px;
+  padding: 12px;
+  position: relative;
+  color: #fff;
+  transition: transform 220ms cubic-bezier(.2,.9,.2,1), box-shadow 220ms;
+  box-shadow:
+    0 30px 50px rgba(0,0,0,0.95),
+    0 12px 20px rgba(0,0,0,0.75),
+    inset 0 1px 0 rgba(255,255,255,0.03),
+    inset 0 -6px 18px rgba(0,0,0,0.6);
+}
+
+/* Slight lift on hover */
+.panel:hover, .box:hover, .graph-box:hover, .char:hover, .world:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 40px 70px rgba(0,0,0,0.98),
+    0 18px 30px rgba(0,0,0,0.8),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+/* Characters grid */
+.characters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  column-gap: clamp(14px, 2vw, 24px);
+  row-gap: clamp(28px, 3vw, 44px);
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 8px 24px;
+}
+
+.char {
+  background:#222;
+  padding:10px;
+  border-radius:10px;
+  border:2px solid transparent;
+  border-top:3px solid rgba(255,255,255,0.12);
+  width:100%;
+  max-width:360px;
+  justify-self:center;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  position:relative;
+  transition: all 0.3s ease;
+}
+/* The transparent sides and bottom reserve the same space as the Top Performer frame. */
+/* top merit: a gold frame (the badge and the shine are in effects.css) */
+.char.star {
+  border: 2px solid var(--gold-border);
+  border-top-width: 3px;
+  box-shadow:
+    0 0 0 1px rgba(255,215,0,0.25),
+    0 0 26px rgba(255,215,0,0.28),
+    0 30px 50px rgba(0,0,0,0.95);
+}
+/* top demerit: a little crooked, framed in a dashed "under review" line */
+.char.tilt { transform: rotate(-2deg); }
+.char.top-demerit { outline: 2px dashed rgba(10,132,255,0.75); outline-offset: -6px; }
+
+/* "Top Performer" / "Sotto osservazione": a dedicated row below the net score. */
+.char .standing-region {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 28px;
+  margin-top: 7px;
+}
+.char .standing-badge {
+  position: static;
+  max-width: 100%;
+  z-index: 35;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+}
+.char .thumb.standing-badge {
+  background: linear-gradient(90deg, #ffd60a, #ffe98a);
+  color: #3a2a00;
+}
+/* Download (Export) button: arrow icon */
+.char .export-btn {
+  position: absolute;
+  top: 8px;
+  right: 72px;
+  z-index: 62;
+  padding: 4px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: rgba(255,255,255,0.05);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.char .export-btn:hover {
+  background: rgba(255,255,255,0.10);
+  transform: translateY(-1px);
+}
+
+.char .export-btn::before {
+  content: "⬇";    /* unicode arrow */
+  font-size: 16px;
+  color: #ddd;
+  line-height: 1;
+}
+
+/* remove button */
+.char .remove-btn {
+  position:absolute; top:5px; left:5px;
+  background:#333; border:none; border-radius:50%;
+  width:24px; height:24px; color:#fff; font-weight:bold;
+}
+
+/* char image + stats */
+.char img { width:80px; height:80px; background:#444; border-radius:33%; margin-bottom:5px; object-fit:cover; }
+.stat { width:100%; margin:2px 0; display:flex; justify-content:space-between; }
+.stat .label { flex:1; }
+.stat .value { flex:1; text-align:right; background:#333; color:#fff; border-radius:4px; padding:1px 4px; font-size:inherit; }
+
+/* tracker row: triangles + counter */
+.tracker-row { display:flex; gap:10px; align-items:center; justify-content:center; margin:4px 0; }
+/* each triangle keeps its counter close; the merit and demerit pairs sit well apart */
+.tracker-row .counter-input.merit { margin-right: 14px; }
+.triangle, .triangle-down, .counter-input {
+  background: linear-gradient(145deg, #343434, #2a2a2a);
+  box-shadow:
+    0 10px 18px rgba(0,0,0,0.8),
+    inset 0 1px 3px rgba(255,255,255,0.04),
+    inset 0 -6px 12px rgba(0,0,0,0.6);
+  border-radius:6px;
+  color:#fff;
+}
+.triangle, .triangle-down {
+  width:40px; height:40px; display:flex; justify-content:center; align-items:center;
+  font-weight:bold; font-size:14px; cursor:pointer; user-select:none;
+}
+.triangle { clip-path: polygon(50% 0%,0% 100%,100% 100%); background: red; color:#fff; }
+.triangle-down { clip-path: polygon(0% 0%,100% 0%,50% 100%); background: blue; color:#fff; }
+/* Sealed merits (meritLock.js): the count stays in the triangle, but a padlock is drawn instead.
+   The net score under them is sealed the same way. */
+body.merits-locked .char :is(.triangle, .triangle-down, .net-indicator) { font-size: 0; }
+body.merits-locked .char :is(.triangle, .triangle-down, .net-indicator)::after {
+  --padlock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z'/%3E%3C/svg%3E");
+  content: '';
+  width: 13px;
+  height: 13px;
+  background: currentColor;
+  -webkit-mask: var(--padlock) center / contain no-repeat;
+  mask: var(--padlock) center / contain no-repeat;
+}
+/* nudged toward the wide end of each triangle, where the padlock fits */
+body.merits-locked .char .triangle::after { translate: 0 4px; }
+body.merits-locked .char .triangle-down::after { translate: 0 -4px; }
+/* the net score keeps its direction and colour: only the number gives way to the padlock */
+body.merits-locked .char .net-indicator { display: flex; align-items: center; justify-content: center; gap: 5px; }
+body.merits-locked .char .net-indicator::before { content: '\25AC'; font-size: 13px; }           /* level */
+body.merits-locked .char .net-indicator.positive::before { content: '\25B2'; }                   /* up */
+body.merits-locked .char .net-indicator.negative::before { content: '\25BC'; }                   /* down */
+.counter-input {
+  width:48px; padding:5px 2px; text-align:center; background:#1c1c1c; color:#fff; border-radius:4px;
+  border:1px solid rgba(255,255,255,0.18);
+  font-size:16px; font-weight:700; font-variant-numeric:tabular-nums;
+  -moz-appearance:textfield; appearance:textfield;   /* no spinner arrows eating the digits */
+}
+.counter-input::-webkit-inner-spin-button,
+.counter-input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+
+/* tint overlays (merit/demerit) */
+/* standing: more merits than demerits (red, like the merit triangle) or the other way round (blue) */
+.char.merit {
+  border-top-color: var(--competency-color);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--competency-color) 22%, transparent), transparent 140px),
+              linear-gradient(145deg, #2f2f2f 0%, #232323 40%, #1f1f1f 100%);
+}
+.char.demerit {
+  border-top-color: var(--anomaly-color);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--anomaly-color) 22%, transparent), transparent 140px),
+              linear-gradient(145deg, #2f2f2f 0%, #232323 40%, #1f1f1f 100%);
+}
+
+/* dashboard indicators: net score badge + compact activity meter */
+.char .net-indicator {
+  margin-top: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.4);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+}
+.char .net-indicator.positive { color: #ff8a82; }
+.char .net-indicator.negative { color: #7fb8ff; }
+.char .net-indicator.top-net {
+  background: linear-gradient(90deg, #ffd60a, #ffe98a);
+  color: #3a2a00;
+  box-shadow: 0 0 10px rgba(255,215,0,0.45);
+}
+
+.char .activity-meter {
+  width: 80%;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  margin-top: 4px;
+  background: rgba(255,255,255,0.06);
+}
+.char .activity-fill { height: 100%; }
+.char .activity-fill.merit { width: calc(var(--merit-share, 0) * 100%); background: var(--competency-color); }
+.char .activity-fill.demerit { width: calc(var(--demerit-share, 0) * 100%); background: var(--anomaly-color); }
+/* Sealed merits: the split is pulled most of the way to the middle and wanders widely with
+   --seal-drift (-1 to 1, from dashboard.js), so the lean can be guessed but the meter is never
+   empty or one-sided. */
+body.merits-locked .char .activity-fill.merit {
+  width: calc((0.5 + (var(--merit-share, 0) - var(--demerit-share, 0)) * 0.18 + var(--seal-drift, 0) * 0.3) * 100%);
+}
+body.merits-locked .char .activity-fill.demerit { flex: 1; width: auto; }
+
+.char .warning-badge.standing-badge {
+  border: 1px dashed var(--anomaly-color);
+  background: rgba(10,20,40,0.85);
+  color: #9fcaff;
+}
+/* the portrait frame (it wears the Distinzioni, see agency.css) and the ribbons under it */
+.char .char-portrait { width: 80px; height: 96px; margin-bottom: 5px; }
+.char .char-portrait img { margin: 0; }
+.char-ribbons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin: 2px 0 6px;
+}
+.char-ribbons .agency-ribbon {
+  align-self: center;
+  max-width: 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+/* Invisible copies retain the exact wrapped height of both possible ribbons. */
+.char-ribbons .agency-ribbon.empty { visibility: hidden; }
+
+/* The branch, risk and two charts always share two complete dashboard rows. */
+.world-section {
+  display: grid;
+  grid-template-areas:
+    "branch risk"
+    "timeline performance";
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  align-items: stretch;
+  gap: clamp(6px, 1vw, 20px);
+  width: 100%;
+  min-width: 0;
+  margin-top: 20px;
+}
+.world { grid-area: branch; min-width: 0; }
+.graph-box { min-width: 0; }
+.graph-box[data-panel="mission-timeline"] { grid-area: timeline; }
+.graph-box[data-panel="agent-performance"] { grid-area: performance; }
+.graph-box[data-panel="mission-risk"] { grid-area: risk; }
+.world { display:flex; flex-direction:column; align-items:center; gap:6px; background:#222; padding:10px 20px; border-radius:10px; }
+.world-counter { display:flex; gap:5px; align-items:center; }
+.counter { background:#555; padding:5px 10px; border-radius:6px; cursor:pointer; user-select:none; }
+input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#333; color:#fff; width:120px; }
+/* Task panel */
+#taskPanel {
+  position: static;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  overflow: visible;
+  background: rgba(0,0,0,0.35);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 16px;
+}
+.task-controls { display: flex; flex-direction: column; justify-content: space-between; gap: 6px; }
+.task-stage { position: relative; min-width: 0; min-height: 70px; overflow: hidden; border-radius: 8px; }
+.task-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+  gap: 8px;
+  padding: 2px;
+  overflow: visible;
+}
+.task { min-height: 68px; padding:12px; margin-bottom:8px; border-radius:8px; background: rgba(255,255,255,0.02); display:flex; flex-direction:column; justify-content:center; }
+.task.used { opacity:0.45; filter:grayscale(60%); }
+.task.used .task-del { opacity:1; filter:none; pointer-events:auto; }
+.task-title{flex:1; font-size:16px; line-height:1.2}
+.task-meta{font-size:13px; line-height:1.25; opacity:0.8; margin-top:6px}
+
+
+@media (orientation: portrait) {
+  .characters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    align-items: start;
+    column-gap: clamp(10px, 1.5vw, 18px);
+    row-gap: clamp(12px, 1.6vh, 24px);
+    height: auto;
+    padding: 2px 6px 12px;
+    overflow: visible;
+  }
+
+  .char {
+    grid-column: auto;
+    max-width: none;
+    min-height: max-content;
+    height: auto;
+    align-self: start;
+    padding: clamp(6px, 0.7vw, 10px);
+    font-size: clamp(12px, 1.45vw, 15px);
+    justify-content: flex-start;
+  }
+
+  .char .char-portrait {
+    width: clamp(48px, 5.2vh, 76px);
+    height: clamp(58px, 6.3vh, 92px);
+  }
+
+  .stat {
+    margin: 1px 0;
+  }
+
+  .stat .value {
+    min-width: 0;
+  }
+
+  .tracker-row {
+    gap: clamp(6px, 0.9vw, 10px);
+    margin: 2px 0;
+  }
+
+  .triangle,
+  .triangle-down {
+    width: clamp(30px, 3.2vh, 40px);
+    height: clamp(30px, 3.2vh, 40px);
+  }
+
+  .counter-input {
+    width: clamp(40px, 3.6vw, 48px);
+    font-size: 15px;
+  }
+
+  /* Task tiles wrap and the banner grows; neither tasks nor agents scroll inside a menu. */
+  #taskPanel {
+    position: static;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+    padding: 6px;
+    overflow: visible;
+  }
+
+  #taskPanel .task-controls {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
+
+  #taskPanel .add-task-btn {
+    background: #161616;
+  }
+
+  #taskPanel .task-stage { min-height: 72px; }
+
+  #taskPanel .task-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+    height: auto;
+    padding: 0;
+    overflow: visible;
+  }
+
+  #taskPanel .task {
+    justify-content: center;
+    min-width: 0;
+    min-height: 72px;
+    margin-bottom: 0;
+    padding: 9px 30px 9px 12px;
+  }
+
+  #taskPanel .task-title {
+    flex: none;
+    font-size: 16px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  #taskPanel .task-meta { margin-top: 4px; font-size: 13px; white-space: normal; }
+
+  /* Four equal-width cells: each pair fills its entire row without empty gutters. */
+  .world-section {
+    grid-template-rows: auto minmax(170px, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .world,
+  .graph-box {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .world {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px 16px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .world .sphere-icon { display: none; }
+  .world-counter .counter { padding: 3px 9px; }
+
+  .world input[type=text] {
+    width: clamp(90px, 14vw, 140px);
+  }
+
+  .world .anomaly-tracker {
+    flex-direction: row;
+    width: auto;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .world .anomaly-counters {
+    grid-template-columns: repeat(3, auto);
+    width: auto;
+  }
+
+  .world .anomaly-stat {
+    flex-direction: row;
+    gap: 5px;
+    padding: 3px 7px;
+  }
+}
+
+@media (max-width: 760px) and (orientation: landscape) {
+  #taskPanel {
+    position: static;
+    max-height: none;
+  }
+
+  .characters {
+    grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+    row-gap: 32px;
+  }
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  .characters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    row-gap: 10px;
+  }
+
+  .char {
+    grid-column: auto;
+    font-size: clamp(11px, 2vw, 13px);
+  }
+
+  .world-section {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    width: 100%;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 540px) and (orientation: portrait) {
+  .world .anomaly-tracker,
+  .world .anomaly-counters { width: 100%; }
+  .world .anomaly-counters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .world .anomaly-stat { flex-direction: column; padding: 4px 2px; }
+}
+
+/* A phone cannot display three readable agent cards or two readable charts per row.
+   Keep the 2x2 dashboard on tablet/desktop; let the page flow on narrow screens. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .characters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .char { font-size: clamp(12px, 2vw, 14px); }
+}
+
+@media (max-width: 560px) and (orientation: portrait) {
+  .characters { grid-template-columns: minmax(0, 1fr); }
+  .char { max-width: 360px; font-size: 14px; }
+  .world-section {
+    grid-template-areas:
+      "branch"
+      "risk"
+      "timeline"
+      "performance";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(4, auto);
+  }
+}
+
+/* Anomaly outcome tracker: each outcome is a solid colour tile
+   (captured = red, killed = yellow, escaped = blue). */
+.anomaly-tracker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.anomaly-title { font-size: 0.85em; letter-spacing: 1px; opacity: 0.75; }
+.anomaly-counters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+.anomaly-stat {
+  --outcome: #555;
+  --outcome-text: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px 4px 4px;
+  border-radius: 8px;
+  background: var(--outcome);
+  color: var(--outcome-text);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--outcome) 45%, transparent), inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.anomaly-stat.captured { --outcome: var(--captured-color); }
+.anomaly-stat.killed   { --outcome: var(--killed-color); --outcome-text: #111; }
+.anomaly-stat.escaped  { --outcome: var(--escaped-color); }
+.world .anomaly-stat .counter {
+  min-width: 2em;
+  padding: 1px 8px;
+  font-size: 1.05em;
+  font-weight: 700;
+  background: rgba(0,0,0,0.22);
+  color: inherit;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.35);
+}
+.world .anomaly-stat .counter:hover { background: rgba(0,0,0,0.35); }
+.anomaly-label { font-size: 0.62em; font-weight: 700; letter-spacing: 0.5px; color: inherit; }
+
+/* ---------- Branch panel: big numbers that fill the box ----------
+   The branch name on one row, a tile per counter, then the anomaly outcomes. Sizes follow
+   the panel's own width (cqi), so the same rules fill the half-width panel in portrait and
+   the wider one in landscape without changing the panel's height. Placed after the
+   orientation blocks above so it replaces their compact layout. */
+.world-section .world {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.world-section .world > .sphere-icon { display: none; }
+.world-section .world > label {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: clamp(11px, 3.6cqi, 20px);
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.world-section .world > label::before { content: '\1F310'; }   /* the globe of the hidden sphere icon */
+.world-section .world > label input[type=text] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 0.3em 0.6em;
+  border-radius: 6px;
+  font-size: 1em;
+}
+/* label above, number below; numbers line up across tiles even when a label wraps */
+.world-section .world-counter {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
+  align-items: end;
+  gap: 0.35em;
+  min-width: 0;
+  padding: 0.5em 0.3em;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.25);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+  text-align: center;
+}
+.world-section .world-label {
+  font-size: clamp(10px, 3.2cqi, 18px);
+  letter-spacing: 0.5px;
+  line-height: 1.15;
+}
+.world-section .world-counter .counter {
+  min-width: 1.8em;
+  padding: 0.05em 0.4em;
+  font-size: clamp(24px, 12cqi, 64px);
+  line-height: 1.1;
+}
+.world-section .world-counter .witness-flash { position: absolute; top: 0.3em; right: 0.4em; margin: 0; }
+.world-section .world .anomaly-tracker {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3em;
+  width: auto;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.world-section .world .anomaly-title { font-size: clamp(10px, 2.8cqi, 15px); text-align: center; }
+.world-section .world .anomaly-counters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: auto;
+}
+.world-section .world .anomaly-stat { flex-direction: column; gap: 0.15em; padding: 0.35em 0.3em; }
+.world-section .world .anomaly-stat .counter { font-size: clamp(16px, 7cqi, 38px); padding: 0 0.4em; line-height: 1.15; }
+.world-section .world .anomaly-label { font-size: clamp(9px, 2.6cqi, 14px); }
+
+/* Competency dropdown on agent cards, styled like the other stat fields */
+.stat select.value {
+  appearance: none;
+  border: none;
+  font: inherit;
+  font-weight: 700;
+  text-align: right;
+  text-align-last: right;
+  cursor: pointer;
+}
+.stat select.value option { color: #fff; background: #222; }

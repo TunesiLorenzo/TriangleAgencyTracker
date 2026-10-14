@@ -1,0 +1,72 @@
+/* silence.css - "Silenzio di Tomba" (silence.js): the display loses its colour as chaos rises,
+   a heartbeat trace runs under the title, and a flatline closes darkness in from the edges
+   before everything stops. Only a signed-in display changes; the login screen sits above
+   all of this. */
+
+/* Takes the colour out of everything beneath it, dialogs and toasts included: by
+   --silence-grey (0 to 1, set by silence.js from the Chaos counter), thinned for a moment
+   on every beat, and completely while the heart falters and is stopped. */
+#silenceVeil {
+  position: fixed;
+  inset: 0;
+  z-index: 10040;   /* over dialogs and toasts, under the login screen */
+  pointer-events: none;
+  -webkit-backdrop-filter: grayscale(1) contrast(1.08) brightness(0.9);
+  backdrop-filter: grayscale(1) contrast(1.08) brightness(0.9);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 1.4s ease, visibility 0s 1.4s;
+}
+html.silence[data-session="open"] #silenceVeil {
+  opacity: var(--silence-grey, 0.3);
+  visibility: visible;
+  transition: opacity 1.4s ease;
+}
+/* --silence-fail: the seconds the heart takes to stop, set by silence.js for each flatline */
+html.silence-failing[data-session="open"] #silenceVeil {
+  opacity: 1;
+  transition: opacity var(--silence-fail, 5s) ease-in;
+}
+html.silence-flatline[data-session="open"] #silenceVeil {
+  opacity: 1;
+  transition: opacity 0.3s linear;
+}
+
+/* Darkness from the edges: it starts wide of the screen and closes in until the heart stops. */
+#silenceVignette {
+  position: fixed;
+  inset: 0;
+  z-index: 10039;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 16%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.97) 86%);
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(1.8);
+  transition: opacity 1.4s ease, transform 1.4s ease, visibility 0s 1.4s;
+}
+html.silence-failing[data-session="open"] #silenceVignette,
+html.silence-flatline[data-session="open"] #silenceVignette {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+html.silence-failing[data-session="open"] #silenceVignette {
+  transition: opacity var(--silence-fail, 5s) ease-in, transform var(--silence-fail, 5s) ease-in;
+}
+
+/* The trace is drawn by silence.js, in the space between the title and the tabs. */
+html.silence-heart h1 { position: relative; }
+.silence-trace {
+  display: none;
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  translate: -50% 0;
+  width: min(88vw, 560px);
+  height: 36px;
+  margin: 0;
+  background: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+html.silence-heart[data-session="open"] .silence-trace { display: block; }

@@ -1,0 +1,10 @@
+# Phone: what a relationship with a bond of 0-3 texts (cold, awkward).
+# One message per line; one is picked at random. Empty lines and lines starting with # are ignored.
+# {agent} is replaced by the agent's name.
+
+Ci conosciamo? Mi hai lasciato il tuo numero alla festa.
+Hai ancora il mio trapano?
+Ok.
+La riunione di condominio è giovedì. Ci sarai, stavolta?
+{agent}, il tuo pacco è da me da due settimane.
+Hey {agent}, mi devi ancora 20€ 🙃
