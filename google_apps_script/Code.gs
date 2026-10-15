@@ -403,7 +403,8 @@ function publicArchive_(state, nextAutomaticSyncAt) {
           ...(message.class ? { class: message.class } : {}),
           ...eggOf_(message.tags)
         })),
-      seen: Object.fromEntries(SIDES.map(side => [side, topic.seen[side]]))
+      seen: Object.fromEntries(SIDES.map(side => [side, topic.seen[side]])),
+      deleted: Object.keys(topic.deleted)
     };
   });
   return {

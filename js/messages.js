@@ -51,6 +51,7 @@ const byChannel = new Map();     // channel -> the conversations on it
 const histories = new Map();     // channel -> [{ id, time, side, from, text }], oldest first
 const receipts = new Map();      // channel -> one Set of seen message ids per conversation side
 const localSeen = new Map();     // `${channel}|${side}` -> Set, what this device showed
+const deletedMessages = new Map(); // channel -> IDs purged by the durable collector
 const offered = new Set();       // `${channel}|${side}|${id}`, already queued this session
 let source = null;               // the live EventSource on every channel
 let started = false;
@@ -111,6 +112,20 @@ const incoming = (conv, message) => message.side !== conv.side;
 function history(channel) {
   if (!histories.has(channel)) histories.set(channel, readList(`ta-chat-${channel}`));
   return histories.get(channel);
+}
+
+function deletedSet(channel) {
+  if (!deletedMessages.has(channel)) deletedMessages.set(channel, new Set());
+  return deletedMessages.get(channel);
+}
+
+function applyDeleted(channel, ids) {
+  const purged = deletedSet(channel);
+  ids.forEach(id => purged.add(String(id)));
+  if (!purged.size) return;
+  const kept = history(channel).filter(message => !purged.has(String(message.id)));
+  histories.set(channel, kept);
+  writeList(`ta-chat-${channel}`, kept.slice(-HISTORY_LIMIT));
 }
 
 /** Keep a message in memory; persist only the recent tail in browser storage. The Google
@@ -182,12 +197,14 @@ function ingest(event) {
     updateBadge();
     return null;
   }
+  const id = String(event.sequence_id || event.id || '');
+  if (!id || deletedSet(event.topic).has(id)) return null;
   const messageClass = MESSAGE_CLASSES.find(item => tags.includes(`ta-class-${item}`));
   const egg = tags.find(tag => tag.startsWith(EGG_TAG))?.slice(EGG_TAG.length);
   const message = {
     // A rejuvenated ntfy event has a new event id but keeps the original sequence id.
     // Treat the entire sequence as one logical message in history and in read receipts.
-    id: event.sequence_id || event.id,
+    id,
     time: event.time || now(),
     side,
     from: event.title || '',
@@ -214,6 +231,7 @@ async function loadPublishedArchive(topics) {
   topics.forEach(channel => {
     const saved = archive.topics[channel];
     if (!saved || typeof saved !== 'object') return;
+    applyDeleted(channel, Array.isArray(saved.deleted) ? saved.deleted : []);
     const sets = receiptSets(channel);
     SIDES.forEach(side => {
       const ids = (Array.isArray(saved.seen?.[side]) ? saved.seen[side] : []).map(String);
@@ -221,7 +239,7 @@ async function loadPublishedArchive(topics) {
       confirmPendingReceipts(channel, side, ids);
     });
     (Array.isArray(saved.messages) ? saved.messages : []).forEach(item => {
-      if (!item || !item.id || !SIDES.includes(item.side)) return;
+      if (!item || !item.id || !SIDES.includes(item.side) || deletedSet(channel).has(String(item.id))) return;
       remember(channel, {
         id: String(item.id),
         time: Number(item.time) || 0,
