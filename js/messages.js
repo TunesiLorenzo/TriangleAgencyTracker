@@ -23,10 +23,12 @@
 // (ta-agent/ta-npc or ta-a/ta-b). A receipt is { message: the ids, comma separated },
 // tagged ta-seen and the side that saw. A one-off Manager transmission may also carry
 // ta-class-manager/agent/npc/anomaly, which controls its heading and colour independently
-// of the channel side.
+// of the channel side. A Manager message tagged ta-egg-<id> is an easter egg (easterEggs.js),
+// played on the agent's screen instead of being typed out.
 
 import { access, getIdentity, publish, who } from './access.js';
 import { getConfig, getSnapshot, onConfigChange } from './config.js';
+import { EGGS, eggById, playEgg } from './easterEggs.js';
 import { playButton } from './soundEffects.js';
 import { openModal, toast } from './ui.js';
 
@@ -42,6 +44,7 @@ const RECEIPT_MAX_BYTES = 3800;  // ntfy's body limit is 4096; keep a comfortabl
 const HEADINGS = { manager: 'Incoming transmission', agent: 'Incoming agent message', npc: 'Incoming message', anomaly: 'Anomalous signal' };
 const SIDES = ['agent', 'npc', 'a', 'b'];
 const MESSAGE_CLASSES = ['manager', 'agent', 'npc', 'anomaly'];
+const EGG_TAG = 'ta-egg-';
 
 let conversations = [];          // the signed-in player's, the Manager's first
 const byChannel = new Map();     // channel -> the conversations on it
@@ -120,6 +123,8 @@ function remember(channel, message, { canonical = false } = {}) {
     const cachedTime = Number(list[at].time) || 0;
     const archiveTime = Number(message.time) || 0;
     const canonicalMessage = {
+      // An archive that does not carry the egg yet must not turn it into plain text.
+      ...(list[at].egg ? { egg: list[at].egg } : {}),
       ...message,
       time: cachedTime && archiveTime ? Math.min(cachedTime, archiveTime) : archiveTime || cachedTime
     };
@@ -178,6 +183,7 @@ function ingest(event) {
     return null;
   }
   const messageClass = MESSAGE_CLASSES.find(item => tags.includes(`ta-class-${item}`));
+  const egg = tags.find(tag => tag.startsWith(EGG_TAG))?.slice(EGG_TAG.length);
   const message = {
     // A rejuvenated ntfy event has a new event id but keeps the original sequence id.
     // Treat the entire sequence as one logical message in history and in read receipts.
@@ -186,7 +192,8 @@ function ingest(event) {
     side,
     from: event.title || '',
     text: String(event.message || ''),
-    ...(messageClass ? { class: messageClass } : {})
+    ...(messageClass ? { class: messageClass } : {}),
+    ...(egg ? { egg } : {})
   };
   if (!remember(event.topic, message)) return null;
   refreshPanel(event.topic);
@@ -221,7 +228,8 @@ async function loadPublishedArchive(topics) {
         side: item.side,
         from: String(item.from || ''),
         text: String(item.text || ''),
-        ...(MESSAGE_CLASSES.includes(item.class) ? { class: item.class } : {})
+        ...(MESSAGE_CLASSES.includes(item.class) ? { class: item.class } : {}),
+        ...(typeof item.egg === 'string' && item.egg ? { egg: item.egg } : {})
       }, { canonical: true });
     });
   });
@@ -332,12 +340,12 @@ function markSeen(conv, id) {
  * messages use the conversation's channel and are copied when the Manager plays the other
  * side or wants every message.
  */
-async function send(conv, text, { answering = null, from = '', messageClass = '' } = {}) {
+async function send(conv, text, { answering = null, from = '', messageClass = '', egg = '' } = {}) {
   text = text.trim().slice(0, MAX_TEXT);
   if (!text) return false;
   const author = String(from || myName(conv)).trim().slice(0, 80) || myName(conv);
   const className = MESSAGE_CLASSES.includes(messageClass) ? messageClass : '';
-  const tags = [`ta-${conv.side}`, ...(className ? [`ta-class-${className}`] : [])];
+  const tags = [`ta-${conv.side}`, ...(className ? [`ta-class-${className}`] : []), ...(egg ? [`${EGG_TAG}${egg}`] : [])];
   const messageId = newMessageId();
   if (conv.kind === 'manager') {
     const sent = await post(conv.channel, { title: author, message: text, tags, sequence_id: messageId });
@@ -348,7 +356,8 @@ async function send(conv, text, { answering = null, from = '', messageClass = ''
       side: conv.side,
       from: author,
       text,
-      ...(className ? { class: className } : {})
+      ...(className ? { class: className } : {}),
+      ...(egg ? { egg } : {})
     });
     // Keep the Manager's ntfy subscription useful when they are not signed into the site.
     if (conv.side === 'agent' && access().notify !== conv.channel) {
@@ -515,7 +524,14 @@ async function drain() {
   while (queue.length) {
     const next = queue.shift();
     // Read on another device (or in the panel) while it waited.
-    if (!isSeen(next.conv, next.message.id)) await present(next);
+    if (isSeen(next.conv, next.message.id)) continue;
+    const egg = next.conv.kind === 'manager' && eggById(next.message.egg);
+    if (egg) {
+      await playEgg(egg);
+      markSeen(next.conv, next.message.id);
+    } else {
+      await present(next);
+    }
   }
   showing = false;
 }
@@ -905,14 +921,76 @@ function openQuickMessage(card) {
   });
 }
 
+/** The easter eggs the Manager can fire at an agent, each with how it went so far. */
+function openEggPicker(card, conv) {
+  const agentName = card.querySelector('[data-stat="name"]')?.value?.trim() || 'Agent';
+  const list = document.createElement('ul');
+  list.className = 'egg-picker';
+  let close = null;
+  const status = egg => {
+    const fired = history(conv.channel).filter(message => message.egg === egg.id);
+    if (!fired.length) return 'Mai inviato';
+    const played = fired.some(message => receiptSets(conv.channel).agent.has(message.id));
+    return played ? 'Già giocato · l’esito è nelle notifiche' : 'Inviato · in attesa dell’agente';
+  };
+  list.append(...EGGS.map(egg => {
+    const item = document.createElement('li');
+    const title = document.createElement('strong');
+    title.textContent = egg.title;
+    const summary = document.createElement('p');
+    summary.textContent = egg.summary;
+    const state = document.createElement('small');
+    state.textContent = status(egg);
+    const fire = document.createElement('button');
+    fire.type = 'button';
+    fire.className = 'modal-btn modal-btn-primary';
+    fire.textContent = 'Invia';
+    fire.addEventListener('click', async () => {
+      fire.disabled = true;
+      state.textContent = 'Invio…';
+      if (await send(conv, egg.title, { from: egg.from, messageClass: 'anomaly', egg: egg.id })) {
+        close?.();
+        toast(`${egg.title} inviato a ${agentName}. La scelta arriverà come notifica.`, { kind: 'success' });
+      } else {
+        fire.disabled = false;
+        state.textContent = 'Invio non riuscito · riprova';
+      }
+    });
+    item.append(title, summary, state, fire);
+    return item;
+  }));
+  close = openModal({
+    title: `Easter egg per ${agentName}`,
+    content: list,
+    className: 'egg-picker-modal tx-anomaly',
+    closeLabel: 'Chiudi'
+  });
+}
+
 function decorateAgentCards() {
   document.querySelectorAll('#charContainer .char').forEach(card => {
     const line = directLine(card._id);
     let button = card.querySelector(':scope > .agent-message-btn');
+    // Easter eggs only on a published copy, where the line is a conversation.
+    let eggButton = card.querySelector(':scope > .agent-egg-btn');
+    if (!line?.kind) eggButton?.remove();
     if (!line) {
       button?.remove();
       card.classList.remove('has-direct-line');
       return;
+    }
+    if (line.kind && !eggButton) {
+      eggButton = document.createElement('button');
+      eggButton.type = 'button';
+      eggButton.className = 'agent-egg-btn';
+      eggButton.innerHTML = '<span aria-hidden="true">&#10059;</span>';
+      eggButton.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const conv = directLine(card._id);
+        if (conv?.kind) openEggPicker(card, conv);
+      });
+      card.append(eggButton);
     }
     card.classList.add('has-direct-line');
     if (!button) {
@@ -930,6 +1008,10 @@ function decorateAgentCards() {
     const name = card.querySelector('[data-stat="name"]')?.value?.trim() || 'agent';
     button.title = `Send a message to ${name}`;
     button.setAttribute('aria-label', button.title);
+    if (eggButton) {
+      eggButton.title = `Fire an easter egg at ${name}`;
+      eggButton.setAttribute('aria-label', eggButton.title);
+    }
   });
 }
 

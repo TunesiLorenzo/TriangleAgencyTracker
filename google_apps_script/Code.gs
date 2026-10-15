@@ -317,6 +317,12 @@ function refreshUnread_(state, server, activeTopics) {
   return { changed, errors };
 }
 
+// An easter egg (js/easterEggs.js) is a Manager message tagged ta-egg-<id>.
+function eggOf_(tags) {
+  const tag = (Array.isArray(tags) ? tags : []).map(String).find(item => item.startsWith('ta-egg-'));
+  return tag ? { egg: tag.slice('ta-egg-'.length) } : {};
+}
+
 function publicArchive_(state) {
   const topics = Object.create(null);
   Object.keys(state.topics).sort().forEach(channel => {
@@ -330,7 +336,8 @@ function publicArchive_(state) {
           side: message.side,
           from: message.from,
           text: message.text,
-          ...(message.class ? { class: message.class } : {})
+          ...(message.class ? { class: message.class } : {}),
+          ...eggOf_(message.tags)
         })),
       seen: Object.fromEntries(SIDES.map(side => [side, topic.seen[side]]))
     };
