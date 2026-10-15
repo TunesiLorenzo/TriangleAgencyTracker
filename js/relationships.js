@@ -16,6 +16,7 @@ import {
 } from './charSystem.js';
 import { getConfig } from './config.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
+import { phoneScope } from './phoneFeed.js';
 import { createNetworkMap, createPhone, createTicker } from './relationshipsExtras.js';
 import { saveSettings } from './storage.js';
 import { toast } from './ui.js';
@@ -753,10 +754,38 @@ function openFromExtras(card, relationship = null) {
   navigate();
 }
 
-/** Every relationship of the branch, with the agent it belongs to, for the phone's messages. */
+/**
+ * Every relationship of the branch, with the agent it belongs to, for the phone's messages.
+ * An agent signed in on a published copy gets only their own agent's, and those they play.
+ */
 function relationshipSources() {
+  const scope = phoneScope();
+  const mine = (card, relationship) => !scope || String(card._id) === scope.agentId
+    || scope.npcs.has(`${card._id}|${relationship.name.trim().toLowerCase()}`);
   return getCharElements().flatMap((card, index) =>
-    relationshipsOf(card).map(relationship => ({ card, relationship, agent: agentName(card, index) })));
+    relationshipsOf(card).filter(relationship => mine(card, relationship))
+      .map(relationship => ({ card, relationship, agent: agentName(card, index) })));
+}
+
+const cardById = id => getCharElements().find(card => String(card._id) === String(id)) || null;
+
+/** The relationship (or nothing) a real message's line is with. */
+function relationshipOn(card, message) {
+  const name = message.npc.trim().toLowerCase();
+  return card && name ? relationshipsOf(card).find(relationship => relationship.name.trim().toLowerCase() === name) || null : null;
+}
+
+/** A face for a real message on the phone: the agent's portrait, the relationship's picture or the Manager's. */
+function messagePicture(message) {
+  if (message.fromId) return cardById(message.fromId) ? portraitOf(cardById(message.fromId)) : '';
+  if (message.kind === 'manager') return getConfig().login.badgePicture || '';
+  return relationshipOn(cardById(message.agentId), message)?.picture || '';
+}
+
+/** A real message on the phone opens its relationship, or the agent it was for. */
+function openMessage(message) {
+  const card = cardById(message.agentId);
+  if (card) openFromExtras(card, relationshipOn(card, message));
 }
 
 /** Under the agent columns: the HR ticker (unless it's stacked beside the phone), then the Network map. */
@@ -837,7 +866,7 @@ export function renderRelationships({ overview = false, animate = false } = {}) 
 
 export function initRelationships() {
   view = document.getElementById('relationshipsView');
-  phone = createPhone({ sources: relationshipSources, open: openFromExtras });
+  phone = createPhone({ sources: relationshipSources, open: openFromExtras, pictureOf: messagePicture, openMessage });
   ticker = createTicker();
   portrait.addEventListener('change', () => {
     if (!view.hidden && !openCard) renderRelationships();

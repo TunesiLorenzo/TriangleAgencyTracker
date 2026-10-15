@@ -246,6 +246,28 @@ def manager_conversations(conversations, accounts, chars):
     return mine
 
 
+def watched_channels(conversations, accounts, chars):
+    """Every channel with who is on it: the in-character conversations and each agent's
+    direct line to the Manager. What the Manager's phone reads; nothing is written there."""
+    watched = [{key: value for key, value in conversation.items() if key not in ("playedBy", "agentPlayedBy")}
+               for conversation in conversations]
+    for account in accounts:
+        if not isinstance(account, dict) or not str(account.get("username") or "").strip() or not account.get("password"):
+            continue
+        channel = str(account.get("inbox") or "").strip()
+        if not re.fullmatch(r"[-_A-Za-z0-9]{1,64}", channel):
+            continue
+        char = chars.get(str(account.get("charId") or "")) or {}
+        watched.append({
+            "channel": channel,
+            "kind": "manager",
+            "agentId": str(char.get("id") or ""),
+            "agentName": str(char.get("name") or account.get("username") or "").strip(),
+            "other": MANAGER,
+        })
+    return watched
+
+
 def make_access(players, team=None):
     """What the published copy gets of the Players tab: the ntfy channels, and every
     agent or Manager account with a username and password, sealed with its conversations."""
@@ -266,6 +288,8 @@ def make_access(players, team=None):
             "manager": True,
             "player": MANAGER,
             "conversations": manager_conversations(conversations, configured_accounts, chars),
+            # Every channel, for the Relationships phone to show the latest messages on.
+            "watch": watched_channels(conversations, configured_accounts, chars),
             "charId": "",
             "badge": str(manager.get("badge") or "56776544"),
             "inbox": "",

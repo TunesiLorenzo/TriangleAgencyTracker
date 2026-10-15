@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Communication Center</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='communication_center.css') }}">
+</head>
+<body>
+<header class="masthead">
+  <div><p class="eyebrow">TRIANGLE AGENCY - LOCAL ADMINISTRATION</p><h1>Communication Center</h1>
+  <p class="subtitle">The complete published message cache, across every configured channel.</p></div>
+  <nav><a href="/settings">Settings</a><a href="/">Tracker</a></nav>
+</header>
+<main>
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">GOOGLE COLLECTOR</p><h2>Connection</h2></div><span id="connectionState" class="status">Checking...</span></div>
+    <div class="connection-grid">
+      <label>Apps Script web-app URL<input id="webAppUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off"></label>
+      <label>MANUAL_SYNC_TOKEN<input id="manualToken" type="password" placeholder="Leave blank to keep the saved token" autocomplete="new-password"></label>
+      <label class="wide">Published messages.json URL<input id="archiveUrl" type="url" autocomplete="off"></label>
+    </div>
+    <div class="actions"><button id="saveConnection" class="secondary">Save connection</button><button id="syncNow">Sync with Google now</button><button id="refreshArchive" class="secondary">Refresh cache view</button></div>
+    <p id="notice" class="notice" role="status" aria-live="polite"></p>
+  </section>
+  <section class="summary" aria-label="Archive summary">
+    <article><strong id="messageCount">—</strong><span>messages</span></article>
+    <article><strong id="topicCount">—</strong><span>channels with history</span></article>
+    <article><strong id="unreadCount">—</strong><span>unacknowledged</span></article>
+    <article><strong id="updatedAt">—</strong><span>archive updated</span></article>
+    <article><strong id="nextSync">—</strong><span>next automatic sync</span></article>
+  </section>
+  <section class="panel">
+    <div class="panel-heading archive-heading"><div><p class="eyebrow">ALL ACCOUNTS</p><h2>Stored message history</h2></div>
+      <label class="search">Filter<input id="filter" type="search" placeholder="Person, channel, or message"></label></div>
+    <div id="topics" class="topics"></div><p id="emptyState" class="empty" hidden>No stored messages match this filter.</p>
+  </section>
+</main>
+<script src="{{ url_for('static', filename='communication_center.js') }}" defer></script>
+</body></html>

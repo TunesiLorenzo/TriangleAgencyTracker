@@ -36,6 +36,8 @@ import secrets
 import shutil
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -71,6 +73,8 @@ CASES_FILE = CASES_DIR / "cases.json"
 # Where the tracker file and the archive were kept before data/, beside this file.
 OLD_DATA_FILES = ("triangle-agency-tracker.json", "tracker_location.json", "tracker_config.json", "team_save.json")
 BADGE_DIR = BASE_DIR / "images" / "badge"   # the Manager's photo on the login screen badge
+COMMUNICATION_CONFIG_FILE = DATA_DIR / "communication_center.json"
+DEFAULT_MESSAGE_ARCHIVE_URL = "https://tunesilorenzo.github.io/TriangleAgencyTracker/messages.json"
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".webm"}
 BADGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
@@ -542,6 +546,17 @@ def index():
 @app.get("/settings")
 def settings():
     return render_template("settings.html")
+
+
+@app.get("/communication-center")
+def communication_center():
+    return render_template("communication_center.html")
+
+
+@app.get("/Communication center")
+@app.get("/Communication-center")
+def communication_center_alias():
+    return redirect("/communication-center")
 
 
 ASSET_FOLDERS = {folder: BASE_DIR / folder for folder in ("css", "js", "audio", "images", "various", "Materiale", "texts")}
@@ -1082,6 +1097,173 @@ def get_conversations():
     return jsonify({"ok": True, "conversations": build_static.list_conversations(team or {}, players)})
 
 
+
+
+# -----------------------------
+# COMMUNICATION CENTER (local collector administration)
+# -----------------------------
+def read_communication_config():
+    try:
+        data = json.loads(COMMUNICATION_CONFIG_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        app.logger.exception("communication_center.json is unreadable")
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def valid_web_url(value, *, apps_script=False):
+    value = str(value or "").strip()
+    parts = urllib.parse.urlsplit(value)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise ValueError("Enter a complete http:// or https:// URL")
+    if apps_script and (parts.scheme != "https" or parts.hostname != "script.google.com" or not parts.path.endswith("/exec")):
+        raise ValueError("The web-app URL must be the HTTPS script.google.com deployment URL ending in /exec")
+    return value
+
+
+def valid_archive_url(value):
+    value = valid_web_url(value)
+    parts = urllib.parse.urlsplit(value)
+    hostname = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not (hostname == "raw.githubusercontent.com" or hostname.endswith(".github.io")):
+        raise ValueError("The archive URL must be an HTTPS GitHub Pages or raw.githubusercontent.com URL")
+    return value
+
+
+def communication_topic_registry():
+    ensure_chat_secret()
+    with store_lock:
+        path = tracker_file
+        players = config_state["config"].get("players")
+    players = players if isinstance(players, dict) else {}
+    team, _ = read_tracker_file(path)
+    team = team or {}
+    chars = {str(char.get("id") or ""): char for char in team.get("chars") or [] if isinstance(char, dict)}
+    return build_static.watched_channels(build_static.list_conversations(team, players), players.get("accounts") or [], chars)
+
+
+@app.get("/api/communication-center/registry")
+def get_communication_registry():
+    """Every channel and who is on it, with the ntfy server: the Relationships phone reads
+    the latest messages from them, even when the published archive can't be reached."""
+    with store_lock:
+        players = config_state["config"].get("players")
+    players = players if isinstance(players, dict) else {}
+    return jsonify({"ok": True, "registry": communication_topic_registry(), "server": build_static.ntfy_server(players.get("server"))})
+
+
+def fetch_json_url(url):
+    request_object = urllib.request.Request(
+        url + ("&" if "?" in url else "?") + f"local={int(time.time())}",
+        headers={"Accept": "application/json", "User-Agent": "TriangleAgencyTracker/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request_object, timeout=20) as response:
+            body = response.read(10 * 1024 * 1024 + 1)
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise RuntimeError(f"Could not read the published message archive: {error}") from error
+    if len(body) > 10 * 1024 * 1024:
+        raise RuntimeError("The published message archive is larger than 10 MB")
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as error:
+        raise RuntimeError("The published message archive is not valid JSON") from error
+
+
+@app.get("/api/communication-center/config")
+def get_communication_config():
+    config = read_communication_config()
+    return jsonify({
+        "ok": True,
+        "webAppUrl": str(config.get("webAppUrl") or ""),
+        "archiveUrl": str(config.get("archiveUrl") or DEFAULT_MESSAGE_ARCHIVE_URL),
+        "tokenConfigured": bool(config.get("token")),
+    })
+
+
+@app.post("/api/communication-center/config")
+def set_communication_config():
+    payload = request.get_json(silent=True) or {}
+    current = read_communication_config()
+    web_app_url = valid_web_url(payload.get("webAppUrl"), apps_script=True)
+    archive_url = valid_archive_url(payload.get("archiveUrl") or DEFAULT_MESSAGE_ARCHIVE_URL)
+    token = str(payload.get("token") or current.get("token") or "")
+    if not token:
+        raise ValueError("Enter the MANUAL_SYNC_TOKEN the first time you save the connection")
+    write_json_file(COMMUNICATION_CONFIG_FILE, {
+        "webAppUrl": web_app_url,
+        "archiveUrl": archive_url,
+        "token": token,
+    })
+    return jsonify({"ok": True, "message": "Communication Center connection saved locally"})
+
+
+@app.get("/api/communication-center/archive")
+def get_communication_archive():
+    config = read_communication_config()
+    archive_url = valid_archive_url(config.get("archiveUrl") or DEFAULT_MESSAGE_ARCHIVE_URL)
+    try:
+        archive = fetch_json_url(archive_url)
+    except RuntimeError as error:
+        return jsonify({"ok": False, "message": str(error)}), 502
+    if not isinstance(archive, dict) or archive.get("format") != "triangle-agency-message-archive" or not isinstance(archive.get("topics"), dict):
+        return jsonify({"ok": False, "message": "The remote file is not a Triangle Agency message archive"}), 502
+    return jsonify({"ok": True, "archive": archive, "registry": communication_topic_registry()})
+
+
+def call_communication_collector(parameters):
+    config = read_communication_config()
+    web_app_url = str(config.get("webAppUrl") or "")
+    token = str(config.get("token") or "")
+    if not web_app_url or not token:
+        raise ValueError("Save the Apps Script connection first")
+    valid_web_url(web_app_url, apps_script=True)
+    request_object = urllib.request.Request(
+        web_app_url,
+        data=urllib.parse.urlencode({"token": token, **parameters}).encode("utf-8"),
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "TriangleAgencyTracker/1.0"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request_object, timeout=360) as response:
+            result = json.loads(response.read(1024 * 1024).decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, UnicodeDecodeError, ValueError) as error:
+        raise RuntimeError(f"The Apps Script request failed: {error}") from error
+    if not isinstance(result, dict) or not result.get("ok"):
+        message = result.get("message") if isinstance(result, dict) else "Unexpected Apps Script response"
+        raise RuntimeError(str(message))
+    return result
+
+
+@app.post("/api/communication-center/sync")
+def trigger_communication_sync():
+    try:
+        result = call_communication_collector({"action": "sync"})
+    except ValueError as error:
+        return jsonify({"ok": False, "message": str(error)}), 409
+    except RuntimeError as error:
+        return jsonify({"ok": False, "message": str(error)}), 502
+    return jsonify({"ok": True, "message": "Google collector sync completed", "result": result})
+
+
+@app.post("/api/communication-center/delete")
+def delete_communication_message():
+    payload = request.get_json(silent=True) or {}
+    channel = str(payload.get("channel") or "")
+    message_id = str(payload.get("id") or "")
+    if not re.fullmatch(r"[-_A-Za-z0-9]{1,64}", channel) or not message_id or len(message_id) > 256:
+        return jsonify({"ok": False, "message": "A valid channel and message ID are required"}), 400
+    try:
+        result = call_communication_collector({"action": "delete", "channel": channel, "id": message_id})
+    except ValueError as error:
+        return jsonify({"ok": False, "message": str(error)}), 409
+    except RuntimeError as error:
+        return jsonify({"ok": False, "message": str(error)}), 502
+    if not result.get("deleted"):
+        return jsonify({"ok": False, "message": "The Apps Script deployment is outdated; deploy the new Code.gs version before purging"}), 409
+    return jsonify({"ok": True, "message": "Message permanently purged", "result": result})
 @app.get("/public")
 def public_site_redirect():
     # The page finds its files beside itself, which needs the trailing slash.

@@ -16,6 +16,8 @@ const DEFAULT_CACHE_SECONDS = 12 * 60 * 60;
 const MAX_POLL_URL = 1800;
 const PUBLISH_BRANCH = 'gh-pages';
 const PUBLISH_PATH = 'messages.json';
+const AUTO_SYNC_HOURS = 4;
+const NEXT_AUTOMATIC_SYNC_PROPERTY = 'NEXT_AUTOMATIC_SYNC_AT';
 
 /** Run once after filling the Script Properties described in README.md. */
 function setupCollector() {
@@ -24,20 +26,63 @@ function setupCollector() {
   ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === 'syncMessages')
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  ScriptApp.newTrigger('syncMessages').timeBased().everyHours(4).create();
+  ScriptApp.newTrigger('syncMessages').timeBased().everyHours(AUTO_SYNC_HOURS).create();
+  PropertiesService.getScriptProperties().setProperty(
+    NEXT_AUTOMATIC_SYNC_PROPERTY,
+    new Date(Date.now() + AUTO_SYNC_HOURS * 60 * 60 * 1000).toISOString()
+  );
   syncMessages();
 }
 
 /** Manual Run button entry point. */
 function syncNow() {
-  syncMessages();
+  return syncMessages();
+}
+
+/**
+ * Authenticated entry point used by the local Communication Center.
+ * Deploy this project as a web app that executes as you, then configure the
+ * local tracker with its /exec URL and the same MANUAL_SYNC_TOKEN property.
+ */
+function doPost(event) {
+  try {
+    const expected = String(PropertiesService.getScriptProperties().getProperty('MANUAL_SYNC_TOKEN') || '');
+    let supplied = String((event && event.parameter && event.parameter.token) || '');
+    if (!supplied && event && event.postData && event.postData.contents) {
+      try {
+        supplied = String((JSON.parse(event.postData.contents) || {}).token || '');
+      } catch (error) { /* Form data is the normal request format. */ }
+    }
+    if (!expected) throw new Error('MANUAL_SYNC_TOKEN is not configured in Script Properties.');
+    if (!supplied || supplied !== expected) throw new Error('Manual sync authorization failed.');
+    const action = String((event && event.parameter && event.parameter.action) || 'sync');
+    if (action === 'sync') return jsonOutput_({ ok: true, ...syncMessages() });
+    if (action === 'delete') {
+      return jsonOutput_({
+        ok: true,
+        ...deleteMessage_(
+          String(event.parameter.channel || ''),
+          String(event.parameter.id || '')
+        )
+      });
+    }
+    throw new Error('Unknown Communication Center action.');
+  } catch (error) {
+    return jsonOutput_({ ok: false, message: String(error && error.message || error) });
+  }
+}
+
+function jsonOutput_(payload) {
+  return ContentService.createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /** The four-hour job. Safe against two trigger executions overlapping. */
-function syncMessages() {
+function syncMessages(event) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Another message sync is still running.');
   try {
+    const nextAutomaticSyncAt = nextAutomaticSyncAt_(event);
     const config = requiredConfig_();
     const registry = fetchRegistry_(config.snapshotUrl);
     const state = loadState_();
@@ -53,17 +98,33 @@ function syncMessages() {
       state.updatedAt = new Date().toISOString();
       saveState_(state);
     }
-    pushArchive_(config, publicArchive_(state));
+    pushArchive_(config, publicArchive_(state, nextAutomaticSyncAt));
     if (refresh.errors.length) {
       const shown = refresh.errors.slice(0, 5);
       const more = refresh.errors.length > shown.length ? `; ${refresh.errors.length - shown.length} more` : '';
       throw new Error(`Some unread messages could not be rejuvenated: ${shown.join('; ')}${more}`);
     }
+    const topics = Object.values(state.topics);
+    return {
+      updatedAt: state.updatedAt || '',
+      topics: topics.length,
+      messages: topics.reduce((total, topic) => total + Object.keys((topic || {}).messages || {}).length, 0),
+      nextAutomaticSyncAt
+    };
   } finally {
     lock.releaseLock();
   }
 }
 
+function nextAutomaticSyncAt_(event) {
+  const properties = PropertiesService.getScriptProperties();
+  let value = String(properties.getProperty(NEXT_AUTOMATIC_SYNC_PROPERTY) || '');
+  if ((event && event.triggerUid) || !value || !Number.isFinite(Date.parse(value))) {
+    value = new Date(Date.now() + AUTO_SYNC_HOURS * 60 * 60 * 1000).toISOString();
+    properties.setProperty(NEXT_AUTOMATIC_SYNC_PROPERTY, value);
+  }
+  return value;
+}
 function requiredConfig_() {
   const properties = PropertiesService.getScriptProperties();
   const branch = String(properties.getProperty('GITHUB_BRANCH') || PUBLISH_BRANCH).trim();
@@ -160,6 +221,7 @@ function topicState_(state, topic) {
   const saved = state.topics[topic];
   if (!saved.messages || typeof saved.messages !== 'object' || Array.isArray(saved.messages)) saved.messages = {};
   if (!saved.seen || typeof saved.seen !== 'object' || Array.isArray(saved.seen)) saved.seen = {};
+  if (!saved.deleted || typeof saved.deleted !== 'object' || Array.isArray(saved.deleted)) saved.deleted = {};
   SIDES.forEach(side => { if (!Array.isArray(saved.seen[side])) saved.seen[side] = []; });
   return saved;
 }
@@ -211,6 +273,7 @@ function ingest_(state, event) {
     let changed = false;
     const seen = new Set(topic.seen[side]);
     String(event.message || '').split(',').filter(Boolean).forEach(id => {
+      if (topic.deleted[id]) return;
       if (!seen.has(id)) { seen.add(id); changed = true; }
     });
     topic.seen[side] = [...seen];
@@ -218,7 +281,7 @@ function ingest_(state, event) {
   }
 
   const id = String(event.sequence_id || event.id || '');
-  if (!id) return false;
+  if (!id || topic.deleted[id]) return false;
   const ownsMessage = Object.prototype.hasOwnProperty.call(topic.messages, id);
   const existing = ownsMessage && topic.messages[id] && typeof topic.messages[id] === 'object'
     ? topic.messages[id]
@@ -323,7 +386,7 @@ function eggOf_(tags) {
   return tag ? { egg: tag.slice('ta-egg-'.length) } : {};
 }
 
-function publicArchive_(state) {
+function publicArchive_(state, nextAutomaticSyncAt) {
   const topics = Object.create(null);
   Object.keys(state.topics).sort().forEach(channel => {
     const topic = topicState_(state, channel);
@@ -336,15 +399,70 @@ function publicArchive_(state) {
           side: message.side,
           from: message.from,
           text: message.text,
+          expires: Number(message.expires || 0),
           ...(message.class ? { class: message.class } : {}),
           ...eggOf_(message.tags)
         })),
       seen: Object.fromEntries(SIDES.map(side => [side, topic.seen[side]]))
     };
   });
-  return { format: ARCHIVE_FORMAT, version: 1, updatedAt: state.updatedAt || '', topics };
+  return {
+    format: ARCHIVE_FORMAT,
+    version: 1,
+    updatedAt: state.updatedAt || '',
+    collector: { nextAutomaticSyncAt: nextAutomaticSyncAt || nextAutomaticSyncAt_() },
+    topics
+  };
 }
 
+function deleteMessage_(channel, id) {
+  if (!/^[-_A-Za-z0-9]{1,64}$/.test(channel) || !id) {
+    throw new Error('A valid channel and message ID are required.');
+  }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Another message operation is still running.');
+  try {
+    const config = requiredConfig_();
+    const registry = fetchRegistry_(config.snapshotUrl);
+    if (!registry.topics.includes(channel)) throw new Error('That channel is not in the published registry.');
+    const state = loadState_();
+    if (!Object.prototype.hasOwnProperty.call(state.topics, channel)) {
+      throw new Error('That message channel has no stored history.');
+    }
+    const topic = topicState_(state, channel);
+    if (!Object.prototype.hasOwnProperty.call(topic.messages, id)) {
+      if (topic.deleted[id]) return { deleted: true, alreadyDeleted: true };
+      throw new Error('That message is no longer in the archive.');
+    }
+
+    let ntfyDeleted = false;
+    let warning = '';
+    try {
+      const response = UrlFetchApp.fetch(
+        registry.server + '/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id),
+        { method: 'delete', muteHttpExceptions: true }
+      );
+      const code = response.getResponseCode();
+      ntfyDeleted = code >= 200 && code < 300;
+      if (!ntfyDeleted) warning = 'ntfy returned ' + code + '; the permanent archive was still purged.';
+    } catch (error) {
+      warning = 'ntfy deletion failed (' + error.message + '); the permanent archive was still purged.';
+    }
+
+    delete topic.messages[id];
+    SIDES.forEach(side => {
+      topic.seen[side] = topic.seen[side].filter(seenId => seenId !== id);
+    });
+    topic.deleted[id] = new Date().toISOString();
+    state.updatedAt = new Date().toISOString();
+    saveState_(state);
+    const nextAutomaticSyncAt = nextAutomaticSyncAt_();
+    pushArchive_(config, publicArchive_(state, nextAutomaticSyncAt));
+    return { deleted: true, ntfyDeleted, warning, updatedAt: state.updatedAt, nextAutomaticSyncAt };
+  } finally {
+    lock.releaseLock();
+  }
+}
 function githubHeaders_(token, accept = 'application/vnd.github+json') {
   return {
     Accept: accept,
@@ -362,36 +480,137 @@ function gitBlobSha_(text) {
     .join('');
 }
 
+function githubRequest_(url, token, method = 'get', payload = null, allowedCodes = [200]) {
+  const options = {
+    headers: githubHeaders_(token),
+    muteHttpExceptions: true
+  };
+  if (method !== 'get') options.method = method;
+  if (payload !== null) {
+    options.contentType = 'application/json';
+    options.payload = JSON.stringify(payload);
+  }
+  const response = UrlFetchApp.fetch(url, options);
+  const code = response.getResponseCode();
+  const text = response.getContentText();
+  if (!allowedCodes.includes(code)) {
+    throw new Error('GitHub request failed (' + code + '): ' + text);
+  }
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      throw new Error('GitHub returned invalid JSON (' + code + '): ' + error.message);
+    }
+  }
+  return { code, data };
+}
+
+function archiveCommitChain_(api, headSha, token) {
+  let cursor = headSha;
+  let count = 0;
+  let headCommit = null;
+  const limit = 50;
+  while (count < limit) {
+    const commit = githubRequest_(api + '/git/commits/' + encodeURIComponent(cursor), token).data;
+    if (!headCommit) headCommit = commit;
+    if (!String(commit.message || '').startsWith('Update message archive ')) break;
+    if (!Array.isArray(commit.parents) || commit.parents.length !== 1) {
+      throw new Error('Archive commit compaction stopped at a merge commit.');
+    }
+    count++;
+    cursor = String(commit.parents[0].sha || '');
+    if (!cursor) throw new Error('Archive commit has no parent.');
+  }
+  if (count === limit) {
+    throw new Error('More than ' + limit + ' consecutive archive commits need compaction; compact them manually once.');
+  }
+  return { baseSha: cursor, count, headCommit };
+}
+
+function updateRefAtomically_(api, config, beforeSha, afterSha) {
+  const repository = githubRequest_(api, config.token).data;
+  const query = 'mutation($input:UpdateRefsInput!){updateRefs(input:$input){clientMutationId}}';
+  const variables = {
+    input: {
+      repositoryId: repository.node_id,
+      refUpdates: [{
+        name: 'refs/heads/' + config.branch,
+        beforeOid: beforeSha,
+        afterOid: afterSha,
+        force: true
+      }]
+    }
+  };
+  const response = githubRequest_(
+    'https://api.github.com/graphql',
+    config.token,
+    'post',
+    { query, variables }
+  ).data;
+  if (Array.isArray(response.errors) && response.errors.length) {
+    throw new Error('GitHub branch changed while compacting: ' + response.errors.map(error => error.message).join('; '));
+  }
+}
+
 function pushArchive_(config, archive) {
-  const api = `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/contents/${config.path.split('/').map(encodeURIComponent).join('/')}`;
+  const api = 'https://api.github.com/repos/' + encodeURIComponent(config.owner) + '/' + encodeURIComponent(config.repo);
+  const refPath = '/git/ref/heads/' + encodeURIComponent(config.branch);
+  const contentPath = '/contents/' + config.path.split('/').map(encodeURIComponent).join('/');
   const text = JSON.stringify(archive);
   const blobSha = gitBlobSha_(text);
+
   for (let attempt = 0; attempt < 2; attempt++) {
-    const current = UrlFetchApp.fetch(`${api}?ref=${encodeURIComponent(config.branch)}`, {
-      // GitHub omits inline base64 content for files above 1 MB. Object media still
-      // returns the blob sha, which is enough to avoid no-op commits at any supported size.
-      headers: githubHeaders_(config.token, 'application/vnd.github.object+json'),
-      muteHttpExceptions: true
-    });
-    const code = current.getResponseCode();
-    const details = code === 200 ? JSON.parse(current.getContentText()) : null;
-    if (code !== 200 && code !== 404) throw new Error(`GitHub read failed (${code}): ${current.getContentText()}`);
-    if (details && String(details.sha || '') === blobSha) return;
-    const response = UrlFetchApp.fetch(api, {
-      method: 'put',
-      contentType: 'application/json',
-      headers: githubHeaders_(config.token),
-      payload: JSON.stringify({
-        message: `Update message archive ${new Date().toISOString()}`,
-        content: Utilities.base64Encode(Utilities.newBlob(text, 'application/json').getBytes()),
-        branch: config.branch,
-        ...(details && details.sha ? { sha: details.sha } : {})
-      }),
-      muteHttpExceptions: true
-    });
-    if (response.getResponseCode() >= 200 && response.getResponseCode() < 300) return;
-    if (response.getResponseCode() !== 409 || attempt) {
-      throw new Error(`GitHub update failed (${response.getResponseCode()}): ${response.getContentText()}`);
+    const head = githubRequest_(api + refPath, config.token).data;
+    const headSha = String(((head || {}).object || {}).sha || '');
+    if (!headSha) throw new Error('GitHub branch head is missing.');
+
+    const chain = archiveCommitChain_(api, headSha, config.token);
+    const current = githubRequest_(
+      api + contentPath + '?ref=' + encodeURIComponent(headSha),
+      config.token,
+      'get',
+      null,
+      [200, 404]
+    );
+    const currentBlobSha = current.code === 200 ? String(current.data.sha || '') : '';
+    if (currentBlobSha === blobSha && chain.count <= 1) return;
+
+    const blob = githubRequest_(
+      api + '/git/blobs',
+      config.token,
+      'post',
+      { content: text, encoding: 'utf-8' },
+      [201]
+    ).data;
+    const tree = githubRequest_(
+      api + '/git/trees',
+      config.token,
+      'post',
+      {
+        base_tree: chain.headCommit.tree.sha,
+        tree: [{ path: config.path, mode: '100644', type: 'blob', sha: blob.sha }]
+      },
+      [201]
+    ).data;
+    const commit = githubRequest_(
+      api + '/git/commits',
+      config.token,
+      'post',
+      {
+        message: 'Update message archive ' + new Date().toISOString(),
+        tree: tree.sha,
+        parents: [chain.baseSha]
+      },
+      [201]
+    ).data;
+
+    try {
+      updateRefAtomically_(api, config, headSha, commit.sha);
+      return;
+    } catch (error) {
+      if (attempt) throw error;
     }
   }
 }

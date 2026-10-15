@@ -255,14 +255,15 @@
 .phone-date::first-letter { text-transform: uppercase; }
 
 /* Always four slots, each with room for a three-line message: the phone's height never changes.
-   In em, so the larger portrait type keeps the same fit. */
+   The latest real messages take up to two of them (--slots, relationshipsExtras.js), the
+   made-up ones the rest. In em, so the larger portrait type keeps the same fit. */
 .phone-notes {
   --note: calc(24px + 6.2em);
   display: flex;
   flex: none;
   flex-direction: column;
   gap: 8px;
-  height: calc(4 * var(--note) + 3 * 8px);
+  height: calc(var(--slots, 4) * var(--note) + (var(--slots, 4) - 1) * 8px);
   margin: 14px 0 0;
   padding: 0;
   overflow: hidden;
@@ -290,6 +291,25 @@
 .phone-note.network { box-shadow: inset 2px 0 0 var(--reality-color); }
 .phone-note.agency { background: color-mix(in srgb, var(--competency-color) 22%, rgba(255,255,255,0.06)); }
 .phone-note.arriving { animation: phone-in 420ms cubic-bezier(.2,.9,.3,1.2) both; }
+
+/* The latest real messages, coloured by the line they passed on (readOnly.css's .tx-*). */
+.phone-recent { margin-top: 14px; }
+.phone-recent[hidden] { display: none; }
+.phone-section {
+  margin: 0 4px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.phone-recent .phone-notes { margin: 0; }
+.phone-note.real {
+  background: rgba(var(--tx-rgb), 0.16);
+  box-shadow: inset 2px 0 0 var(--tx);
+}
+.phone-note.real[role="button"]:hover { background: rgba(var(--tx-rgb), 0.24); }
+.phone-note.real .phone-avatar { background: var(--tx); }
 
 .phone-avatar {
   display: grid;
