@@ -108,7 +108,7 @@ function agentOf(charId) {
 /** A visitor without an account: AGENT# and a five-digit number drawn for the visit. */
 export function guestIdentity() {
   const badge = String(10000 + Math.floor(Math.random() * 90000));
-  return { guest: true, manager: false, username: `AGENT#${badge}`, badge, name: '', picture: '', charId: '', player: '', inbox: '', messages: [], conversations: [] };
+  return { guest: true, manager: false, accountId: '', username: `AGENT#${badge}`, badge, name: '', picture: '', charId: '', player: '', inbox: '', messages: [], conversations: [] };
 }
 
 /** The account these credentials open, as an identity; null when they open none. */
@@ -123,6 +123,7 @@ export function findAccount(username, password) {
     return {
       guest: false,
       manager,
+      accountId: id,
       username: details.username,
       badge: details.badge || String(10000 + Math.floor(Math.random() * 90000)),
       name: manager ? 'Manager' : agent?.name?.trim() || '',
