@@ -19,9 +19,11 @@ messages that have less than five hours left, and updates `messages.json` on `gh
    - `GITHUB_REPO`: the repository name
    - `GITHUB_TOKEN`: a fine-grained GitHub token restricted to this repository with
      **Contents: Read and write**
-   - Optional `GITHUB_BRANCH`: defaults to `gh-pages`
-   - Optional `ARCHIVE_PATH`: defaults to `messages.json`
    - Optional `DRIVE_FOLDER_ID`: a private Drive folder for the source backup
+
+   The target is deliberately fixed to `gh-pages/messages.json`, which is the file the
+   published browser reads. Omit `GITHUB_BRANCH` and `ARCHIVE_PATH`; the collector rejects
+   non-default values so a successful run cannot silently update the wrong file.
 
 4. Select `setupCollector` and press **Run**. Approve Drive, external-request, and trigger
    permissions. The function creates the Drive archive, installs the four-hour trigger,
@@ -30,8 +32,15 @@ messages that have less than five hours left, and updates `messages.json` on `gh
    manual test at any time.
 
 The created `DRIVE_FILE_ID` Script Property is managed automatically. If that Drive file is
-deleted, the next run creates a new empty backup; messages already expired from ntfy cannot
-then be recovered.
+deleted or becomes inaccessible, the collector stops rather than risk replacing the public
+history with an empty archive. Restore the file or its access first. Git history can recover
+the public messages and seen receipts, but not Drive-only tags, delivery IDs, or expiry
+metadata. Remove `DRIVE_FILE_ID` manually only when you deliberately want to start a new
+empty archive; doing so loses any state you have not recovered first.
+
+The source archive is one JSON file. Apps Script's `File.setContent` has a 10 MB limit, so this
+layout is not suitable for an indefinitely growing high-volume installation. Check the file's
+size periodically; a future sharded archive is required before it approaches that limit.
 
 ## Behavior
 
@@ -41,3 +50,8 @@ then be recovered.
 - GitHub receives the compact browser archive; Drive retains delivery and expiry metadata.
 - The archive is intentionally not encrypted. The website filters it to the channels in
   the signed-in account, but anyone inspecting the public JSON can read its contents.
+- The collector trusts events on its configured ntfy topics, and the published snapshot
+  exposes those topic names. Unauthenticated topics are therefore public and writable:
+  anyone can forge messages or read receipts, grow the archive, consume publish quota, or
+  stop rejuvenation. Integrity requires authenticated ntfy or signed messages; neither is
+  implemented by this tracker.

@@ -1072,7 +1072,7 @@ function handlePlayerClick(event) {
     const field = document.querySelector(`[data-send-text="${index(send)}"]`);
     const account = accounts[index(send)];
     if (!field.value.trim() || !account.inbox) return;
-    postToChannel(account.inbox, field.value.trim(), { title: 'The Manager' })
+    postToChannel(account.inbox, field.value.trim(), { title: 'The Manager', tags: ['ta-npc', 'ta-class-manager'] })
       .then(() => {
         field.value = '';
         setStatus(`Sent to ${account.username || 'the account'}`, 'saved');

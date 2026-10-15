@@ -37,6 +37,8 @@ const SEEN_LIMIT = 500;
 const ARCHIVE_FILE = './messages.json';
 const ARCHIVE_FORMAT = 'triangle-agency-message-archive';
 const RECEIPT_DELAY = 1500;      // receipts of one channel go out together
+const RECEIPT_RETRY_DELAY = 30000;
+const RECEIPT_MAX_BYTES = 3800;  // ntfy's body limit is 4096; keep a comfortable margin
 const HEADINGS = { manager: 'Incoming transmission', agent: 'Incoming agent message', npc: 'Incoming message', anomaly: 'Anomalous signal' };
 const SIDES = ['agent', 'npc', 'a', 'b'];
 const MESSAGE_CLASSES = ['manager', 'agent', 'npc', 'anomaly'];
@@ -110,9 +112,25 @@ function history(channel) {
 
 /** Keep a message in memory; persist only the recent tail in browser storage. The Google
  * archive can therefore display the complete history without exhausting localStorage. */
-function remember(channel, message) {
+function remember(channel, message, { canonical = false } = {}) {
   const list = history(channel);
-  if (list.some(entry => entry.id === message.id)) return false;
+  const at = list.findIndex(entry => entry.id === message.id);
+  if (at !== -1) {
+    if (!canonical) return false;
+    const cachedTime = Number(list[at].time) || 0;
+    const archiveTime = Number(message.time) || 0;
+    const canonicalMessage = {
+      ...message,
+      time: cachedTime && archiveTime ? Math.min(cachedTime, archiveTime) : archiveTime || cachedTime
+    };
+    const old = list[at];
+    const keys = Object.keys(canonicalMessage);
+    if (Object.keys(old).length === keys.length && keys.every(key => old[key] === canonicalMessage[key])) return false;
+    list[at] = canonicalMessage;
+    list.sort((a, b) => a.time - b.time);
+    writeList(`ta-chat-${channel}`, list.slice(-HISTORY_LIMIT));
+    return false;
+  }
   list.push(message);
   list.sort((a, b) => a.time - b.time);
   writeList(`ta-chat-${channel}`, list.slice(-HISTORY_LIMIT));
@@ -153,7 +171,9 @@ function ingest(event) {
   const side = SIDES.find(item => tags.includes(`ta-${item}`)) || 'npc';
   if (tags.includes('ta-seen')) {
     const sets = receiptSets(event.topic);
-    String(event.message || '').split(',').filter(Boolean).forEach(id => sets[side].add(id));
+    const ids = String(event.message || '').split(',').filter(Boolean);
+    ids.forEach(id => sets[side].add(id));
+    confirmPendingReceipts(event.topic, side, ids);
     updateBadge();
     return null;
   }
@@ -189,7 +209,9 @@ async function loadPublishedArchive(topics) {
     if (!saved || typeof saved !== 'object') return;
     const sets = receiptSets(channel);
     SIDES.forEach(side => {
-      (Array.isArray(saved.seen?.[side]) ? saved.seen[side] : []).forEach(id => sets[side].add(String(id)));
+      const ids = (Array.isArray(saved.seen?.[side]) ? saved.seen[side] : []).map(String);
+      ids.forEach(id => sets[side].add(id));
+      confirmPendingReceipts(channel, side, ids);
     });
     (Array.isArray(saved.messages) ? saved.messages : []).forEach(item => {
       if (!item || !item.id || !SIDES.includes(item.side)) return;
@@ -200,7 +222,7 @@ async function loadPublishedArchive(topics) {
         from: String(item.from || ''),
         text: String(item.text || ''),
         ...(MESSAGE_CLASSES.includes(item.class) ? { class: item.class } : {})
-      });
+      }, { canonical: true });
     });
   });
 }
@@ -208,15 +230,82 @@ async function loadPublishedArchive(topics) {
 /* ---------- receipts ---------- */
 const pendingReceipts = new Map();   // `${channel}|${side}` -> Set of ids
 let receiptTimer = 0;
+let receiptFlush = null;
+
+const pendingReceiptKey = key => `ta-pending-receipts-${key}`;
+
+function persistPendingReceipts(key, ids) {
+  if (ids.size) writeList(pendingReceiptKey(key), [...ids]);
+  else storage(store => store.removeItem(pendingReceiptKey(key)));
+}
+
+function pendingReceiptSet(key) {
+  if (!pendingReceipts.has(key)) {
+    const saved = readList(pendingReceiptKey(key));
+    pendingReceipts.set(key, new Set((Array.isArray(saved) ? saved : []).map(String).filter(Boolean)));
+  }
+  return pendingReceipts.get(key);
+}
+
+function confirmPendingReceipts(channel, side, ids) {
+  const key = `${channel}|${side}`;
+  const pending = pendingReceipts.get(key);
+  if (!pending) return;
+  ids.forEach(id => pending.delete(String(id)));
+  persistPendingReceipts(key, pending);
+  if (!pending.size && pendingReceipts.get(key) === pending) pendingReceipts.delete(key);
+}
+
+function receiptBatches(ids) {
+  const encoder = new TextEncoder();
+  const batches = [];
+  let batch = [];
+  let bytes = 0;
+  ids.forEach(id => {
+    const size = encoder.encode(id).length;
+    if (batch.length && bytes + 1 + size > RECEIPT_MAX_BYTES) {
+      batches.push(batch);
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(id);
+    bytes += (batch.length > 1 ? 1 : 0) + size;
+  });
+  if (batch.length) batches.push(batch);
+  return batches;
+}
+
+const hasPendingReceipts = () => [...pendingReceipts.values()].some(ids => ids.size);
+
+function scheduleReceiptFlush(delay = RECEIPT_DELAY) {
+  if (!receiptTimer) {
+    receiptTimer = setTimeout(() => {
+      receiptTimer = 0;
+      flushReceipts();
+    }, delay);
+  }
+}
 
 function flushReceipts() {
   clearTimeout(receiptTimer);
   receiptTimer = 0;
-  for (const [key, ids] of pendingReceipts) {
-    const [channel, side] = key.split('|');
-    post(channel, { message: [...ids].join(','), tags: ['ta-seen', `ta-${side}`], priority: 1 });
-  }
-  pendingReceipts.clear();
+  if (receiptFlush) return receiptFlush;
+  receiptFlush = (async () => {
+    for (const [key, ids] of pendingReceipts) {
+      const [channel, side] = key.split('|');
+      for (const batch of receiptBatches([...ids])) {
+        const sent = await post(channel, { message: batch.join(','), tags: ['ta-seen', `ta-${side}`], priority: 1 });
+        if (!sent) break;
+        batch.forEach(id => ids.delete(id));
+        if (pendingReceipts.get(key) === ids) persistPendingReceipts(key, ids);
+      }
+      if (!ids.size && pendingReceipts.get(key) === ids) pendingReceipts.delete(key);
+    }
+  })().finally(() => {
+    receiptFlush = null;
+    if (hasPendingReceipts()) scheduleReceiptFlush(RECEIPT_RETRY_DELAY);
+  });
+  return receiptFlush;
 }
 
 /** Seen by this agent: remembered here, and told to their other devices. */
@@ -228,9 +317,10 @@ function markSeen(conv, id) {
   receiptSets(conv.channel)[conv.side].add(id);
   if (isTopic(conv.channel)) {
     const key = `${conv.channel}|${conv.side}`;
-    if (!pendingReceipts.has(key)) pendingReceipts.set(key, new Set());
-    pendingReceipts.get(key).add(id);
-    if (!receiptTimer) receiptTimer = setTimeout(flushReceipts, RECEIPT_DELAY);
+    const pending = pendingReceiptSet(key);
+    pending.add(id);
+    persistPendingReceipts(key, pending);
+    scheduleReceiptFlush();
   }
   updateBadge();
 }
@@ -1018,6 +1108,7 @@ export async function startMessages() {
   for (const conv of conversations) {
     if (!byChannel.has(conv.channel)) byChannel.set(conv.channel, []);
     byChannel.get(conv.channel).push(conv);
+    if (isTopic(conv.channel)) pendingReceiptSet(`${conv.channel}|${conv.side}`);
   }
   addButton();
   if (identity.manager) watchAgentCards();
@@ -1027,6 +1118,7 @@ export async function startMessages() {
   const since = now();
   await loadPublishedArchive(topics);
   if (topics.length) (await poll(topics)).forEach(ingest);
+  if (hasPendingReceipts()) scheduleReceiptFlush();
   // What waited: the message left on the account first, then the rest in the order sent.
   identity.messages.forEach(left => {
     const message = { id: `left-${left.id}`, time: 0, side: 'npc', from: 'The Manager', text: left.text };

@@ -14,6 +14,8 @@ const OPPOSITE = { agent: 'npc', npc: 'agent', a: 'b', b: 'a' };
 const REFRESH_BEFORE_SECONDS = 5 * 60 * 60;
 const DEFAULT_CACHE_SECONDS = 12 * 60 * 60;
 const MAX_POLL_URL = 1800;
+const PUBLISH_BRANCH = 'gh-pages';
+const PUBLISH_PATH = 'messages.json';
 
 /** Run once after filling the Script Properties described in README.md. */
 function setupCollector() {
@@ -44,13 +46,19 @@ function syncMessages() {
     pollEvents_(registry.server, registry.topics).forEach(event => {
       if (ingest_(state, event)) changed = true;
     });
-    if (refreshUnread_(state, registry.server, registry.topics)) changed = true;
+    const refresh = refreshUnread_(state, registry.server, registry.topics);
+    if (refresh.changed) changed = true;
 
     if (changed) {
       state.updatedAt = new Date().toISOString();
       saveState_(state);
     }
     pushArchive_(config, publicArchive_(state));
+    if (refresh.errors.length) {
+      const shown = refresh.errors.slice(0, 5);
+      const more = refresh.errors.length > shown.length ? `; ${refresh.errors.length - shown.length} more` : '';
+      throw new Error(`Some unread messages could not be rejuvenated: ${shown.join('; ')}${more}`);
+    }
   } finally {
     lock.releaseLock();
   }
@@ -58,15 +66,24 @@ function syncMessages() {
 
 function requiredConfig_() {
   const properties = PropertiesService.getScriptProperties();
+  const branch = String(properties.getProperty('GITHUB_BRANCH') || PUBLISH_BRANCH).trim();
+  const path = String(properties.getProperty('ARCHIVE_PATH') || PUBLISH_PATH).trim();
+  if (branch !== PUBLISH_BRANCH) {
+    throw new Error(`GITHUB_BRANCH must be omitted or exactly "${PUBLISH_BRANCH}"; the published browser does not read other branches.`);
+  }
+  if (path !== PUBLISH_PATH) {
+    throw new Error(`ARCHIVE_PATH must be omitted or exactly "${PUBLISH_PATH}"; the published browser does not read other paths.`);
+  }
   const config = {
     snapshotUrl: String(properties.getProperty('SNAPSHOT_URL') || '').trim(),
     owner: String(properties.getProperty('GITHUB_OWNER') || '').trim(),
     repo: String(properties.getProperty('GITHUB_REPO') || '').trim(),
     token: String(properties.getProperty('GITHUB_TOKEN') || '').trim(),
-    branch: String(properties.getProperty('GITHUB_BRANCH') || 'gh-pages').trim(),
-    path: String(properties.getProperty('ARCHIVE_PATH') || 'messages.json').trim()
+    branch,
+    path
   };
-  const missing = Object.keys(config).filter(key => !config[key]);
+  const propertyNames = { snapshotUrl: 'SNAPSHOT_URL', owner: 'GITHUB_OWNER', repo: 'GITHUB_REPO', token: 'GITHUB_TOKEN' };
+  const missing = Object.keys(propertyNames).filter(key => !config[key]).map(key => propertyNames[key]);
   if (missing.length) throw new Error(`Missing Script Properties: ${missing.join(', ')}`);
   return config;
 }
@@ -79,7 +96,9 @@ function fetchRegistry_(snapshotUrl) {
   const registry = snapshot && snapshot.messageSync;
   if (!registry || !Array.isArray(registry.topics)) throw new Error('The published snapshot has no messageSync registry. Publish the tracker again.');
   const server = String(registry.server || 'https://ntfy.sh').replace(/\/+$/, '');
-  const topics = [...new Set(registry.topics.map(String).filter(topic => /^[-_A-Za-z0-9]{1,64}$/.test(topic)))];
+  const topics = [...new Set(registry.topics
+    .filter(topic => typeof topic === 'string')
+    .filter(topic => /^[-_A-Za-z0-9]{1,64}$/.test(topic)))];
   return { server, topics };
 }
 
@@ -91,38 +110,56 @@ function archiveFile_() {
   const properties = PropertiesService.getScriptProperties();
   const fileId = properties.getProperty('DRIVE_FILE_ID');
   if (fileId) {
-    try { return DriveApp.getFileById(fileId); } catch (error) { /* Recreate a deleted file. */ }
+    try {
+      return DriveApp.getFileById(fileId);
+    } catch (error) {
+      throw new Error(`The configured Drive archive (${fileId}) is inaccessible. Restore it or explicitly remove the DRIVE_FILE_ID Script Property before starting a new archive: ${error.message}`);
+    }
   }
   const folderId = String(properties.getProperty('DRIVE_FOLDER_ID') || '').trim();
-  const blob = Utilities.newBlob(JSON.stringify(emptyState_(), null, 2), 'application/json', 'triangle-agency-message-backup.json');
+  const blob = Utilities.newBlob(JSON.stringify(emptyState_()), 'application/json', 'triangle-agency-message-backup.json');
   const file = folderId ? DriveApp.getFolderById(folderId).createFile(blob) : DriveApp.createFile(blob);
   properties.setProperty('DRIVE_FILE_ID', file.getId());
   return file;
 }
 
 function loadState_() {
+  const text = archiveFile_().getBlob().getDataAsString('UTF-8');
+  let data;
   try {
-    const data = JSON.parse(archiveFile_().getBlob().getDataAsString('UTF-8'));
-    return data && data.format === STATE_FORMAT && data.topics ? data : emptyState_();
+    data = JSON.parse(text);
   } catch (error) {
     throw new Error(`The Drive message archive is not valid JSON: ${error.message}`);
   }
+  if (!data || data.format !== STATE_FORMAT || data.version !== 1
+      || !data.topics || typeof data.topics !== 'object' || Array.isArray(data.topics)) {
+    throw new Error('The Drive message archive has an unsupported or invalid format. It was not reset.');
+  }
+  return data;
 }
 
 function saveState_(state) {
-  archiveFile_().setContent(JSON.stringify(state, null, 2));
+  // DriveApp.File.setContent rejects content above 10 MB; keep the durable source compact.
+  archiveFile_().setContent(JSON.stringify(state));
 }
 
 function topicState_(state, topic) {
-  if (!state.topics[topic]) {
-    state.topics[topic] = {
-      messages: {},
-      seen: Object.fromEntries(SIDES.map(side => [side, []]))
-    };
+  const ownsTopic = Object.prototype.hasOwnProperty.call(state.topics, topic);
+  const existing = ownsTopic ? state.topics[topic] : null;
+  if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+    Object.defineProperty(state.topics, topic, {
+      value: {
+        messages: {},
+        seen: Object.fromEntries(SIDES.map(side => [side, []]))
+      },
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
   }
   const saved = state.topics[topic];
-  if (!saved.messages || typeof saved.messages !== 'object') saved.messages = {};
-  if (!saved.seen || typeof saved.seen !== 'object') saved.seen = {};
+  if (!saved.messages || typeof saved.messages !== 'object' || Array.isArray(saved.messages)) saved.messages = {};
+  if (!saved.seen || typeof saved.seen !== 'object' || Array.isArray(saved.seen)) saved.seen = {};
   SIDES.forEach(side => { if (!Array.isArray(saved.seen[side])) saved.seen[side] = []; });
   return saved;
 }
@@ -166,8 +203,9 @@ function tagged_(tags, prefix, choices) {
 
 function ingest_(state, event) {
   const tags = Array.isArray(event.tags) ? event.tags.map(String) : [];
-  const side = tagged_(tags, 'ta-', SIDES);
-  if (!side) return false;
+  // Settings and the ntfy app can send untagged Manager messages. The browser has always
+  // treated untagged events as the NPC/Manager side, so the durable collector must match it.
+  const side = tagged_(tags, 'ta-', SIDES) || 'npc';
   const topic = topicState_(state, String(event.topic));
   if (tags.includes('ta-seen')) {
     let changed = false;
@@ -181,7 +219,10 @@ function ingest_(state, event) {
 
   const id = String(event.sequence_id || event.id || '');
   if (!id) return false;
-  const existing = topic.messages[id];
+  const ownsMessage = Object.prototype.hasOwnProperty.call(topic.messages, id);
+  const existing = ownsMessage && topic.messages[id] && typeof topic.messages[id] === 'object'
+    ? topic.messages[id]
+    : null;
   const expires = Number(event.expires || 0);
   if (existing) {
     let changed = false;
@@ -195,61 +236,89 @@ function ingest_(state, event) {
   }
 
   const messageClass = tagged_(tags, 'ta-class-', CLASSES);
-  topic.messages[id] = {
-    id,
-    time: Number(event.time || 0),
-    side,
-    from: String(event.title || ''),
-    text: String(event.message || ''),
-    ...(messageClass ? { class: messageClass } : {}),
-    tags,
-    ntfyId: String(event.id || ''),
-    lastEventTime: Number(event.time || 0),
-    expires: expires || Number(event.time || 0) + DEFAULT_CACHE_SECONDS
-  };
+  Object.defineProperty(topic.messages, id, {
+    value: {
+      id,
+      time: Number(event.time || 0),
+      side,
+      from: String(event.title || ''),
+      text: String(event.message || ''),
+      ...(messageClass ? { class: messageClass } : {}),
+      tags,
+      ntfyId: String(event.id || ''),
+      lastEventTime: Number(event.time || 0),
+      expires: expires || Number(event.time || 0) + DEFAULT_CACHE_SECONDS
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true
+  });
   return true;
 }
 
-function acknowledged_(topic, message) {
+function acknowledged_(seen, message) {
   const recipient = OPPOSITE[message.side];
-  return recipient ? topic.seen[recipient].includes(message.id) : true;
+  return recipient ? seen[recipient].has(message.id) : true;
 }
 
 function refreshUnread_(state, server, activeTopics) {
   const threshold = Math.floor(Date.now() / 1000) + REFRESH_BEFORE_SECONDS;
   let changed = false;
-  activeTopics.forEach(channel => {
-    if (!state.topics[channel]) return;
+  const errors = [];
+  for (const channel of activeTopics) {
+    if (!Object.prototype.hasOwnProperty.call(state.topics, channel)) continue;
     const topic = topicState_(state, channel);
-    Object.values(topic.messages).forEach(message => {
-      if (acknowledged_(topic, message) || Number(message.expires || 0) > threshold) return;
-      const response = UrlFetchApp.fetch(`${server}/`, {
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify({
-          topic: channel,
-          title: message.from,
-          message: message.text,
-          tags: message.tags,
-          sequence_id: message.id
-        }),
-        muteHttpExceptions: true
-      });
-      if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
-        throw new Error(`Could not rejuvenate ${message.id} (${response.getResponseCode()}).`);
+    const seen = Object.fromEntries(SIDES.map(side => [side, new Set(topic.seen[side])]));
+    for (const message of Object.values(topic.messages)) {
+      if (acknowledged_(seen, message) || Number(message.expires || 0) > threshold) continue;
+      const tags = Array.isArray(message.tags) ? message.tags : [
+        `ta-${message.side}`,
+        ...(CLASSES.includes(message.class) ? [`ta-class-${message.class}`] : [])
+      ];
+      let response;
+      try {
+        response = UrlFetchApp.fetch(`${server}/`, {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify({
+            topic: channel,
+            title: message.from,
+            message: message.text,
+            tags,
+            sequence_id: message.id
+          }),
+          muteHttpExceptions: true
+        });
+      } catch (error) {
+        errors.push(`${message.id}: ${error.message}`);
+        return { changed, errors };
       }
-      const sent = JSON.parse(response.getContentText() || '{}');
+      const code = response.getResponseCode();
+      if (code < 200 || code >= 300) {
+        errors.push(`${message.id}: ntfy returned ${code}`);
+        // Rate limits and server outages apply to the remaining requests too. Stop here
+        // so a partial outage is not amplified, but retain successful refreshes above.
+        if (code === 429 || code >= 500) return { changed, errors };
+        continue;
+      }
+      let sent;
+      try {
+        sent = JSON.parse(response.getContentText() || '{}');
+      } catch (error) {
+        errors.push(`${message.id}: ntfy returned invalid JSON (${error.message})`);
+        return { changed, errors };
+      }
       message.ntfyId = String(sent.id || message.ntfyId || '');
       message.lastEventTime = Number(sent.time || Math.floor(Date.now() / 1000));
       message.expires = Number(sent.expires || message.lastEventTime + DEFAULT_CACHE_SECONDS);
       changed = true;
-    });
-  });
-  return changed;
+    }
+  }
+  return { changed, errors };
 }
 
 function publicArchive_(state) {
-  const topics = {};
+  const topics = Object.create(null);
   Object.keys(state.topics).sort().forEach(channel => {
     const topic = topicState_(state, channel);
     topics[channel] = {
@@ -269,29 +338,38 @@ function publicArchive_(state) {
   return { format: ARCHIVE_FORMAT, version: 1, updatedAt: state.updatedAt || '', topics };
 }
 
-function githubHeaders_(token) {
+function githubHeaders_(token, accept = 'application/vnd.github+json') {
   return {
-    Accept: 'application/vnd.github+json',
+    Accept: accept,
     Authorization: `Bearer ${token}`,
     'X-GitHub-Api-Version': '2022-11-28'
   };
 }
 
+/** GitHub identifies file content by SHA-1(`blob <UTF-8 byte length>\\0<bytes>`). */
+function gitBlobSha_(text) {
+  const bytes = Utilities.newBlob(text, 'application/json').getBytes();
+  const header = Utilities.newBlob(`blob ${bytes.length}\0`).getBytes();
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_1, header.concat(bytes))
+    .map(byte => ((Number(byte) + 256) % 256).toString(16).padStart(2, '0'))
+    .join('');
+}
+
 function pushArchive_(config, archive) {
   const api = `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/contents/${config.path.split('/').map(encodeURIComponent).join('/')}`;
   const text = JSON.stringify(archive);
+  const blobSha = gitBlobSha_(text);
   for (let attempt = 0; attempt < 2; attempt++) {
     const current = UrlFetchApp.fetch(`${api}?ref=${encodeURIComponent(config.branch)}`, {
-      headers: githubHeaders_(config.token),
+      // GitHub omits inline base64 content for files above 1 MB. Object media still
+      // returns the blob sha, which is enough to avoid no-op commits at any supported size.
+      headers: githubHeaders_(config.token, 'application/vnd.github.object+json'),
       muteHttpExceptions: true
     });
     const code = current.getResponseCode();
     const details = code === 200 ? JSON.parse(current.getContentText()) : null;
     if (code !== 200 && code !== 404) throw new Error(`GitHub read failed (${code}): ${current.getContentText()}`);
-    if (details && details.content) {
-      const existing = Utilities.newBlob(Utilities.base64Decode(String(details.content).replace(/\s/g, ''))).getDataAsString('UTF-8');
-      if (existing === text) return;
-    }
+    if (details && String(details.sha || '') === blobSha) return;
     const response = UrlFetchApp.fetch(api, {
       method: 'put',
       contentType: 'application/json',
