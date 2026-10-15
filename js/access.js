@@ -108,7 +108,7 @@ function agentOf(charId) {
 /** A visitor without an account: AGENT# and a five-digit number drawn for the visit. */
 export function guestIdentity() {
   const badge = String(10000 + Math.floor(Math.random() * 90000));
-  return { guest: true, manager: false, accountId: '', username: `AGENT#${badge}`, badge, name: '', picture: '', charId: '', player: '', inbox: '', messages: [], conversations: [] };
+  return { guest: true, manager: false, accountId: '', username: `AGENT#${badge}`, badge, name: '', picture: '', charId: '', player: '', inbox: '', messages: [], conversations: [], watch: [] };
 }
 
 /** The account these credentials open, as an identity; null when they open none. */
@@ -132,7 +132,8 @@ export function findAccount(username, password) {
       player: details.player || '',
       inbox: details.inbox || '',
       messages: Array.isArray(details.messages) ? details.messages : [],
-      conversations: Array.isArray(details.conversations) ? details.conversations : []
+      conversations: Array.isArray(details.conversations) ? details.conversations : [],
+      watch: Array.isArray(details.watch) ? details.watch : []   // the Manager's: every channel
     };
   } catch {
     return null;

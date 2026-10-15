@@ -1,0 +1,210 @@
+/* ---------- Easter eggs (easterEggs.js) ----------
+   An anomalous message in blue, with the Agency's red warning banner across its foot and the
+   choices on it; the choice turns it into the Agency's red verdict. The colours of a kind come
+   from .tx-anomaly (readOnly.css). */
+.egg {
+  position: fixed;
+  inset: 0;
+  z-index: 10048;   /* where a transmission goes: they come one at a time */
+  display: grid;
+  grid-template-columns: minmax(0, 640px);   /* the cipher's long lines never widen it */
+  place-content: center;
+  padding: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: radial-gradient(ellipse at center, rgba(var(--tx-rgb),0.2), rgba(0,0,0,0.88) 70%);
+  backdrop-filter: blur(4px);
+  animation: transmission-in 300ms ease-out both;
+}
+.egg p { margin: 0; }
+.egg-stage { min-width: 0; }
+
+.egg-message {
+  padding: clamp(18px, 4vw, 32px) clamp(18px, 4vw, 32px) 44px;
+  border: 2px solid var(--tx);
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255,255,255,0.03) 0 2px, transparent 2px 4px),
+    rgba(4,8,16,0.96);
+  box-shadow: 0 0 30px rgba(var(--tx-rgb),0.45), inset 0 0 40px rgba(var(--tx-rgb),0.1);
+  color: #fff;
+}
+.egg-cipher {
+  margin: 18px 0 0;
+  overflow: hidden;
+  color: var(--tx-text);
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: clamp(12px, 2.6vw, 18px);
+  line-height: 1.35;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 8px rgba(var(--tx-rgb),0.9);
+  white-space: pre;
+  user-select: none;
+  animation: egg-flicker 2.4s steps(1, end) infinite;
+}
+
+/* The Agency's banner, red and slightly askew, over the foot of the message. */
+.egg-banner,
+.egg-verdict {
+  position: relative;
+  padding: clamp(14px, 3vw, 22px);
+  border-block: 4px solid #ff3b30;
+  background:
+    repeating-linear-gradient(-45deg, rgba(0,0,0,0.12) 0 10px, transparent 10px 20px),
+    rgba(150,0,0,0.94);
+  box-shadow: 0 0 24px rgba(255,59,48,0.7), 0 0 70px rgba(255,59,48,0.3);
+  color: #fff;
+  text-align: center;
+}
+.egg-banner {
+  margin: -28px -12px 0;
+  rotate: -1.5deg;
+  animation: egg-banner-in 420ms cubic-bezier(.2,.9,.3,1.2) 700ms both;
+}
+.egg-banner-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.egg-banner-text {
+  margin-top: 8px !important;
+  font-size: clamp(16px, 3vw, 24px);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px #ff3b30;
+}
+.egg-choices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.egg-button {
+  min-width: 140px;
+  padding: 10px 22px;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.3);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.egg-button:is(:hover, :focus-visible) { background: #fff; color: #960000; outline: none; }
+
+/* The verdict, in place of the message. */
+.egg-verdict {
+  border: 4px solid #ff3b30;
+  border-radius: 10px;
+  animation: egg-banner-in 420ms cubic-bezier(.2,.9,.3,1.2) both;
+}
+.egg-verdict-heading {
+  margin-top: 10px !important;
+  font-size: clamp(22px, 5vw, 40px);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px #ff3b30, 0 0 36px rgba(255,59,48,0.8);
+}
+.egg-verdict-text {
+  max-width: 52ch;
+  margin: 16px auto 0 !important;
+  font-size: clamp(15px, 2.2vw, 18px);
+  line-height: 1.5;
+}
+.egg-verdict-boon {
+  max-width: 46ch;
+  margin: 14px auto 0 !important;
+  padding: 12px 16px;
+  border: 2px dashed rgba(255,255,255,0.8);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.25);
+  font-size: clamp(15px, 2.2vw, 18px);
+  font-weight: 800;
+}
+.egg-verdict-stamp {
+  display: inline-block;
+  margin-top: 18px !important;
+  padding: 4px 14px;
+  border: 3px solid currentColor;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  rotate: -6deg;
+  animation: egg-stamp 360ms cubic-bezier(.3,1.6,.5,1) 500ms both;
+}
+.egg-verdict.is-fail .egg-verdict-stamp { color: #fff; background: rgba(0,0,0,0.35); }
+.egg-verdict.is-pass .egg-verdict-stamp { color: #6dff96; background: rgba(0,40,10,0.55); }
+.egg-verdict-note {
+  margin-top: 14px !important;
+  color: rgba(255,255,255,0.7);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+@keyframes egg-flicker {
+  0%, 100% { opacity: 1; }
+  47% { opacity: 0.55; translate: 2px 0; }
+  49% { opacity: 1; translate: 0 0; }
+}
+@keyframes egg-banner-in {
+  from { opacity: 0; scale: 1.25; }
+}
+@keyframes egg-stamp {
+  from { opacity: 0; scale: 2.2; }
+}
+html[data-motion="reduced"] :is(.egg, .egg-cipher, .egg-banner, .egg-verdict, .egg-verdict-stamp) { animation: none; }
+
+/* The Manager's picker, beside the direct line on an agent card (messages.js). */
+.char .agent-egg-btn {
+  position: absolute;
+  top: 5px;
+  left: 66px;
+  z-index: 41;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(61,155,255,0.6);
+  border-radius: 50%;
+  background: rgba(4,12,24,0.9);
+  color: #7cbcff;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 0 9px rgba(61,155,255,0.2);
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+.char .agent-egg-btn:is(:hover, :focus-visible) {
+  background: rgba(61,155,255,0.24);
+  box-shadow: 0 0 13px rgba(61,155,255,0.5);
+  outline: none;
+  transform: scale(1.08);
+}
+.egg-picker-modal { width: min(460px, 100%); border-color: rgba(var(--tx-rgb),0.55); }
+.egg-picker { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.egg-picker li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(var(--tx-rgb),0.35);
+  border-radius: 8px;
+  background: rgba(var(--tx-rgb),0.06);
+}
+.egg-picker strong { color: var(--tx-text); }
+.egg-picker p { grid-column: 1 / -1; margin: 0; color: rgba(255,255,255,0.75); font-size: 13px; line-height: 1.4; }
+.egg-picker small { color: rgba(255,255,255,0.55); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.egg-picker button { grid-row: 1; grid-column: 2; }

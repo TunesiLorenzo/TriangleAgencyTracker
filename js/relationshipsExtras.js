@@ -3,11 +3,13 @@
 // with their relationships around them (a relationship two agents share by name sits between
 // them; line weight follows the bond, Network relationships glow), plus the unlinked Manager.
 // The phone shows a lock screen
-// where the relationships keep texting the agents, and the HR ticker scrolls the Agency's memos
+// where the relationships keep texting the agents, under the latest real messages
+// (phoneFeed.js says which ones whoever is looking may read), and the HR ticker scrolls the Agency's memos
 // on having a life. The phone and the ticker are built once and kept across renders, like the
 // Agency's promo banner, so their timers and scroll survive a refresh.
 
 import { MAX_CONNECTION } from './charSystem.js';
+import { ensureFeed, latestMessages, onFeed } from './phoneFeed.js';
 import { AGENCY_SENDER, TEXTS, textsReady } from './relationshipsData.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -22,6 +24,7 @@ const OUTER_RY = 235;
 const LABEL_CHARS = 14;
 
 const PHONE_SLOTS = 4;      // notifications on the lock screen
+const REAL_SLOTS = 2;       // of which, at most, the latest real messages
 const PHONE_EVERY = 8000;   // ms between messages, plus up to half as much at random
 const AGENCY_ODDS = 0.12;   // chance a message comes from the Agency instead
 
@@ -286,14 +289,53 @@ function relativeTime(at) {
   const minutes = Math.floor((Date.now() - at) / 60000);
   if (minutes < 1) return 'ora';
   if (minutes < 60) return `${minutes} min fa`;
-  return `${Math.floor(minutes / 60)} h fa`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h fa`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} g fa`;
+  return new Date(at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+}
+
+/** Clicking or pressing Enter on a notification. */
+function clickable(note, title, go) {
+  note.tabIndex = 0;
+  note.setAttribute('role', 'button');
+  note.title = title;
+  note.addEventListener('click', go);
+  note.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    go();
+  });
+}
+
+/** One notification: avatar, sender and time, the text, and whom it was for. */
+function createNote({ className, at, picture, initial, sender, text, to }) {
+  const note = el('li', `phone-note${className ? ` ${className}` : ''}`);
+  note.dataset.at = String(at);
+  const avatar = el('span', 'phone-avatar');
+  if (picture) {
+    const img = document.createElement('img');
+    img.src = picture;
+    img.alt = '';
+    avatar.append(img);
+  } else avatar.textContent = initial;
+  const body = el('span', 'phone-body');
+  const head = el('span', 'phone-head');
+  head.append(el('strong', 'phone-sender', sender), el('span', 'phone-time', relativeTime(at)));
+  body.append(head, el('span', 'phone-text', text));
+  if (to) body.append(el('span', 'phone-to', `per ${to}`));
+  note.append(avatar, body);
+  return note;
 }
 
 /**
  * The lock screen. `sources()` lists { card, relationship, agent } for every relationship of the
- * branch; `open(card, relationship)` opens one when its notification is clicked.
+ * branch; `open(card, relationship)` opens one when its notification is clicked. Above the
+ * made-up messages, the latest real ones (phoneFeed.js); `pictureOf(message)` finds a face for
+ * one, `openMessage(message)` opens what it was about.
  */
-export function createPhone({ sources, open }) {
+export function createPhone({ sources, open, pictureOf = () => '', openMessage = () => {} }) {
   const phone = el('aside', 'rl-phone');
   phone.setAttribute('aria-label', 'Telefono personale');
 
@@ -301,10 +343,45 @@ export function createPhone({ sources, open }) {
   status.append(el('span', 'phone-carrier', 'TRIANGLE ▲'), el('span', 'phone-battery', '5G ▮▮▮▯'));
   const clock = el('div', 'phone-clock');
   const date = el('div', 'phone-date');
+  const recent = el('section', 'phone-recent');
+  recent.hidden = true;
+  recent.setAttribute('aria-label', 'Messaggi recenti');
+  const recentList = el('ul', 'phone-notes phone-real');
+  recentList.setAttribute('aria-live', 'polite');
+  recent.append(el('p', 'phone-section', 'Messaggi recenti'), recentList);
   const list = el('ul', 'phone-notes');
   list.setAttribute('aria-live', 'polite');
   const lock = el('div', 'phone-lock', '🔒 Proprietà dell’Agenzia');
-  phone.append(status, clock, date, list, lock);
+  phone.append(status, clock, date, recent, list, lock);
+
+  let slots = PHONE_SLOTS;   // left to the made-up messages
+  let shownReal = new Set();
+
+  // The latest real messages, pinned on top; the made-up ones share what room is left.
+  const showReal = () => {
+    const latest = latestMessages(REAL_SLOTS);
+    recentList.replaceChildren(...latest.map(message => {
+      const note = createNote({
+        className: `real tx-${message.kind}`,
+        at: message.time * 1000,
+        picture: pictureOf(message),
+        initial: initialOf(message.from || '?'),
+        sender: message.from || 'Sconosciuto',
+        text: message.text,
+        to: message.to
+      });
+      if (shownReal.size && !shownReal.has(message.key)) note.classList.add('arriving');
+      clickable(note, 'Apri', () => openMessage(message));
+      return note;
+    }));
+    shownReal = new Set(latest.map(message => message.key));
+    recent.hidden = !latest.length;
+    recentList.style.setProperty('--slots', latest.length);
+    slots = PHONE_SLOTS - latest.length;
+    list.style.setProperty('--slots', slots);
+    while (list.children.length > slots) list.lastElementChild.remove();
+  };
+  onFeed(showReal);
 
   let lastText = '';
 
@@ -340,58 +417,42 @@ export function createPhone({ sources, open }) {
     const data = message(agencyOdds);
     if (!data) return;
     lastText = data.text;
-    const note = el('li', `phone-note${data.agency ? ' agency' : ''}${data.network ? ' network' : ''}`);
-    note.dataset.at = String(at);
-    const avatar = el('span', 'phone-avatar');
-    if (data.picture) {
-      const img = document.createElement('img');
-      img.src = data.picture;
-      img.alt = '';
-      avatar.append(img);
-    } else avatar.textContent = data.agency ? '▲' : initialOf(data.sender);
-
-    const body = el('span', 'phone-body');
-    const head = el('span', 'phone-head');
-    head.append(el('strong', 'phone-sender', data.sender), el('span', 'phone-time', relativeTime(at)));
-    body.append(head, el('span', 'phone-text', data.text));
-    if (data.agent) body.append(el('span', 'phone-to', `per ${data.agent}`));
-    note.append(avatar, body);
-
-    if (data.source) {
-      note.tabIndex = 0;
-      note.setAttribute('role', 'button');
-      note.title = 'Apri la relazione';
-      const go = () => open(data.source.card, data.source.relationship);
-      note.addEventListener('click', go);
-      note.addEventListener('keydown', event => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        go();
-      });
-    }
+    const note = createNote({
+      className: `${data.agency ? 'agency' : ''}${data.network ? ' network' : ''}`.trim(),
+      at,
+      picture: data.picture,
+      initial: data.agency ? '▲' : initialOf(data.sender),
+      sender: data.sender,
+      text: data.text,
+      to: data.agent
+    });
+    if (data.source) clickable(note, 'Apri la relazione', () => open(data.source.card, data.source.relationship));
 
     list.prepend(note);
     if (animate) note.classList.add('arriving');
-    while (list.children.length > PHONE_SLOTS) list.lastElementChild.remove();
+    while (list.children.length > slots) list.lastElementChild.remove();
   };
 
   const tickClock = () => {
     const now = new Date();
     clock.textContent = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
     date.textContent = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
-    list.querySelectorAll('.phone-time').forEach(time => {
+    phone.querySelectorAll('.phone-time').forEach(time => {
       time.textContent = relativeTime(Number(time.closest('.phone-note').dataset.at));
     });
   };
 
   // Messages only arrive while the phone is on screen; the first few are already waiting.
+  // Whoever is looking may have signed in or out since: the real ones follow them.
   const schedule = () => setTimeout(() => {
+    ensureFeed();
     if (phone.isConnected && document.visibilityState === 'visible') push();
     schedule();
   }, PHONE_EVERY * (1 + Math.random() / 2));
 
   let started = false;
   const start = () => {
+    ensureFeed();
     if (started) return;
     started = true;
     tickClock();
