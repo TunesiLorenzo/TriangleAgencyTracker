@@ -1043,8 +1043,24 @@ PUBLISH_PAGE_ADDITIONS = (
 publish_lock = threading.Lock()
 
 
+def ensure_chat_secret():
+    """The players' conversations need a secret (build_static.conversation_channel). Made
+    here, once accounts exist, and saved with the settings as a new revision, so the
+    open pages take it up."""
+    with store_lock:
+        players = config_state["config"].get("players")
+        if not isinstance(players, dict) or not players.get("accounts") or players.get("chatSecret"):
+            return
+        config = {**config_state["config"], "players": {**players, "chatSecret": secrets.token_hex(8)}}
+        team, _ = read_tracker_file(tracker_file)
+        saved = {"revision": config_state["revision"] + 1, "config": config}
+        write_tracker_file(tracker_file, team, saved)
+        config_state.update(saved)
+
+
 def public_snapshot():
     """snapshot.json as a publish would write it now."""
+    ensure_chat_secret()
     with store_lock:
         path = tracker_file
         settings = {"revision": config_state["revision"], "config": config_state["config"]}
@@ -1052,6 +1068,18 @@ def public_snapshot():
     with cases_lock:
         cases = load_cases()
     return build_static.make_snapshot(team or {}, settings, cases)
+
+
+@app.get("/api/conversations")
+def get_conversations():
+    """Every in-character conversation of the published copy, with its channel: the
+    Players tab of /settings lists them, to write in any of them as the other side."""
+    ensure_chat_secret()
+    with store_lock:
+        path = tracker_file
+        players = config_state["config"].get("players")
+    team, _ = read_tracker_file(path)
+    return jsonify({"ok": True, "conversations": build_static.list_conversations(team or {}, players)})
 
 
 @app.get("/public")
@@ -1068,6 +1096,12 @@ def public_site():
 @app.get(f"/public/{build_static.SNAPSHOT_FILE}")
 def public_site_snapshot():
     return jsonify(public_snapshot())
+
+
+@app.get(f"/public/{build_static.MESSAGE_ARCHIVE_FILE}")
+def public_message_archive():
+    """The LAN preview has no Google collector; give it the same empty archive shape."""
+    return app.response_class(build_static.empty_message_archive_text(), mimetype="application/json")
 
 
 @app.get("/public/<path:filename>")
@@ -1216,12 +1250,17 @@ def shutdown():
     VoiceMeeter bridge are stopped too, then this server.
     """
     def stop():
-        light_bridge.wait_idle(SHUTDOWN_LIGHTS_WAIT)
-        time.sleep(SERVICES_OFF_DELAY)
-        light_bridge.stop_lightrpg()
-        stop_local_voicemeeter_bridge()
-        print("Logged out - Triangle Agency Tracker stopped.", flush=True)
-        os._exit(0)   # Flask's development server has no stop call; the OS frees the port and lock
+        # Whatever goes wrong with the lights or the bridge, the tracker still stops.
+        try:
+            light_bridge.wait_idle(SHUTDOWN_LIGHTS_WAIT)
+            time.sleep(SERVICES_OFF_DELAY)
+            light_bridge.stop_lightrpg()
+            stop_local_voicemeeter_bridge()
+            print("Logged out - Triangle Agency Tracker stopped.", flush=True)
+        except Exception:
+            app.logger.exception("Log Out could not stop everything; the tracker stops anyway")
+        finally:
+            os._exit(0)   # Flask's development server has no stop call; the OS frees the port and lock
 
     threading.Timer(SHUTDOWN_DELAY, stop).start()
     return jsonify({"ok": True})

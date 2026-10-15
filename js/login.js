@@ -12,10 +12,19 @@
 // are on the Login tab there. Ctrl + left-click skips the sequence and opens the tracker.
 // The room lights follow the screen switching on, the login screen and Log Out (the scenes
 // of lights.py, set under Session lights on /settings).
-// A published copy is signed into by a read-only Agent instead (becomeAgent): a number drawn
-// for the visit, a redacted badge, a warning once it is read, and no retina scan.
+// A published copy is signed into by a read-only Agent instead (becomeAgent): no retina
+// scan, and a warning once the badge is read. With player accounts set up (access.js), the
+// player types their own username and password and the badge becomes their agent's; left
+// blank, or without accounts, the visitor is a guest with a number drawn for the visit and
+// a redacted badge.
 
-import { getConfig, getSnapshot, isServerAvailable, onConfigChange, whenConfigLoaded } from './config.js';
+import { getConfig, getSnapshot, onConfigChange, whenConfigLoaded } from './config.js';
+import {
+  endSession, findAccount, getIdentity, guestIdentity, hasAccounts, playWarning, reportFailedSignIn,
+  setIdentity, startSession
+} from './access.js';
+import { startMessages, stopMessages } from './messages.js';
+import { showAgentTag } from './readOnly.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { playButton, powerOffAudio, soundStartDelay } from './soundEffects.js';
@@ -45,6 +54,8 @@ let backdrop = null;      // the moving background; null without WebGL
 let badge = null;         // the badge on its lanyard (loginBadge.js)
 let username = 'Manager#56776544';
 let agent = false;        // a published copy's read-only Agent, not the Manager
+let entry = false;        // ...who types their own credentials (player accounts)
+let deniedTimer = 0;
 
 function setState(next) {
   state = next;
@@ -108,6 +119,7 @@ function applyTiming() {
 
 /** The Manager's own photo on the badge (uploaded on /settings), or the silhouette. */
 function showBadgePicture(path) {
+  if (agent) return;
   const { badgePhoto, badgePicture } = els;
   if (path === badgePicture.dataset.path) return;
   badgePicture.dataset.path = path;
@@ -134,6 +146,7 @@ function resetScreen() {
     field.classList.remove('is-typing', 'is-done');
     field.querySelector('.login-value').textContent = '';
   });
+  els.entries?.forEach(input => { input.value = ''; });
   els.checks.forEach(item => item.classList.remove('is-ok'));
   els.percent.textContent = '00%';
   setStatus('');
@@ -155,21 +168,132 @@ function buildBarcode() {
 }
 
 /**
- * A published copy is looked at, never run: whoever opens it signs in as AGENT# and a
- * five-digit number drawn for this visit. The badge carries the same number, a redacted
- * picture and the Agent's lines of the markup (data-agent).
+ * A published copy is looked at, never run: whoever opens it is an Agent, a guest until
+ * they sign in with an account. The badge takes the Agent's lines of the markup (data-agent).
  */
 function becomeAgent() {
   agent = true;
-  const id = String(10000 + Math.floor(Math.random() * 90000));
-  username = `AGENT#${id}`;
   const { screen } = els;
   screen.classList.add('is-agent');
   screen.querySelectorAll('[data-agent]').forEach(node => { node.textContent = node.dataset.agent; });
   screen.querySelector('.login-badge').setAttribute('aria-label', 'Agent badge');
-  screen.querySelector('.login-badge-id').textContent = `#${id}`;
-  screen.querySelector('.login-reader-id').textContent = `#${id} · Read only`;
+  wearIdentity(guestIdentity());
+  if (hasAccounts()) enableEntry();
+}
+
+/**
+ * The badge of whoever signs in: their number on it and on the reader, and for a player
+ * their agent's name and portrait. A guest, or an agent without a portrait, stays redacted.
+ */
+function wearIdentity(identity) {
+  setIdentity(identity);
+  username = identity.username;
+  const { screen, badgePhoto, badgePicture } = els;
+  const role = screen.querySelector('.login-badge-role');
+  role.textContent = identity.manager ? 'Manager' : identity.name || role.dataset.agent;
+  role.classList.toggle('is-long', role.textContent.length > 9);
+  screen.classList.toggle('is-manager', !!identity.manager);
+  const level = screen.querySelector('.login-sr[data-agent]');
+  const division = screen.querySelector('[data-agent="Observation"]');
+  if (level) level.textContent = identity.manager ? 'Level 5 of 5' : level.dataset.agent;
+  if (division) division.textContent = identity.manager ? 'Management' : division.dataset.agent;
+  screen.querySelector('.login-badge').setAttribute('aria-label', identity.manager ? 'Manager badge' : 'Agent badge');
+  screen.querySelector('.login-badge-id').textContent = `#${identity.badge}`;
+  screen.querySelector('.login-reader-id').textContent = `#${identity.badge} · Read only`;
+  screen.classList.toggle('is-identified', !!identity.picture);
+  if (identity.picture) badgePicture.src = identity.picture;
+  else badgePicture.removeAttribute('src');
+  badgePhoto.classList.toggle('has-picture', !!identity.picture);
   buildBarcode();
+}
+
+/**
+ * Player accounts: the username and password fields take typing. Each holds a real input,
+ * invisible over it; what is typed shows in the field as the sign-in animation would type it.
+ */
+function enableEntry() {
+  entry = true;
+  els.screen.classList.add('is-entry');
+  els.start.innerHTML = '<span>&#9650;</span> Enter your credentials<small class="login-shortcut">Leave both blank to sign in as a guest</small>';
+  els.entries = els.fields.map(field => {
+    const password = field.dataset.field === 'password';
+    const input = document.createElement('input');
+    input.className = 'login-entry';
+    input.type = password ? 'password' : 'text';
+    input.maxLength = 64;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('aria-labelledby', field.querySelector('.login-label').id);
+    const shown = field.querySelector('.login-value');
+    input.addEventListener('input', () => { shown.textContent = password ? '*'.repeat(input.value.length) : input.value; });
+    input.addEventListener('focus', () => field.classList.add('is-typing'));
+    input.addEventListener('blur', () => field.classList.remove('is-typing'));
+    field.querySelector('.login-input').append(input);
+    return input;
+  });
+  const [user, pass] = els.entries;
+  user.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    pass.focus();
+  });
+  pass.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    submitEntry();
+  });
+}
+
+/** A click on the screen while the credentials are being typed: back into the fields. */
+function focusEntry() {
+  if (els.entries.includes(document.activeElement)) return;
+  (els.entries.find(input => !input.value) || els.entries[1]).focus({ preventScroll: true });
+}
+
+/** Enter in the password field: an account's credentials, or nothing at all for a guest. */
+function submitEntry() {
+  if (state !== 'locked') return;
+  const [user, pass] = els.entries.map(input => input.value);
+  if (!user.trim() && !pass) {
+    els.entries.forEach(input => input.blur());
+    authenticate();   // a guest: their drawn AGENT# is typed in for them
+    return;
+  }
+  const identity = findAccount(user, pass);
+  if (!identity) {
+    refuse(user);
+    return;
+  }
+  wearIdentity(identity);
+  els.entries.forEach(input => input.blur());
+  authenticate({ typed: true });
+}
+
+/** Wrong credentials: a buzz, the form shakes, the password goes. */
+function refuse(user) {
+  playWarning();
+  reportFailedSignIn(user);
+  const [, pass] = els.entries;
+  pass.value = '';
+  pass.dispatchEvent(new Event('input'));
+  pass.focus({ preventScroll: true });
+  const form = els.screen.querySelector('.login-form');
+  form.classList.remove('is-denied');
+  void form.offsetWidth;   // the shake starts over on each refusal
+  form.classList.add('is-denied');
+  els.start.classList.add('is-denied');
+  const main = els.start.querySelector('span').nextSibling;
+  const small = els.start.querySelector('small');
+  main.textContent = ' Access denied';
+  small.textContent = 'Credentials not recognised';
+  clearTimeout(deniedTimer);
+  deniedTimer = setTimeout(() => {
+    form.classList.remove('is-denied');
+    els.start.classList.remove('is-denied');
+    main.textContent = ' Enter your credentials';
+    small.textContent = 'Leave both blank to sign in as a guest';
+  }, 2600);
 }
 
 /** After an Agent's badge: a blinking red warning over the whole terminal, RESTRICTED_MS long (reduced motion too). */
@@ -359,7 +483,9 @@ async function powerOn() {
   if (moving) settled = warmUp();
   // The room pulses for as long as the picture is unsteady.
   settled.then(() => triggerLightScene('login'));
+  await whenConfigLoaded();   // whether credentials are typed here depends on it
   setState('locked');
+  if (entry) focusEntry();
 }
 
 const TAU = Math.PI * 2;
@@ -435,27 +561,41 @@ function warmUp() {
 async function signIn(event) {
   if (event?.button !== undefined && event.button !== 0) return;
   if (state === 'standby') {
-    if (event?.ctrlKey) setState('open');
-    else powerOn();
+    if (event?.ctrlKey) {
+      setState('open');
+      if (agent) beginSession();
+    } else powerOn();
     return;
   }
   if (state !== 'locked') return;
   if (event?.ctrlKey) {
     event.preventDefault();
     setState('open');
+    if (agent) beginSession();
     return;
   }
+  if (entry) focusEntry();   // the credentials are typed, and Enter signs in
+  else authenticate();
+}
+
+/** The sign-in itself; `typed` when the credentials are already in the fields (a player's). */
+async function authenticate({ typed = false } = {}) {
   setState('authenticating');
   const t = applyTiming();
   const { screen, fields } = els;
-  await whenConfigLoaded();   // a click that came before the page knew it is a published copy
+  const identity = getIdentity();
 
   // Typing sounds wait for a sleeping amplifier, so start once they can be heard.
   await wait(Math.max(t.typingStart, soundStartDelay()));
   setStatus('Transmitting credentials…');
-  await typeInto(fields[0], username, t.userCharacter);
-  await wait(t.fieldGap);
-  await typeInto(fields[1], PASSWORD, t.passwordCharacter);
+  if (typed) {
+    await wait(t.credentialsHold);
+  } else {
+    fields.forEach(field => { field.querySelector('.login-value').textContent = ''; });
+    await typeInto(fields[0], username, t.userCharacter);
+    await wait(t.fieldGap);
+    await typeInto(fields[1], PASSWORD, t.passwordCharacter);
+  }
   fields.forEach(field => field.classList.add('is-done'));
   setStatus('Credentials accepted · Present your badge');
   backdrop?.ring();
@@ -479,7 +619,7 @@ async function signIn(event) {
   playButton('session', 'badgeRead');
   backdrop?.ring();
   if (agent) {
-    setStatus('Badge accepted · Limited access');
+    setStatus(getIdentity()?.manager ? 'Manager credentials accepted · Read only' : 'Badge accepted · Limited access');
     await restrictedWarning();
     // An Agent's badge is all the terminal asks for: no retina scan.
     badge.eject(t.badgeEject);
@@ -488,7 +628,7 @@ async function signIn(event) {
     screen.classList.add('is-verified');
     playButton('session', 'verified');
     backdrop?.ring('green');
-    setStatus('Access granted · Read only mode', { ok: true });
+    setStatus(identity?.name ? `Access granted · Welcome, Agent ${identity.name}` : 'Access granted · Read only mode', { ok: true });
     await wait(t.verifiedHold);
   } else {
     setStatus('Badge accepted · Retina scan required');
@@ -525,10 +665,22 @@ async function signIn(event) {
   setState('open');
   cleanUp();
   resetScreen();
+  if (agent) beginSession();
+}
+
+/** A published copy, signed in: the Manager hears of it; the player gets what waits for them. */
+function beginSession() {
+  showAgentTag();
+  startSession();
+  startMessages();
 }
 
 async function signOut() {
   if (state !== 'open') return;
+  if (agent) {
+    endSession();
+    stopMessages();
+  }
   // The sound comes from the button itself (Log in / out on /settings).
   resetScreen();
   setState('closing');
@@ -588,7 +740,8 @@ async function powerOff() {
 
 /** Stop the server after the picture and sound finish, leaving this page black. */
 async function stopServer() {
-  if (!isServerAvailable()) return;
+  // Asked even when the server did not answer as the page loaded: a tab opened while the
+  // launcher was restarting it still stops the one running now. Without one, this fails.
   try {
     const response = await fetch('/api/shutdown', { method: 'POST' });
     if (!response.ok) return;
@@ -656,7 +809,10 @@ export function initLogin() {
   backdrop = createBackdrop(canvas, { focus: logoFocus, animate: motionAllowed });
   if (!backdrop) canvas.hidden = true;
   // A picture that has gone missing from images/badge/ falls back to the silhouette.
-  els.badgePicture.addEventListener('error', () => els.badgePhoto.classList.remove('has-picture'));
+  els.badgePicture.addEventListener('error', () => {
+    els.badgePhoto.classList.remove('has-picture');
+    screen.classList.remove('is-identified');   // an agent's portrait that will not load: redacted after all
+  });
   onConfigChange(config => showBadgePicture(config.login.badgePicture));
 
   screen.addEventListener('click', signIn);

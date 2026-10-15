@@ -1,7 +1,8 @@
 // relationshipsExtras.js
 // Responsibilities: the bottom of the Relationships overview. The Network map draws every agent
 // with their relationships around them (a relationship two agents share by name sits between
-// them; line weight follows the bond, Network relationships glow). The phone shows a lock screen
+// them; line weight follows the bond, Network relationships glow), plus the unlinked Manager.
+// The phone shows a lock screen
 // where the relationships keep texting the agents, and the HR ticker scrolls the Agency's memos
 // on having a life. The phone and the ticker are built once and kept across renders, like the
 // Agency's promo banner, so their timers and scroll survive a refresh.
@@ -137,8 +138,10 @@ function createDisc(radius, picture, name) {
   return body;
 }
 
-function createNode({ className, x, y, radius, picture, name, label, onOpen }) {
+/** `data`: what the node stands for, for whoever adds to the map (messages.js on a published copy). */
+function createNode({ className, x, y, radius, picture, name, label, onOpen, data = {} }) {
   const node = svg('g', { class: `net-node ${className}`, transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})`, tabindex: 0, role: 'button' });
+  Object.assign(node.dataset, data, { radius: String(radius) });
   node.setAttribute('aria-label', label);
   const title = svg('title');
   title.textContent = label;
@@ -173,7 +176,7 @@ function bindFocus(map, node, edges, partners) {
 /**
  * `agents`: [{ card, name, portrait, dead, relationships }]; `open(card, relationship)` opens a page.
  */
-export function createNetworkMap(agents, open) {
+export function createNetworkMap(agents, open, { managerPicture = '' } = {}) {
   const nodes = layout(agents);
   const total = agents.reduce((sum, agent) => sum + agent.relationships.length, 0);
   const inNetwork = nodes.filter(node => node.connection >= MAX_CONNECTION).length;
@@ -205,9 +208,20 @@ export function createNetworkMap(agents, open) {
     const node = createNode({
       className: `net-agent${agent.dead ? ' dead' : ''}`, x: agent.x, y: agent.y, radius: 32,
       picture: agent.portrait, name: agent.name, label: `${agent.name}: apri le relazioni`,
-      onOpen: () => open(agent.card, null)
+      onOpen: () => open(agent.card, null),
+      data: { agentId: agent.card._id || '', agentName: agent.name }
     });
     agentNodes.set(agent, { node, edges: [], partners: [] });
+  });
+
+  // The Manager is a character in the messaging network, but not a Relationship: the
+  // central node deliberately has no edges. messages.js turns it into the direct line
+  // target for agents, and into a playable persona for a signed-in Manager.
+  const managerX = agents.length === 1 ? CX + AGENT_RX : CX;
+  const managerNode = createNode({
+    className: 'net-manager', x: managerX, y: CY, radius: 28,
+    picture: managerPicture, name: 'Manager', label: 'Manager: direct line',
+    onOpen: () => {}, data: { manager: 'true' }
   });
 
   nodes.forEach(item => {
@@ -218,7 +232,8 @@ export function createNetworkMap(agents, open) {
       className: `net-rel${network ? ' network' : ''}${item.links.length > 1 ? ' shared' : ''}`,
       x: item.x, y: item.y, radius, picture: item.picture, name: item.name,
       label: `${item.name} (${owners}): ${network ? 'Network' : `legame ${item.connection} / ${MAX_CONNECTION}`}`,
-      onOpen: () => open(item.links[0].agent.card, item.links[0].relationship)
+      onOpen: () => open(item.links[0].agent.card, item.links[0].relationship),
+      data: { npc: item.name, agents: item.links.map(link => link.agent.card._id || '').join(',') }
     });
     if (network) node.querySelector('.net-body').prepend(svg('circle', { class: 'net-pulse', r: radius }));
 
@@ -245,6 +260,8 @@ export function createNetworkMap(agents, open) {
     bindFocus(map, node, edges, partners);
     nodeLayer.append(node);
   });
+  bindFocus(map, managerNode, [], []);
+  nodeLayer.append(managerNode);
 
   if (!nodes.length) {
     const empty = svg('text', { class: 'net-empty', x: CX, y: H - 36 });

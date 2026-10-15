@@ -45,7 +45,27 @@ def acquire_instance_lock(port):
     return lock_file
 
 
+def disable_quick_edit():
+    """Keep a click in this console window from freezing the server.
+
+    With QuickEdit on, Windows starts selecting text at the click and holds the program at
+    its next line of output until Esc or Enter. Every request is logged here, so the tracker
+    stops answering, and Log Out never gets to stop it.
+    """
+    if os.name != "nt":
+        return
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    console_input = kernel32.GetStdHandle(-10)   # STD_INPUT_HANDLE
+    mode = ctypes.c_uint32()
+    if not kernel32.GetConsoleMode(console_input, ctypes.byref(mode)):
+        return   # not a console window: nothing to freeze
+    ENABLE_QUICK_EDIT_MODE, ENABLE_EXTENDED_FLAGS = 0x0040, 0x0080
+    kernel32.SetConsoleMode(console_input, (mode.value & ~ENABLE_QUICK_EDIT_MODE) | ENABLE_EXTENDED_FLAGS)
+
+
 def main():
+    disable_quick_edit()
     parser = argparse.ArgumentParser(description="Serve the Triangle Agency Tracker.")
     # 5000 and 5001 are taken by LightRPG and MTG_Table on the same PC.
     parser.add_argument("--port", type=int, default=5002, help="port to listen on (default: 5002)")

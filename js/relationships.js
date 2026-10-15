@@ -14,6 +14,7 @@ import {
   MAX_CONNECTION, MAX_REALITY_DOSE, animateOnce, bindImagePicker, createChoiceSelect,
   getCharElements, loadImageFile, normalizeRelationship
 } from './charSystem.js';
+import { getConfig } from './config.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { createNetworkMap, createPhone, createTicker } from './relationshipsExtras.js';
 import { saveSettings } from './storage.js';
@@ -772,7 +773,12 @@ function createExtras(cards) {
 
   const extras = document.createElement('div');
   extras.className = 'rel-extras';
-  extras.append(...(portrait.matches ? [] : [ticker.el]), createNetworkMap(agents, openFromExtras));
+  extras.append(
+    ...(portrait.matches ? [] : [ticker.el]),
+    createNetworkMap(agents, openFromExtras, {
+      managerPicture: getConfig().login.badgePicture
+    })
+  );
   return extras;
 }
 

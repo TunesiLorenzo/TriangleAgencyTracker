@@ -26,6 +26,7 @@ import { initButtonSounds, initKeepAlive, isMuted, playEvent, setMuted } from '.
 import { confirmDialog, openModal, toast } from './ui.js';
 import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
 import { initMotionPreference } from './motion.js';
+import { initManagerMessaging } from './messages.js';
 import { initGraTakeover } from './graTakeover.js';
 import { initMeritLock } from './meritLock.js';
 import { initSilence } from './silence.js';
@@ -276,6 +277,7 @@ async function init() {
 
   const saved = loadSettings();
   saved?.chars?.forEach((character, index) => addChar(character, { delay: index * 70 }));
+  if (!snapshot) initManagerMessaging();
   setWorldData(saved?.world);
   updateTopCharacters();
   updateEffects();

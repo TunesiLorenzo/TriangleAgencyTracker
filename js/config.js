@@ -410,6 +410,21 @@ export const DEFAULT_CONFIG = {
       windowOpen: 1.3,     // the triangle opening onto the main screen
       windowClose: 1.3     // Log Out: the same triangle closing
     }
+  },
+  // The players' sign-ins on the published copy (access.js), set on the Players tab of
+  // /settings. build_static.py publishes the accounts sealed with their own credentials.
+  players: {
+    server: 'https://ntfy.sh',  // the ntfy server carrying the notifications and live messages
+    notify: '',            // your channel on it: sign-ins, and what the players try to change
+    notifyGuests: true,    // also report visitors signed in without an account
+    copyChats: true,       // a copy of every in-character message on your channel
+    chatSecret: '',        // makes the conversations' channels unguessable (build_static.conversation_channel)
+    manager: {             // optional Manager sign-in for the published, read-only copy
+      username: 'Manager',
+      password: '',
+      badge: '56776544'
+    },
+    accounts: []           // { username, password, charId, badge, inbox, message }
   }
 };
 

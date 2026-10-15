@@ -2,7 +2,8 @@
 // The /settings page: assigns sounds to tracker events, viewer buttons (one submenu
 // per viewer tab) and competency cues, tunes the amplifier keep-alive tone, manages
 // the audio library, tunes the visual effects, sets the room-light cues sent
-// to LightRPG, and sets up the login screen (badge picture, timing of each step).
+// to LightRPG, sets up the login screen (badge picture, timing of each step) and the
+// players' accounts on the published copy (their sign-ins and messages, js/access.js).
 // Every edit updates a local draft,
 // previews immediately, and is saved (debounced) to the server, which pushes it to
 // open viewers.
@@ -240,6 +241,8 @@ let draftRevision = -1;   // the saved revision the draft was last in step with
 // The saved settings changed under this page's edits. Nothing more is sent until one copy is chosen.
 let conflicted = false;
 let buttonGroup = BUTTON_GROUPS[0].key;   // the Buttons submenu on show
+let teamChars = [];       // the agents on the team, for the accounts to play
+let conversations = [];   // every in-character conversation (/api/conversations)
 
 const $ = selector => document.querySelector(selector);
 const escapeHtml = text => String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -297,6 +300,25 @@ function scheduleSave() {
       else if (!savePromise && !conflicted) setStatus('Not saved — is the server running?', 'error');
     }
   }, 350);
+}
+
+/** Save an action-created credential now, so a reload cannot beat the normal debounce. */
+async function saveNow() {
+  setLocalConfig(draft);
+  if (conflicted) return false;
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  setStatus('Saving…', 'saving');
+  try {
+    await persistConfig(structuredClone(draft));
+    if (!savePromise) setStatus('Saved', 'saved');
+    return true;
+  } catch (error) {
+    console.error(error);
+    if (error.name === 'SaveConflictError') showConflict(true);
+    else if (!savePromise && !conflicted) setStatus('Not saved — is the server running?', 'error');
+    return false;
+  }
 }
 
 /** Settle a conflict: take the saved settings, or replace them with the ones on this page. */
@@ -804,6 +826,261 @@ async function uploadBadgePicture(file) {
   }
 }
 
+/* ---------- players (the published copy's sign-ins, js/access.js) ---------- */
+const PLAYER_FIELDS = [
+  { key: 'notify', label: 'Your channel', type: 'text' },
+  { key: 'notifyGuests', label: 'Also report guests', type: 'toggle' },
+  { key: 'server', label: 'ntfy server', type: 'text' }
+];
+
+/** A channel name nobody will guess: the prefix and 16 random letters and digits. */
+function newChannel(prefix) {
+  return `${prefix}-${[...crypto.getRandomValues(new Uint8Array(16))].map(byte => (byte % 36).toString(36)).join('')}`;
+}
+
+const newPassword = () => [...crypto.getRandomValues(new Uint8Array(6))].map(byte => 'abcdefghjkmnpqrstuvwxyz23456789'[byte % 31]).join('');
+const newBadge = () => String(10000 + crypto.getRandomValues(new Uint32Array(1))[0] % 90000);
+const accountsOf = () => (Array.isArray(draft.players.accounts) ? draft.players.accounts : (draft.players.accounts = []));
+const managerOf = () => (draft.players.manager && typeof draft.players.manager === 'object'
+  ? draft.players.manager
+  : (draft.players.manager = { username: 'Manager', password: '', badge: '56776544' }));
+
+async function loadTeam() {
+  try {
+    const response = await fetch('/api/team-save', { cache: 'no-store' });
+    teamChars = (await response.json()).team?.chars || [];
+  } catch {
+    teamChars = [];
+  }
+}
+
+function agentOptions(selected) {
+  const options = ['<option value="">No agent</option>', ...teamChars.map(char =>
+    `<option value="${escapeHtml(char.id)}"${String(char.id) === selected ? ' selected' : ''}>${escapeHtml(char.name || 'Unnamed agent')}${char.player ? ` · ${escapeHtml(char.player)}` : ''}</option>`)];
+  if (selected && !teamChars.some(char => String(char.id) === selected)) options.push(`<option value="${escapeHtml(selected)}" selected>An agent no longer on the team</option>`);
+  return options.join('');
+}
+
+function renderAccounts() {
+  const accounts = accountsOf();
+  $('#accountList').innerHTML = accounts.length ? accounts.map((account, index) => {
+    const path = `players.accounts.${index}`;
+    const text = (key, label, extra = '') => `<label class="account-field"><span>${label}</span>
+      <input type="text" value="${escapeHtml(account[key] ?? '')}" data-path="${path}.${key}" spellcheck="false" autocomplete="off"${extra}></label>`;
+    return `<div class="account">
+      <div class="account-grid">
+        <label class="account-field"><span>Agent</span><select data-path="${path}.charId">${agentOptions(String(account.charId ?? ''))}</select></label>
+        ${text('username', 'Username')}
+        <label class="account-field"><span>Password</span><span class="field-with-action">
+          <input type="text" value="${escapeHtml(account.password ?? '')}" data-path="${path}.password" spellcheck="false" autocomplete="off">
+          <button type="button" class="secondary small" data-generate-password="${index}">Generate</button>
+        </span></label>
+        ${text('badge', 'Badge number', ' inputmode="numeric" maxlength="8"')}
+      </div>
+      <label class="account-field"><span>Message on sign-in</span>
+        <textarea rows="3" data-path="${path}.message" placeholder="Shown once on each device they sign in on; change it and they get the new one">${escapeHtml(account.message ?? '')}</textarea></label>
+      <div class="account-send">
+        <input type="text" data-send-text="${index}" placeholder="Live message: pops up on their screen if they're signed in">
+        <button type="button" class="small" data-send-inbox="${index}">Send</button>
+      </div>
+      <div class="account-foot">
+        <label class="account-inbox"><span>Their channel</span>
+          <input type="text" value="${escapeHtml(account.inbox || '')}" data-path="${path}.inbox" spellcheck="false" autocomplete="off" maxlength="64"></label>
+        <span class="field-actions">
+          <button type="button" class="secondary small" data-copy-inbox="${index}">Copy</button>
+          <button type="button" class="secondary small" data-new-inbox="${index}">New channel</button>
+          <button type="button" class="secondary small danger" data-remove-account="${index}">Remove</button>
+        </span>
+      </div>
+      <p class="account-problem" data-problem="${index}" hidden></p>
+    </div>`;
+  }).join('') : '<p class="hint">No accounts yet: everyone signs in as a guest.</p>';
+  checkAccounts();
+}
+
+function renderManager() {
+  const manager = managerOf();
+  const field = (key, label, extra = '') => `<label class="account-field"><span>${label}</span>
+    <input type="text" value="${escapeHtml(manager[key] ?? '')}" data-path="players.manager.${key}" spellcheck="false" autocomplete="off"${extra}></label>`;
+  $('#managerAccount').innerHTML = [
+    field('username', 'Username'),
+    field('password', 'Password'),
+    field('badge', 'Badge number', ' inputmode="numeric" maxlength="8"')
+  ].join('');
+}
+
+/** Say which accounts the published copy would leave out, could not tell apart, or would mix up. */
+function checkAccounts() {
+  const accounts = accountsOf();
+  const keys = accounts.map(account => `${String(account.username ?? '').trim().toLowerCase()}\n${account.password ?? ''}`);
+  const manager = managerOf();
+  const managerKey = `${String(manager.username ?? '').trim().toLowerCase()}\n${manager.password ?? ''}`;
+  const inboxes = accounts.map(account => String(account.inbox ?? '').trim());
+  accounts.forEach((account, index) => {
+    const box = document.querySelector(`[data-problem="${index}"]`);
+    if (!box) return;
+    const inbox = inboxes[index];
+    let problem = '';
+    if (!String(account.username ?? '').trim() || !account.password) problem = 'Needs a username and a password: until then it is left out of the published copy.';
+    else if (keys.indexOf(keys[index]) !== index) problem = 'Same username and password as an account above: only that one can be signed into.';
+    // ntfy's rule for channel names.
+    else if (inbox && !/^[-_A-Za-z0-9]{1,64}$/.test(inbox)) problem = 'A channel name can only hold letters, digits, - and _ (no spaces).';
+    else if (inbox && inboxes.indexOf(inbox) !== index) problem = 'Same channel as an account above: both players would get each other\'s messages.';
+    else if (inbox && inbox === String(draft.players.notify ?? '').trim()) problem = 'Same channel as yours: the player would see every notification sent to you.';
+    else if (!inbox) problem = 'No channel: this player gets no live messages.';
+    box.textContent = problem;
+    box.hidden = !problem;
+  });
+  const managerProblem = $('#managerProblem');
+  let problem = '';
+  if (manager.password && !String(manager.username ?? '').trim()) {
+    problem = 'Enter a username too; without it, Manager sign-in is disabled.';
+  } else if (manager.password && keys.includes(managerKey)) {
+    problem = 'These credentials are also used by an agent account. Generate a different Manager password.';
+  }
+  managerProblem.textContent = problem;
+  managerProblem.hidden = !problem;
+}
+
+function renderPlayers() {
+  $('#playerNotify').innerHTML = PLAYER_FIELDS.map(field => renderField(`players.${field.key}`, field)).join('');
+  $('#chatOptions').innerHTML = renderField('players.copyChats', { label: 'Copy every in-character message to me', type: 'toggle' });
+  renderManager();
+  renderAccounts();
+  renderConversations();
+}
+
+/* ---------- in-character conversations (build_static.list_conversations) ---------- */
+async function loadConversations() {
+  try {
+    const response = await fetch('/api/conversations', { cache: 'no-store' });
+    conversations = (await response.json()).conversations || [];
+  } catch {
+    conversations = [];
+  }
+  renderConversations();
+}
+
+/** The channels' secret, made once: without it there are no conversations. */
+function ensureChatSecret() {
+  if (draft.players.chatSecret) return false;
+  draft.players.chatSecret = newChannel('chat').slice(5);
+  return true;
+}
+
+function renderConversations() {
+  const box = $('#conversationList');
+  if (!box) return;
+  if (!conversations.length) {
+    box.innerHTML = '<p class="hint">No conversations yet: they come from the agents, their relationships, and their anomalies.</p>';
+    return;
+  }
+  const senders = conv => conv.kind === 'agent'
+    ? [
+        { side: 'a', from: conv.agentName, to: conv.other },
+        { side: 'b', from: conv.other, to: conv.agentName }
+      ]
+    : [{ side: 'npc', from: conv.other, to: conv.agentName }];
+  const description = conv => {
+    if (conv.kind === 'agent') return 'Agent to agent';
+    if (conv.kind === 'anomaly') return 'Anomaly · yours';
+    return conv.playedBy === 'Manager' ? 'Relationship · yours' : `Relationship · played by ${escapeHtml(conv.playedBy)}`;
+  };
+  const agents = [...new Set(conversations.map(conv => conv.agentName))];
+  box.innerHTML = agents.map(agent => `<div class="conversation-agent">
+    <h3>${escapeHtml(agent || 'Unnamed agent')}</h3>
+    ${conversations.map((conv, index) => conv.agentName !== agent ? '' : `<div class="conversation conversation-${conv.kind}">
+      <div class="conversation-head">
+        <span class="conversation-dot" aria-hidden="true"></span>
+        <strong>${escapeHtml(conv.other)}</strong>
+        <small>${description(conv)}</small>
+        <span class="field-actions"><button type="button" class="secondary small" data-copy-conversation="${index}">Copy channel</button></span>
+      </div>
+      ${senders(conv).map(sender => `<div class="account-send">
+        <input type="text" data-say-text="${index}-${sender.side}" placeholder="As ${escapeHtml(sender.from)}, to ${escapeHtml(sender.to)}…">
+        <button type="button" class="small" data-say="${index}" data-side="${sender.side}">Send</button>
+      </div>`).join('')}
+    </div>`).join('')}
+  </div>`).join('');
+}
+
+function handleConversationClick(event) {
+  const copy = event.target.closest('[data-copy-conversation]');
+  if (copy) copyText(conversations[Number(copy.dataset.copyConversation)].channel);
+  const say = event.target.closest('[data-say]');
+  if (!say) return;
+  const conv = conversations[Number(say.dataset.say)];
+  const side = say.dataset.side || 'npc';
+  const field = document.querySelector(`[data-say-text="${say.dataset.say}-${side}"]`);
+  if (!field.value.trim()) return;
+  const from = conv.kind === 'agent' && side === 'a' ? conv.agentName : conv.other;
+  const to = conv.kind === 'agent' && side === 'a' ? conv.other : conv.agentName;
+  postToChannel(conv.channel, field.value.trim(), { title: from, tags: [`ta-${side}`] })
+    .then(() => {
+      field.value = '';
+      setStatus(`Sent to ${to} as ${from}`, 'saved');
+    })
+    .catch(error => setStatus(error.message || 'Could not reach ntfy', 'error'));
+}
+
+/** Post on an ntfy channel from here, as the published copy does. */
+async function postToChannel(topic, message, { title = '', tags = [] } = {}) {
+  let server = 'https://ntfy.sh';
+  try { server = new URL(String(draft.players.server).trim()).origin; } catch { /* not an address: ntfy.sh */ }   // as build_static.ntfy_server
+  const response = await fetch(`${server}/`, { method: 'POST', body: JSON.stringify({ topic, message, title, tags }) });
+  if (!response.ok) throw new Error(`ntfy answered ${response.status}`);
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus('Channel copied', 'saved');
+  } catch {
+    window.prompt('Copy the channel name:', text);   // no clipboard on a plain-http page
+  }
+}
+
+function handlePlayerClick(event) {
+  const index = button => Number(button.dataset[Object.keys(button.dataset)[0]]);
+  const accounts = accountsOf();
+  const generate = event.target.closest('[data-generate-password]');
+  if (generate) {
+    accounts[Number(generate.dataset.generatePassword)].password = newPassword();
+    renderAccounts();
+    scheduleSave();
+    return;
+  }
+  const remove = event.target.closest('[data-remove-account]');
+  if (remove) {
+    const account = accounts[index(remove)];
+    if (!confirm(`Remove the account "${account.username || 'without a username'}"? The player can no longer sign in with it once you publish.`)) return;
+    accounts.splice(index(remove), 1);
+    renderAccounts();
+    scheduleSave();
+  }
+  const fresh = event.target.closest('[data-new-inbox]');
+  if (fresh) {
+    if (!confirm('Give this account a new channel? Messages on the old one no longer reach the player once you publish.')) return;
+    accounts[index(fresh)].inbox = newChannel('ta-agent');
+    renderAccounts();
+    scheduleSave();
+  }
+  const copy = event.target.closest('[data-copy-inbox]');
+  if (copy) copyText(accounts[index(copy)].inbox || '');
+  const send = event.target.closest('[data-send-inbox]');
+  if (send) {
+    const field = document.querySelector(`[data-send-text="${index(send)}"]`);
+    const account = accounts[index(send)];
+    if (!field.value.trim() || !account.inbox) return;
+    postToChannel(account.inbox, field.value.trim(), { title: 'The Manager' })
+      .then(() => {
+        field.value = '';
+        setStatus(`Sent to ${account.username || 'the account'}`, 'saved');
+      })
+      .catch(error => setStatus(error.message || 'Could not reach ntfy', 'error'));
+  }
+}
+
 function renderAll() {
   renderMaster();
   renderKeepAlive();
@@ -815,6 +1092,7 @@ function renderAll() {
   renderEffects();
   renderLights();
   renderLogin();
+  renderPlayers();
 }
 
 /* ---------- editing ---------- */
@@ -839,6 +1117,7 @@ function handleEdit(event) {
   if (input.dataset.kind === 'number') value = Number(value);
   if (input.dataset.kind === 'boolean') value = input.checked;
   setPath(draft, path, value);
+  if (path.startsWith('players.')) checkAccounts();   // your channel counts too
 
   const output = document.querySelector(`output[data-out="${path}"]`);
   if (output) output.textContent = formatValue(fieldFor(path) || { percent: true }, value);
@@ -935,10 +1214,17 @@ async function init() {
   } catch { /* ignore */ }
   showTab(tab);
 
-  await Promise.all([startConfigSync({ pollMs: 4000 }), loadSounds()]);
+  await Promise.all([startConfigSync({ pollMs: 4000 }), loadSounds(), loadTeam()]);
   draft = structuredClone(getConfig());
+  const secretMade = ensureChatSecret();
   renderAll();
   setStatus('Saved', 'saved');
+  if (secretMade) {
+    scheduleSave();
+    setTimeout(loadConversations, 1500);   // once the secret is saved
+  } else {
+    loadConversations();
+  }
 
   // Adopt changes saved from another device, unless this page has edits in flight. Those are
   // then built on settings that have moved on, which their save reports as a conflict.
@@ -1064,6 +1350,66 @@ async function init() {
     draft.login.timing = structuredClone(DEFAULT_CONFIG.login.timing);
     renderLogin();
     scheduleSave();
+  });
+
+  $('#accountList').addEventListener('click', handlePlayerClick);
+  $('#generateManagerPassword').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const manager = managerOf();
+    if (!String(manager.username || '').trim()) manager.username = 'Manager';
+    manager.password = newPassword();
+    renderManager();
+    checkAccounts();
+    await saveNow();
+    button.disabled = false;
+  });
+  $('#conversationList').addEventListener('click', handleConversationClick);
+  $('#conversationList').addEventListener('keydown', event => {
+    if (event.key === 'Enter' && event.target.matches('[data-say-text]')) {
+      const [index, side] = event.target.dataset.sayText.split('-');
+      document.querySelector(`[data-say="${index}"][data-side="${side}"]`).click();
+    }
+  });
+  $('#refreshConversations').addEventListener('click', async () => {
+    await loadTeam();
+    await loadConversations();
+    renderAccounts();
+  });
+  $('#accountList').addEventListener('keydown', event => {
+    if (event.key === 'Enter' && event.target.matches('[data-send-text]')) {
+      document.querySelector(`[data-send-inbox="${event.target.dataset.sendText}"]`).click();
+    }
+  });
+  $('#addAccount').addEventListener('click', () => {
+    const taken = new Set(accountsOf().map(account => String(account.charId)));
+    accountsOf().push({
+      username: '',
+      password: newPassword(),
+      charId: String(teamChars.find(char => !taken.has(String(char.id)))?.id ?? ''),
+      badge: newBadge(),
+      inbox: newChannel('ta-agent'),
+      message: ''
+    });
+    renderAccounts();
+    scheduleSave();
+    document.querySelector('#accountList .account:last-child [data-path$=".username"]')?.focus();
+  });
+  $('#newNotifyChannel').addEventListener('click', () => {
+    if (draft.players.notify && !confirm('Replace your channel with a new one? Subscribe to the new one in the ntfy app.')) return;
+    draft.players.notify = newChannel('ta-manager');
+    renderPlayers();
+    scheduleSave();
+  });
+  $('#testNotify').addEventListener('click', () => {
+    const topic = String(draft.players.notify || '').trim();
+    if (!topic) {
+      setStatus('Set your channel first (New channel)', 'error');
+      return;
+    }
+    postToChannel(topic, 'Test from the tracker settings: notifications reach you.', { title: 'Triangle Agency', tags: ['white_check_mark'] })
+      .then(() => setStatus('Test sent: check the ntfy app', 'saved'))
+      .catch(error => setStatus(error.message || 'Could not reach ntfy', 'error'));
   });
 
   $('#saveSettingsFile').addEventListener('click', async () => {

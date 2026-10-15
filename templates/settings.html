@@ -31,6 +31,7 @@
       <button class="tab" type="button" role="tab" data-tab="effects">Effects</button>
       <button class="tab" type="button" role="tab" data-tab="lights">Lights</button>
       <button class="tab" type="button" role="tab" data-tab="login">Login</button>
+      <button class="tab" type="button" role="tab" data-tab="players">Players</button>
     </nav>
 
     <p class="live-note">Changes save automatically and apply to every open viewer within a couple of seconds.</p>
@@ -192,6 +193,58 @@
         <p class="hint">Seconds for each step, in the order they play after the click. A sign-in uses the values saved when it starts;
           the last one is the window closing on Log Out. With reduced motion turned on in the system, every step is kept short.</p>
         <div id="loginTiming" class="fields"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-tab-panel="players">
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">PUBLISHED COPY</span><h2>Notifications</h2></div>
+          <span class="field-actions">
+            <button id="newNotifyChannel" type="button" class="secondary small">New channel</button>
+            <button id="testNotify" type="button" class="secondary small">Send a test</button>
+          </span>
+        </div>
+        <p class="hint">The published copy tells you who signs in and what they try to change, through
+          <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>: install the ntfy app on your phone and subscribe to your channel.
+          Anyone who knows a channel's name can read and post on it, so keep the names unguessable.
+          Everything on this tab reaches the public site the next time you publish.</p>
+        <div id="playerNotify" class="fields"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">PUBLISHED COPY</span><h2>Manager account</h2></div>
+          <button id="generateManagerPassword" type="button" class="small">Generate password</button>
+        </div>
+        <p class="hint">Use this account to sign in to the published copy as the Manager. Its Messages window contains a direct line to every agent, every NPC or anomaly assigned to the Manager, and any agent side whose player has no usable account. Leave the password empty to disable Manager sign-in.</p>
+        <div id="managerAccount" class="account-grid"></div>
+        <p id="managerProblem" class="account-problem" hidden></p>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">PUBLISHED COPY</span><h2>Agent accounts</h2></div>
+          <button id="addAccount" type="button" class="small">Add account</button>
+        </div>
+        <p class="hint">Players type their username and password at the login screen of the published copy. The badge then shows their agent's name and portrait,
+          and what they try shows up on your channel under that name. Usernames ignore capitals; passwords don't.
+          Each account has its own channel for live messages: post to it in the ntfy app, or below, and it pops up on their screen
+          (ntfy keeps a message 12 hours, so they also get it if they sign in later). Credentials and messages are published sealed with the account's own password.</p>
+        <div id="accountList" class="account-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">PUBLISHED COPY</span><h2>In-character conversations</h2></div>
+          <button id="refreshConversations" type="button" class="secondary small">Refresh</button>
+        </div>
+        <p class="hint">Agents can write directly to one another (green), to each of their relationships (yellow), and to their anomaly (blue) from the Messages button of the published copy,
+          and the player set as "Played by" on a relationship answers as that NPC. Relationships played by the Manager, or by a player without an account,
+          and every anomaly are yours: their messages appear when you sign in as the Manager, and also reach your notification channel. You can answer in the published copy, below, or in the ntfy app.
+          The list follows the team and the accounts; new relationships reach the public site the next time you publish.</p>
+        <div id="chatOptions" class="fields"></div>
+        <div id="conversationList" class="conversation-list"></div>
       </div>
     </section>
 

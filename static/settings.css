@@ -362,6 +362,54 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
 .button.small { min-height: 30px; padding: 0 10px; font-size: 0.78rem; }
 .light-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .light-actions [hidden] { display: none; }
+
+/* ---------- players: the published copy's accounts ---------- */
+.field input[type=text],
+.account input[type=text],
+.account textarea {
+  min-width: 0;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #140d0d;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.account textarea { resize: vertical; line-height: 1.4; }
+.account-list { display: flex; flex-direction: column; gap: 12px; }
+.account {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.2);
+}
+.account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.account-field { display: flex; flex-direction: column; gap: 4px; }
+.account-field > span { color: var(--muted); font-size: 0.75rem; letter-spacing: 0.04em; }
+.field-with-action { display: flex; gap: 6px; }
+.field-with-action input { min-width: 0; flex: 1; }
+.account-send { display: flex; gap: 8px; }
+.account-send input { flex: 1; }
+.account-foot { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.account-inbox { display: flex; flex: 1 1 260px; flex-direction: column; gap: 4px; }
+.account-inbox > span { color: var(--muted); font-size: 0.75rem; letter-spacing: 0.04em; }
+.account-problem { margin: 0; color: var(--warn); font-size: 0.8rem; }
+:is(.section-heading, .account-foot, .conversation-head) .field-actions button { white-space: nowrap; }
+.conversation-list { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+.conversation-agent h3 { margin: 0 0 6px; font-size: 0.95rem; letter-spacing: 0.06em; }
+.conversation { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--conversation); border-radius: 10px; background: rgba(0,0,0,0.2); }
+.conversation + .conversation { margin-top: 8px; }
+.conversation-npc { --conversation: #ffd60a; }
+.conversation-anomaly { --conversation: #3d9bff; }
+.conversation-agent.conversation { --conversation: #30d158; }
+.conversation-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.conversation-head small { flex: 1; color: var(--muted); }
+.conversation-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--conversation); }
 #lightStatus { white-space: normal; text-align: right; }
 .light-slot {
   display: grid;
