@@ -25,7 +25,7 @@ const LOCKED = [
 // Step tracks that also move with the arrow keys.
 const KEYBOARD_LOCKED = '.rel-track, .dose-track';
 // Fields that only change how something is shown, not the team; and the login screen's own.
-const FREE_FIELDS = '.case-brightness-panel input, .login-entry, .transmission-answer';
+const FREE_FIELDS = '.case-brightness-panel input, .login-entry, .transmission-answer, .messages-compose textarea, .manager-message-form input, .manager-message-form select, .manager-message-form textarea';
 const TEXT_INPUTS = new Set(['text', 'number', 'search', 'email', 'url', 'tel', 'password']);
 // Keys that only move focus or select, which a frozen field still takes.
 const HARMLESS_KEYS = new Set(['Tab', 'Shift', 'Control', 'Alt', 'Meta', 'Escape']);
@@ -167,6 +167,36 @@ function showDisconnect() {
   if (!button) return;
   button.lastChild.textContent = ' Disconnect';
   document.querySelector('.top-buttons-right')?.append(button);
+}
+
+/**
+ * Under the title, who is signed in: their badge number and their agent's name (a guest's
+ * AGENT# number). Not part of the title, whose tear layers copied it once. The title and
+ * the tag share one box, so the portrait layout's grid (rows counted by position) still
+ * sees a single item there.
+ */
+export function showAgentTag(identity = getIdentity()) {
+  if (!identity) return;
+  let tag = document.querySelector('.agent-tag');
+  const title = document.querySelector('h1');
+  if (!tag && title) {
+    const block = document.createElement('div');
+    block.className = 'title-block';
+    title.replaceWith(block);
+    tag = document.createElement('p');
+    tag.className = 'agent-tag';
+    block.append(title, tag);
+  }
+  if (!tag) return;
+  const name = identity.manager ? 'Manager' : identity.name || (identity.guest ? 'Guest' : identity.username);
+  const badge = document.createElement('span');
+  badge.className = 'agent-tag-id';
+  badge.textContent = `${identity.manager ? 'Manager' : 'Agent'} #${identity.badge}`;
+  const label = document.createElement('span');
+  label.className = 'agent-tag-name';
+  label.textContent = name;
+  tag.replaceChildren(badge, label);
+  tag.setAttribute('aria-label', `Signed in as ${name}, ${identity.manager ? 'manager' : 'agent'} number ${identity.badge}`);
 }
 
 export function initReadOnly() {

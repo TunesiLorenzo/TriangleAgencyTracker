@@ -2,7 +2,7 @@
    advance things are gone. The controls that also show a value stay, frozen. */
 
 html[data-read-only] :is(
-  .top-buttons-left, .top-buttons-right > :not(#logoutButton), .session-controls,
+  .top-buttons-left, .top-buttons-right > :not(#logoutButton, #messagesButton), .session-controls,
   .mission-controls, #restartTimelineButton,
   .remove-btn, .death-btn, .add-task-btn, .task-del,
   .rel-add, .rel-remove-page, .anomaly-custom-controls,
@@ -117,16 +117,24 @@ html[data-motion="reduced"] .unauthorized-warning p { animation: none; }
 }
 html[data-motion="reduced"] .session-terminated { animation: none; }
 
-/* A message from the Manager to a signed-in player (access.js): left on their account, or
-   sent live on their channel. Typed out; a click shows the rest, the next click closes it. */
+/* ---------- Messages (messages.js) ----------
+   Each kind has its colour: the Manager red, another agent green, a relationship (an NPC)
+   yellow, and an anomaly blue. --tx is the colour, --tx-rgb the same for translucent shades. */
+.tx-manager { --tx: #ff3b30; --tx-rgb: 255,59,48; --tx-text: #ff5a4f; }
+.tx-agent { --tx: #30d158; --tx-rgb: 48,209,88; --tx-text: #6dff96; }
+.tx-npc { --tx: #ffd60a; --tx-rgb: 255,214,10; --tx-text: #ffe066; }
+.tx-anomaly { --tx: #3d9bff; --tx-rgb: 61,155,255; --tx-text: #7cbcff; }
+
+/* A transmission: one message at a time, typed out. A click shows the rest; Reply answers,
+   Acknowledge closes it. */
 .transmission {
   position: fixed;
   inset: 0;
-  z-index: 10047;   /* over the warnings; under the login screen */
+  z-index: 10048;   /* over the warnings and the Messages panel; under the login screen */
   display: grid;
   place-items: center;
   padding: 16px;
-  background: radial-gradient(ellipse at center, rgba(60,0,0,0.55), rgba(0,0,0,0.82) 70%);
+  background: radial-gradient(ellipse at center, rgba(var(--tx-rgb),0.18), rgba(0,0,0,0.85) 70%);
   backdrop-filter: blur(4px);
   cursor: pointer;
   animation: transmission-in 300ms ease-out both;
@@ -137,12 +145,12 @@ html[data-motion="reduced"] .session-terminated { animation: none; }
   max-height: calc(100vh - 32px);
   overflow-y: auto;
   padding: clamp(18px, 4vw, 32px);
-  border: 2px solid #ff3b30;
+  border: 2px solid var(--tx);
   border-radius: 10px;
   background:
     repeating-linear-gradient(to bottom, rgba(255,255,255,0.03) 0 2px, transparent 2px 4px),
-    rgba(12,4,4,0.95);
-  box-shadow: 0 0 30px rgba(255,59,48,0.45), inset 0 0 40px rgba(255,59,48,0.08);
+    rgba(10,6,6,0.95);
+  box-shadow: 0 0 30px rgba(var(--tx-rgb),0.45), inset 0 0 40px rgba(var(--tx-rgb),0.08);
   color: #fff;
 }
 .transmission-panel p { margin: 0; }
@@ -150,19 +158,20 @@ html[data-motion="reduced"] .session-terminated { animation: none; }
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #ff5a4f;
+  color: var(--tx-text);
   font-size: clamp(14px, 2.2vw, 20px);
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(255,59,48,0.8);
+  text-shadow: 0 0 10px rgba(var(--tx-rgb),0.8);
 }
 .transmission-dot {
+  flex: none;
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #ff3b30;
-  box-shadow: 0 0 8px #ff3b30;
+  background: var(--tx);
+  box-shadow: 0 0 8px var(--tx);
   animation: transmission-blink 1s steps(1, end) infinite;
 }
 .transmission-from {
@@ -193,12 +202,11 @@ html[data-motion="reduced"] .session-terminated { animation: none; }
 /* the answer box, under the message */
 .transmission-reply { margin-bottom: 14px; }
 .transmission-reply[hidden] { display: none; }
-.transmission-answer {
+:is(.transmission-answer, .messages-compose textarea) {
   display: block;
   width: 100%;
-  min-height: 4.5em;
   padding: 10px 12px;
-  border: 1px solid rgba(255,59,48,0.55);
+  border: 1px solid rgba(var(--tx-rgb),0.55);
   border-radius: 8px;
   background: rgba(0,0,0,0.5);
   color: #fff;
@@ -208,18 +216,19 @@ html[data-motion="reduced"] .session-terminated { animation: none; }
   resize: vertical;
   cursor: text;
 }
-.transmission-answer:focus { outline: none; border-color: #ff3b30; box-shadow: 0 0 0 3px rgba(255,59,48,0.2); }
-.transmission-state { min-height: 1.2em; margin-top: 6px !important; color: rgba(255,255,255,0.6); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
-.transmission-state.is-ok { color: #30d158; }
-.transmission-state.is-error { color: #ff6b62; }
+.transmission-answer { min-height: 4.5em; }
+:is(.transmission-answer, .messages-compose textarea):focus { outline: none; border-color: var(--tx); box-shadow: 0 0 0 3px rgba(var(--tx-rgb),0.2); }
+:is(.transmission-state, .messages-state) { min-height: 1.2em; margin-top: 6px !important; color: rgba(255,255,255,0.6); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+:is(.transmission-state, .messages-state).is-ok { color: #30d158; }
+:is(.transmission-state, .messages-state).is-error { color: #ff6b62; }
 /* Reply · Transmit · Acknowledge, once the message is typed out */
 .transmission-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .transmission:not(.is-typed) .transmission-actions { visibility: hidden; }
-.transmission-actions button {
+:is(.transmission-actions, .messages-compose) button {
   padding: 9px 18px;
-  border: 1px solid rgba(255,59,48,0.7);
+  border: 1px solid rgba(var(--tx-rgb),0.7);
   border-radius: 6px;
-  background: rgba(255,59,48,0.12);
+  background: rgba(var(--tx-rgb),0.12);
   color: #fff;
   font: inherit;
   font-size: 12px;
@@ -228,14 +237,211 @@ html[data-motion="reduced"] .session-terminated { animation: none; }
   text-transform: uppercase;
   cursor: pointer;
 }
-.transmission-actions button:hover,
-.transmission-actions button:focus-visible { background: rgba(255,59,48,0.4); outline: none; }
-.transmission-actions button:disabled { opacity: 0.5; cursor: default; }
+:is(.transmission-actions, .messages-compose) button:is(:hover, :focus-visible) { background: rgba(var(--tx-rgb),0.4); outline: none; }
+:is(.transmission-actions, .messages-compose) button:disabled { opacity: 0.5; cursor: default; }
 .transmission-actions button[hidden] { display: none; }
 @keyframes transmission-in { from { opacity: 0; } }
 @keyframes transmission-blink { 50% { opacity: 0.25; } }
 html[data-motion="reduced"] :is(.transmission, .transmission-dot),
 html[data-motion="reduced"] .transmission-text::after { animation: none; }
+
+/* The Messages button, beside DISCONNECT, with the count of what is unread. */
+html[data-read-only] #messagesButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 10px;
+  padding: 12px 20px;
+  border: 2px solid #ffd60a;
+  border-radius: 8px;
+  background: rgba(255,214,10,0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(255,214,10,0.25);
+}
+html[data-read-only] #messagesButton:is(:hover, :focus-visible) { background: rgba(255,214,10,0.35); outline: none; }
+.messages-unread {
+  min-width: 1.6em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 0.8em;
+  letter-spacing: 0;
+  text-align: center;
+  animation: transmission-blink 1.4s steps(1, end) infinite;
+}
+.messages-unread[hidden] { display: none; }
+
+/* The Messages window: floats in a corner over the page, which stays usable (the map
+   opens conversations in it). The list of conversations, or one of them; full screen on a phone. */
+.messages {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10046;   /* over the warning banner; under a transmission */
+  width: min(440px, calc(100vw - 32px));
+  height: min(620px, calc(100dvh - 32px));
+}
+.messages[hidden] { display: none; }
+.messages-window {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  background: rgba(12,8,8,0.97);
+  color: #fff;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+  overflow: hidden;
+}
+.messages-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.messages-title { margin: 0; font-size: 14px; font-weight: 800; letter-spacing: 0.25em; text-transform: uppercase; }
+.messages-personas {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.messages-personas[hidden] { display: none; }
+.messages-persona {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.65);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.messages-persona span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.messages-persona small { min-width: 1.5em; padding: 1px 5px; border-radius: 999px; background: #ff3b30; color: #fff; font-weight: 800; text-align: center; }
+.messages-persona small[hidden] { display: none; }
+.messages-persona[aria-selected="true"] { border-color: #6dff96; background: rgba(48,209,88,0.16); color: #fff; box-shadow: inset 0 0 12px rgba(48,209,88,0.1); }
+.messages-persona:is(:hover, :focus-visible) { border-color: rgba(109,255,150,0.75); color: #fff; outline: none; }
+.messages-close, .messages-back {
+  border: 0;
+  background: none;
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+.messages-body { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.messages.is-reading .messages-list,
+.messages:not(.is-reading) .messages-thread { display: none; }
+.messages-list {
+  flex: 1;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  overflow-y: auto;
+}
+.messages-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.messages-item:is(:hover, :focus-visible) { background: rgba(255,255,255,0.06); outline: none; }
+.messages-item.is-open { border-color: rgba(var(--tx-rgb),0.6); background: rgba(var(--tx-rgb),0.1); }
+.messages-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--tx); box-shadow: 0 0 6px var(--tx); }
+.messages-who { display: grid; flex: 1; min-width: 0; }
+.messages-who strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.messages-who small { color: rgba(255,255,255,0.5); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.messages-count { min-width: 1.6em; padding: 1px 6px; border-radius: 999px; background: var(--tx); color: #000; font-size: 12px; font-weight: 800; text-align: center; }
+.messages-count[hidden] { display: none; }
+.messages-thread { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 10px 14px; }
+.messages-thread-top { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(var(--tx-rgb),0.4); }
+.messages-thread-name { margin: 0; color: var(--tx-text); font-weight: 800; letter-spacing: 0.06em; }
+.messages-log {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 2px;
+  list-style: none;
+  overflow-y: auto;
+}
+.messages-entry {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 8px 12px;
+  border: 1px solid rgba(var(--tx-rgb),0.45);
+  border-radius: 10px 10px 10px 2px;
+  background: rgba(var(--tx-rgb),0.1);
+}
+.messages-entry.is-mine { align-self: flex-end; border-color: rgba(255,255,255,0.2); border-radius: 10px 10px 2px 10px; background: rgba(255,255,255,0.07); }
+.messages-entry small { color: rgba(255,255,255,0.5); font-size: 11px; letter-spacing: 0.05em; }
+.messages-entry p { margin: 2px 0 0; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.messages-empty { margin: auto; color: rgba(255,255,255,0.45); text-align: center; }
+.messages-compose { display: flex; align-items: flex-end; gap: 10px; }
+.messages-compose[hidden] { display: none; }
+.messages-compose textarea { flex: 1; min-height: 2.8em; }
+@media (max-width: 720px) {
+  .messages { inset: 0; width: auto; height: auto; }
+  .messages-window { border-radius: 0; }
+}
+
+/* The Network map (messages.js): green on the characters the player speaks for; once one is
+   picked, on whom it can write to, the rest dimmed. A dot where something is unread. */
+.net-chat-hint {
+  margin: 0 0 6px;
+  color: #6dff96;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+.chat-map .net-node.chat-can .net-ring,
+.chat-map .net-node.chat-to .net-ring {
+  stroke: #30d158;
+  stroke-opacity: 1;
+  stroke-width: 4;
+  filter: drop-shadow(0 0 6px rgba(48,209,88,0.9));
+}
+.chat-map .net-node.chat-can .net-body { animation: chat-glow 1.6s ease-in-out infinite alternate; }
+.chat-map .net-node.chat-to .net-ring { stroke-dasharray: 7 4; }
+.chat-map .net-node.chat-speaker .net-ring {
+  stroke: #6dff96;
+  stroke-opacity: 1;
+  stroke-width: 6;
+  filter: drop-shadow(0 0 10px #30d158);
+}
+.chat-map .net-node:is(.chat-can, .chat-to) .net-label { fill: #6dff96; opacity: 1; }
+.chat-map.chat-choosing .net-node:not(.chat-speaker, .chat-to),
+.chat-map.chat-choosing .net-edge { opacity: 0.15; }
+.chat-dot { fill: #ffd60a; stroke: #000; stroke-width: 2; }
+@keyframes chat-glow { to { filter: drop-shadow(0 0 10px rgba(48,209,88,0.85)); } }
+html[data-motion="reduced"] .chat-map .net-node.chat-can .net-body { animation: none; }
 
 /* ---------- Phones ----------
    Touch screens only (pointer: coarse), so a desktop window, however narrow, keeps the
@@ -251,6 +457,7 @@ html[data-motion="reduced"] .transmission-text::after { animation: none; }
     letter-spacing: 2px;
   }
   html[data-read-only] #logoutButton svg { width: 12px; height: 12px; }
+  html[data-read-only] #messagesButton { margin-right: 6px; padding: 6px 10px; border-width: 1.5px; font-size: 11px; letter-spacing: 1px; }
   html[data-read-only] h1 {
     margin-top: 44px;
     padding-inline: 4px;
@@ -271,6 +478,7 @@ html[data-motion="reduced"] .transmission-text::after { animation: none; }
     letter-spacing: 2px;
   }
   html[data-read-only] #logoutButton svg { width: 12px; height: 12px; }
+  html[data-read-only] #messagesButton { margin-right: 6px; padding: 5px 10px; border-width: 1.5px; font-size: 11px; letter-spacing: 1px; }
   html[data-read-only] h1 { margin: 6px 0 8px; font-size: 22px; line-height: 1.1; }
   html[data-read-only] h1 br { display: none; }
   html[data-read-only] .view-tabs { margin-bottom: 10px; }
@@ -293,4 +501,42 @@ html[data-motion="reduced"] .transmission-text::after { animation: none; }
   }
   html[data-read-only] .case-viewer-score { align-items: flex-start; text-align: left; }
   html[data-read-only] .case-document { padding: 8px 16px 12px 10px; }
+}
+
+/* Who is signed in, just under the title (showAgentTag in readOnly.js): the badge number
+   in the badge's red, then the agent's name. Pulled up into the title's bottom margin,
+   so the gap above the tabs stays as it was. The two share one box, .title-block. */
+.title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+.agent-tag {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.35em 0.9em;
+  margin: calc(-1 * clamp(10px, 2vw, 28px)) 0 clamp(14px, 2vw, 26px);
+  padding: 0.45em 1.2em;
+  border: 1px solid rgba(255,59,48,0.55);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.55);
+  box-shadow: 0 0 16px rgba(255,59,48,0.2);
+  color: #fff;
+  font-size: clamp(13px, 1.25vw, 18px);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.agent-tag-id {
+  color: #ff3b30;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px rgba(255,59,48,0.6);
+}
+.agent-tag-name { font-weight: 700; }
+@media (orientation: portrait) {
+  .agent-tag { margin-top: 0; }
 }

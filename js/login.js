@@ -18,11 +18,13 @@
 // blank, or without accounts, the visitor is a guest with a number drawn for the visit and
 // a redacted badge.
 
-import { getConfig, getSnapshot, isServerAvailable, onConfigChange, whenConfigLoaded } from './config.js';
+import { getConfig, getSnapshot, onConfigChange, whenConfigLoaded } from './config.js';
 import {
   endSession, findAccount, getIdentity, guestIdentity, hasAccounts, playWarning, reportFailedSignIn,
   setIdentity, startSession
 } from './access.js';
+import { startMessages, stopMessages } from './messages.js';
+import { showAgentTag } from './readOnly.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { playButton, powerOffAudio, soundStartDelay } from './soundEffects.js';
@@ -188,8 +190,14 @@ function wearIdentity(identity) {
   username = identity.username;
   const { screen, badgePhoto, badgePicture } = els;
   const role = screen.querySelector('.login-badge-role');
-  role.textContent = identity.name || role.dataset.agent;
+  role.textContent = identity.manager ? 'Manager' : identity.name || role.dataset.agent;
   role.classList.toggle('is-long', role.textContent.length > 9);
+  screen.classList.toggle('is-manager', !!identity.manager);
+  const level = screen.querySelector('.login-sr[data-agent]');
+  const division = screen.querySelector('[data-agent="Observation"]');
+  if (level) level.textContent = identity.manager ? 'Level 5 of 5' : level.dataset.agent;
+  if (division) division.textContent = identity.manager ? 'Management' : division.dataset.agent;
+  screen.querySelector('.login-badge').setAttribute('aria-label', identity.manager ? 'Manager badge' : 'Agent badge');
   screen.querySelector('.login-badge-id').textContent = `#${identity.badge}`;
   screen.querySelector('.login-reader-id').textContent = `#${identity.badge} · Read only`;
   screen.classList.toggle('is-identified', !!identity.picture);
@@ -553,15 +561,17 @@ function warmUp() {
 async function signIn(event) {
   if (event?.button !== undefined && event.button !== 0) return;
   if (state === 'standby') {
-    if (event?.ctrlKey) setState('open');
-    else powerOn();
+    if (event?.ctrlKey) {
+      setState('open');
+      if (agent) beginSession();
+    } else powerOn();
     return;
   }
   if (state !== 'locked') return;
   if (event?.ctrlKey) {
     event.preventDefault();
     setState('open');
-    if (agent) startSession();
+    if (agent) beginSession();
     return;
   }
   if (entry) focusEntry();   // the credentials are typed, and Enter signs in
@@ -609,7 +619,7 @@ async function authenticate({ typed = false } = {}) {
   playButton('session', 'badgeRead');
   backdrop?.ring();
   if (agent) {
-    setStatus('Badge accepted · Limited access');
+    setStatus(getIdentity()?.manager ? 'Manager credentials accepted · Read only' : 'Badge accepted · Limited access');
     await restrictedWarning();
     // An Agent's badge is all the terminal asks for: no retina scan.
     badge.eject(t.badgeEject);
@@ -655,12 +665,22 @@ async function authenticate({ typed = false } = {}) {
   setState('open');
   cleanUp();
   resetScreen();
-  if (agent) startSession();
+  if (agent) beginSession();
+}
+
+/** A published copy, signed in: the Manager hears of it; the player gets what waits for them. */
+function beginSession() {
+  showAgentTag();
+  startSession();
+  startMessages();
 }
 
 async function signOut() {
   if (state !== 'open') return;
-  if (agent) endSession();
+  if (agent) {
+    endSession();
+    stopMessages();
+  }
   // The sound comes from the button itself (Log in / out on /settings).
   resetScreen();
   setState('closing');
@@ -720,7 +740,8 @@ async function powerOff() {
 
 /** Stop the server after the picture and sound finish, leaving this page black. */
 async function stopServer() {
-  if (!isServerAvailable()) return;
+  // Asked even when the server did not answer as the page loaded: a tab opened while the
+  // launcher was restarting it still stops the one running now. Without one, this fails.
   try {
     const response = await fetch('/api/shutdown', { method: 'POST' });
     if (!response.ok) return;

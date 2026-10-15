@@ -1137,6 +1137,7 @@ html:not([data-session="open"]) body { overflow: hidden; }
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 .login-screen.is-agent .login-badge-pips i:nth-child(n+2) { opacity: 0.18; }   /* Level 1 */
+.login-screen.is-agent.is-manager .login-badge-pips i { opacity: 1; }         /* Manager: Level 5 */
 .login-badge-barcode {
   display: flex;
   align-self: stretch;

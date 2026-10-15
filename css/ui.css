@@ -256,6 +256,63 @@
 .modal-btn-danger { background: var(--competency-color); }
 .modal-btn-danger:hover { background: #ff5a50; box-shadow: 0 0 14px rgba(255,59,48,0.45); }
 
+/* Direct line opened from an agent card (messages.js). */
+.char .agent-message-btn {
+  position: absolute;
+  top: 5px;
+  left: 36px;
+  z-index: 41;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(255,214,10,0.55);
+  border-radius: 50%;
+  background: rgba(24,20,4,0.9);
+  color: #ffd60a;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 0 9px rgba(255,214,10,0.18);
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+.char .agent-message-btn:is(:hover, :focus-visible) {
+  background: rgba(255,214,10,0.24);
+  box-shadow: 0 0 13px rgba(255,214,10,0.5);
+  outline: none;
+  transform: scale(1.08);
+}
+.manager-message-modal { width: min(430px, 100%); border-color: rgba(var(--tx-rgb),0.55); }
+.manager-message-form { display: flex; flex-direction: column; gap: 12px; }
+.manager-message-target { margin: 0; color: rgba(255,255,255,0.65); font-size: 13px; }
+.manager-message-target strong { color: var(--tx-text); }
+.manager-message-form .field { display: flex; flex-direction: column; gap: 5px; }
+.manager-message-form .field-label {
+  color: rgba(255,255,255,0.62);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.manager-message-form :is(input, select, textarea) {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid rgba(var(--tx-rgb),0.42);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.42);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+}
+.manager-message-form textarea { min-height: 8em; line-height: 1.4; resize: vertical; }
+.manager-message-form :is(input, select, textarea):focus {
+  border-color: var(--tx);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--tx-rgb),0.16);
+}
+.manager-message-form :is(input, textarea).invalid { border-color: #ff3b30; animation: field-shake 360ms ease; }
+.manager-message-state { min-height: 1.2em; margin: 0; color: rgba(255,255,255,0.58); font-size: 12px; }
+.manager-message-state.is-error { color: #ff6b62; }
+
 @keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modal-fade-out { to { opacity: 0; } }
 @keyframes modal-panel-in {
