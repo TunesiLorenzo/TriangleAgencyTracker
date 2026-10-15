@@ -208,3 +208,65 @@ html[data-motion="reduced"] :is(.egg, .egg-cipher, .egg-banner, .egg-verdict, .e
 .egg-picker p { grid-column: 1 / -1; margin: 0; color: rgba(255,255,255,0.75); font-size: 13px; line-height: 1.4; }
 .egg-picker small { color: rgba(255,255,255,0.55); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
 .egg-picker button { grid-row: 1; grid-column: 2; }
+
+/* Manager-only history of sent tests and the structured results returned by agents. */
+.egg-ledger-modal {
+  width: min(900px, calc(100vw - 32px));
+  max-height: min(820px, calc(100dvh - 32px));
+  border-color: rgba(48,209,88,0.55);
+  overflow: auto;
+}
+.egg-ledger {
+  display: grid;
+  gap: 14px;
+  min-height: 120px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+.egg-ledger-agent {
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.035);
+  overflow: hidden;
+}
+.egg-ledger-agent > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  background: rgba(48,209,88,0.07);
+}
+.egg-ledger-agent h3,
+.egg-ledger-agent header p,
+.egg-ledger-test h4,
+.egg-ledger-test p { margin: 0; }
+.egg-ledger-agent h3 { color: #fff; font-size: 17px; }
+.egg-ledger-agent header p { color: rgba(255,255,255,0.6); font-size: 12px; }
+.egg-ledger-tests { display: grid; gap: 1px; background: rgba(255,255,255,0.08); }
+.egg-ledger-test { padding: 12px 14px; background: rgba(10,8,8,0.96); }
+.egg-ledger-test h4 { color: #8affaa; font-size: 14px; letter-spacing: 0.05em; }
+.egg-ledger-description { margin-top: 4px !important; color: rgba(255,255,255,0.55); font-size: 12px; line-height: 1.4; }
+.egg-ledger-none,
+.egg-ledger-empty { padding: 14px; color: rgba(255,255,255,0.45); font-style: italic; text-align: center; }
+.egg-ledger-attempts { display: grid; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
+.egg-ledger-attempts li {
+  padding: 8px 10px;
+  border-left: 3px solid #ffd60a;
+  border-radius: 4px;
+  background: rgba(255,214,10,0.06);
+}
+.egg-ledger-attempts li.is-pass { border-color: #30d158; background: rgba(48,209,88,0.08); }
+.egg-ledger-attempts li.is-fail { border-color: #ff453a; background: rgba(255,69,58,0.09); }
+.egg-ledger-attempts li.is-legacy { border-color: #8e8e93; background: rgba(142,142,147,0.08); }
+.egg-ledger-attempts li > p { display: flex; justify-content: space-between; gap: 12px; }
+.egg-ledger-attempts strong { color: #fff; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.egg-ledger-attempts time { color: rgba(255,255,255,0.5); font-size: 11px; }
+.egg-ledger-attempts small { display: block; margin-top: 4px; color: rgba(255,255,255,0.65); line-height: 1.35; }
+
+@media (max-width: 600px) {
+  .egg-ledger-modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .egg-ledger-agent > header,
+  .egg-ledger-attempts li > p { align-items: flex-start; flex-direction: column; gap: 3px; }
+}

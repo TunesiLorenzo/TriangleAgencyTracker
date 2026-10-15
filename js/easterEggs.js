@@ -3,8 +3,9 @@
 // one from an agent card (the button beside the direct line, messages.js): it travels on the
 // agent's direct line as a Manager message tagged ta-egg-<id>, and pops up on the agent's
 // screen, whatever tab they are on, in place of the usual transmission. What the agent
-// chooses is told to the Manager in an ntfy notification and nowhere else: a published copy
-// changes nothing, so the Manager applies the merit, demerit or item at the table.
+// chooses is told to the Manager in an ntfy notification and recorded on the agent's direct
+// line as structured audit data. A published copy still changes no character-sheet data, so
+// the Manager applies the merit, demerit or item at the table.
 //
 // An egg: { id, title (what the Manager picks, and the line kept in the history), summary
 // (for the Manager), from, heading, warning: { title, text }, choices }.
@@ -108,7 +109,7 @@ function showVerdict(overlay, choice, boon) {
  * Play an egg on this agent's screen. Resolves once the agent has chosen and acknowledged
  * the verdict; until then nothing closes it, so a page closed halfway shows it again.
  */
-export function playEgg(egg) {
+export function playEgg(egg, onResult = null) {
   return new Promise(resolve => {
     const overlay = el('div', 'egg tx-anomaly');
     overlay.setAttribute('role', 'dialog');
@@ -140,6 +141,20 @@ export function playEgg(egg) {
       clearInterval(scramble);
       const boon = choice.boons?.length ? pick(choice.boons) : '';
       playEvent(choice.verdict === 'pass' ? 'merit' : 'demerit');
+      try {
+        onResult?.({
+          egg: egg.id,
+          title: egg.title,
+          verdict: choice.verdict,
+          choice: choice.label,
+          outcome: choice.outcome,
+          boon,
+          time: Math.floor(Date.now() / 1000)
+        });
+      } catch {
+        // The direct notification below still reaches the Manager; the message layer keeps
+        // failed ledger writes locally and retries them independently.
+      }
       publish(
         `Easter egg · ${egg.title}`,
         `${who()} ha scelto «${choice.label}».\n${choice.outcome}${boon ? `\nBeneficio concesso: ${boon}` : ''}`,

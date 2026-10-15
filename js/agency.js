@@ -839,13 +839,23 @@ export function renderAgency() {
   view.scrollTop = scrollTop;
 }
 
-export function initAgency() {
-  view = document.getElementById('agencyView');
+/**
+ * Take up the team's items and Distinzioni. Called once the team is known (a published copy
+ * holds the snapshot's only after the settings load), so it never reads, or seeds the
+ * standard kit into, the copy this browser keeps.
+ */
+export function loadAgency() {
   const saved = loadSettings()?.world?.items;
   items = Array.isArray(saved) ? saved.map(normalizeItem) : STANDARD_KIT.map(normalizeItem);
   if (!Array.isArray(saved)) saveItems();   // a new branch, or one saved before items existed
   const distinctions = loadSettings()?.world?.distinctions;
   holders = { mvp: distinctions?.mvp ?? null, suspended: distinctions?.suspended ?? null };
+  decorateAgentCards();
+  if (!view.hidden) renderAgency();
+}
+
+export function initAgency() {
+  view = document.getElementById('agencyView');
   document.body.append(createCatalog());
   promo = createPromo();
   // Hiring, recalling, removing an agent all end in updateTopCharacters(), which fires this.
