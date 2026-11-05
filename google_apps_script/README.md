@@ -32,6 +32,11 @@ messages that have less than five hours left, and updates `messages.json` on `gh
 5. Check **Executions** in Apps Script after the first run. `syncNow` is available for a
    manual test at any time.
 
+When upgrading an existing installation to the Event log version, deploy the new `Code.gs`
+before publishing the updated website. The new collector recognizes structured result
+events and keeps them out of ordinary chat history; then run one sync after the first new
+result is submitted.
+
 The created `DRIVE_FILE_ID` Script Property is managed automatically. If that Drive file is
 deleted or becomes inaccessible, the collector stops rather than risk replacing the public
 history with an empty archive. Restore the file or its access first. Git history can recover
@@ -47,6 +52,14 @@ size periodically; a future sharded archive is required before it approaches tha
 
 - Every ntfy sequence is stored once under its stable logical ID.
 - Read receipts are permanent and stop rejuvenation for the acknowledged message.
+- Easter eggs and other registered interactions are stored as structured event results on
+  the agent's direct channel. They appear in **Event log** only for a signed-in Manager and
+  never become chat messages. Older acknowledged tests remain visible as legacy attempts,
+  but their outcome cannot be reconstructed from notifications sent before result tracking
+  existed.
+- Removing an Event log entry writes a permanent tombstone. The result and its log entry
+  disappear, and an older ntfy event cannot import them again. The original transmission
+  remains in message history; previous Git commits can still contain the public result.
 - Old rejuvenated ntfy events are left to expire naturally.
 - GitHub receives the compact browser archive; Drive retains delivery and expiry metadata.
 - The archive is intentionally not encrypted. The website filters it to the channels in
@@ -54,8 +67,38 @@ size periodically; a future sharded archive is required before it approaches tha
 - The collector trusts events on its configured ntfy topics, and the published snapshot
   exposes those topic names. Unauthenticated topics are therefore public and writable:
   anyone can forge messages or read receipts, grow the archive, consume publish quota, or
-  stop rejuvenation. Integrity requires authenticated ntfy or signed messages; neither is
-  implemented by this tracker.
+  stop rejuvenation, and anyone who deliberately forges the internal deletion tag could
+  remove an Event log entry. Integrity requires authenticated ntfy or signed messages;
+  neither is implemented by this tracker.
+
+## Register future tracked events
+
+A browser module can add another event type and record an outcome through `js/messages.js`:
+
+```js
+import { recordTrackedEventResult, registerTrackedEvent } from './messages.js';
+
+registerTrackedEvent({
+  category: 'training',
+  eventId: 'containment-drill',
+  title: 'Containment drill',
+  summary: 'Recognize and contain a simulated anomaly.'
+});
+
+recordTrackedEventResult({
+  category: 'training',
+  eventId: 'containment-drill',
+  title: 'Containment drill',
+  status: 'pass',
+  choice: 'Raised the alarm',
+  outcome: 'Protocol followed correctly',
+  reward: 'One approved refreshment'
+});
+```
+
+`category`, `eventId`, and `status` use letters, numbers, `_`, or `-`. Pass a stable
+`sourceId` when the interaction already has one; otherwise the browser creates one. Results
+are queued locally and retried in the same way as Easter-egg outcomes.
 
 ## Connect the local Communication Center
 
@@ -83,7 +126,10 @@ slightly delayed, so the next-run clock is an estimate rather than a guaranteed 
 
 Purging a message asks the collector to delete its ntfy sequence, removes the content from
 the current Drive and GitHub archives, and stores a private tombstone. The tombstone keeps
-an old ntfy cache event from being imported again. The collector compacts consecutive commits whose messages begin with Update message
+an old ntfy cache event from being imported again. Tick several messages (or a section's
+Select all) and use Purge selected to purge them in one request: the collector saves Drive
+and commits the archive once for the whole batch, up to 500 messages. A message that cannot
+be purged is reported and the rest still are. The collector compacts consecutive commits whose messages begin with Update message
 archive into one trailing archive commit after the latest normal Published copy commit.
 It uses an atomic expected-head update, so a simultaneous normal publish makes the
 collector retry instead of overwriting that publish.

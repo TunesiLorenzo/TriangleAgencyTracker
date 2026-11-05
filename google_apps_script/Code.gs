@@ -10,6 +10,9 @@ const ARCHIVE_FORMAT = 'triangle-agency-message-archive';
 const STATE_FORMAT = 'triangle-agency-message-collector';
 const SIDES = ['agent', 'npc', 'a', 'b'];
 const CLASSES = ['manager', 'agent', 'npc', 'anomaly'];
+const EVENT_RESULT_TAG = 'ta-event-result';
+const EVENT_RESULT_DELETE_TAG = 'ta-event-result-delete';
+const LEGACY_EGG_RESULT_TAG = 'ta-egg-result';
 const OPPOSITE = { agent: 'npc', npc: 'agent', a: 'b', b: 'a' };
 const REFRESH_BEFORE_SECONDS = 5 * 60 * 60;
 const DEFAULT_CACHE_SECONDS = 12 * 60 * 60;
@@ -18,6 +21,7 @@ const PUBLISH_BRANCH = 'gh-pages';
 const PUBLISH_PATH = 'messages.json';
 const AUTO_SYNC_HOURS = 4;
 const NEXT_AUTOMATIC_SYNC_PROPERTY = 'NEXT_AUTOMATIC_SYNC_AT';
+const MAX_PURGE = 500;
 
 /** Run once after filling the Script Properties described in README.md. */
 function setupCollector() {
@@ -57,15 +61,7 @@ function doPost(event) {
     if (!supplied || supplied !== expected) throw new Error('Manual sync authorization failed.');
     const action = String((event && event.parameter && event.parameter.action) || 'sync');
     if (action === 'sync') return jsonOutput_({ ok: true, ...syncMessages() });
-    if (action === 'delete') {
-      return jsonOutput_({
-        ok: true,
-        ...deleteMessage_(
-          String(event.parameter.channel || ''),
-          String(event.parameter.id || '')
-        )
-      });
-    }
+    if (action === 'delete') return jsonOutput_({ ok: true, ...deleteMessages_(deleteItems_(event.parameter)) });
     throw new Error('Unknown Communication Center action.');
   } catch (error) {
     return jsonOutput_({ ok: false, message: String(error && error.message || error) });
@@ -86,7 +82,7 @@ function syncMessages(event) {
     const config = requiredConfig_();
     const registry = fetchRegistry_(config.snapshotUrl);
     const state = loadState_();
-    let changed = false;
+    let changed = normalizeState_(state);
 
     pollEvents_(registry.server, registry.topics).forEach(event => {
       if (ingest_(state, event)) changed = true;
@@ -211,6 +207,8 @@ function topicState_(state, topic) {
     Object.defineProperty(state.topics, topic, {
       value: {
         messages: {},
+        eventResults: {},
+        eventResultDeleted: {},
         seen: Object.fromEntries(SIDES.map(side => [side, []]))
       },
       enumerable: true,
@@ -220,10 +218,35 @@ function topicState_(state, topic) {
   }
   const saved = state.topics[topic];
   if (!saved.messages || typeof saved.messages !== 'object' || Array.isArray(saved.messages)) saved.messages = {};
+  if (!saved.eventResults || typeof saved.eventResults !== 'object' || Array.isArray(saved.eventResults)) saved.eventResults = {};
+  if (!saved.eventResultDeleted || typeof saved.eventResultDeleted !== 'object' || Array.isArray(saved.eventResultDeleted)) saved.eventResultDeleted = {};
+  // One-time, non-destructive migration from the first phishing-only result schema.
+  if (saved.eggResults && typeof saved.eggResults === 'object' && !Array.isArray(saved.eggResults)) {
+    Object.values(saved.eggResults).forEach(value => {
+      const result = eventResultValue_(value);
+      if (result && !saved.eventResultDeleted[result.sourceId] && !saved.eventResults[result.sourceId]) {
+        saved.eventResults[result.sourceId] = result;
+      }
+    });
+    delete saved.eggResults;
+  }
   if (!saved.seen || typeof saved.seen !== 'object' || Array.isArray(saved.seen)) saved.seen = {};
   if (!saved.deleted || typeof saved.deleted !== 'object' || Array.isArray(saved.deleted)) saved.deleted = {};
   SIDES.forEach(side => { if (!Array.isArray(saved.seen[side])) saved.seen[side] = []; });
   return saved;
+}
+
+function normalizeState_(state) {
+  let changed = false;
+  Object.keys(state.topics).forEach(topic => {
+    const saved = state.topics[topic];
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)
+        || !saved.eventResults || typeof saved.eventResults !== 'object' || Array.isArray(saved.eventResults)
+        || !saved.eventResultDeleted || typeof saved.eventResultDeleted !== 'object' || Array.isArray(saved.eventResultDeleted)
+        || Object.prototype.hasOwnProperty.call(saved, 'eggResults')) changed = true;
+    topicState_(state, topic);
+  });
+  return changed;
 }
 
 function topicBatches_(server, topics) {
@@ -263,12 +286,73 @@ function tagged_(tags, prefix, choices) {
   return choices.find(value => tags.includes(`${prefix}${value}`)) || '';
 }
 
+function eventResultValue_(value, fallbackTime) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const sourceId = String(value.sourceId || '').slice(0, 160);
+  const eventId = String(value.eventId || value.egg || '').slice(0, 80);
+  const category = String(value.category || (value.egg ? 'easter-egg' : 'event')).slice(0, 80);
+  const status = String(value.status || value.verdict || '').slice(0, 32);
+  if (!sourceId || !/^[-_A-Za-z0-9]{1,80}$/.test(eventId)
+      || !/^[-_A-Za-z0-9]{1,80}$/.test(category)
+      || !/^[-_A-Za-z0-9]{1,32}$/.test(status)) return null;
+  return {
+    sourceId,
+    eventId,
+    category,
+    title: String(value.title || '').slice(0, 160),
+    status,
+    choice: String(value.choice || '').slice(0, 160),
+    outcome: String(value.outcome || '').slice(0, 1000),
+    reward: String(value.reward || value.boon || '').slice(0, 1000),
+    time: Number(value.time) || Number(fallbackTime) || 0
+  };
+}
+
+function eventResult_(event) {
+  let value;
+  try {
+    value = JSON.parse(String(event.message || ''));
+  } catch (error) {
+    return null;
+  }
+  return eventResultValue_(value, event.time);
+}
+
+function eventResultDelete_(event) {
+  try {
+    const value = JSON.parse(String(event.message || ''));
+    const sourceId = String((value || {}).sourceId || '').slice(0, 160);
+    return sourceId || null;
+  } catch (error) {
+    return null;
+  }
+}
+
 function ingest_(state, event) {
   const tags = Array.isArray(event.tags) ? event.tags.map(String) : [];
   // Settings and the ntfy app can send untagged Manager messages. The browser has always
   // treated untagged events as the NPC/Manager side, so the durable collector must match it.
   const side = tagged_(tags, 'ta-', SIDES) || 'npc';
   const topic = topicState_(state, String(event.topic));
+  if (tags.includes(EVENT_RESULT_DELETE_TAG)) {
+    const sourceId = eventResultDelete_(event);
+    if (!sourceId) return false;
+    const changed = Object.prototype.hasOwnProperty.call(topic.eventResults, sourceId)
+      || !Object.prototype.hasOwnProperty.call(topic.eventResultDeleted, sourceId);
+    delete topic.eventResults[sourceId];
+    topic.eventResultDeleted[sourceId] = new Date((Number(event.time) || Math.floor(Date.now() / 1000)) * 1000).toISOString();
+    return changed;
+  }
+  if (tags.includes(EVENT_RESULT_TAG) || tags.includes(LEGACY_EGG_RESULT_TAG)) {
+    const result = eventResult_(event);
+    if (!result) return false;
+    if (topic.eventResultDeleted[result.sourceId]) return false;
+    const previous = topic.eventResults[result.sourceId];
+    const next = JSON.stringify(result);
+    if (previous && JSON.stringify(previous) === next) return false;
+    topic.eventResults[result.sourceId] = result;
+    return true;
+  }
   if (tags.includes('ta-seen')) {
     let changed = false;
     const seen = new Set(topic.seen[side]);
@@ -403,6 +487,23 @@ function publicArchive_(state, nextAutomaticSyncAt) {
           ...(message.class ? { class: message.class } : {}),
           ...eggOf_(message.tags)
         })),
+      eventResults: Object.values(topic.eventResults)
+        .sort((a, b) => Number(a.time || 0) - Number(b.time || 0)),
+      eventResultDeleted: Object.keys(topic.eventResultDeleted),
+      // Kept for one release so an older published browser can still read egg outcomes.
+      eggResults: Object.values(topic.eventResults)
+        .filter(result => result.category === 'easter-egg')
+        .sort((a, b) => Number(a.time || 0) - Number(b.time || 0))
+        .map(result => ({
+          sourceId: result.sourceId,
+          egg: result.eventId,
+          title: result.title,
+          verdict: result.status,
+          choice: result.choice,
+          outcome: result.outcome,
+          boon: result.reward,
+          time: result.time
+        })),
       seen: Object.fromEntries(SIDES.map(side => [side, topic.seen[side]])),
       deleted: Object.keys(topic.deleted)
     };
@@ -416,50 +517,115 @@ function publicArchive_(state, nextAutomaticSyncAt) {
   };
 }
 
-function deleteMessage_(channel, id) {
-  if (!/^[-_A-Za-z0-9]{1,64}$/.test(channel) || !id) {
-    throw new Error('A valid channel and message ID are required.');
+/**
+ * The messages a delete request names: `items`, a JSON list of {channel, id}, or the
+ * single `channel` and `id` an older Communication Center sends.
+ */
+function deleteItems_(parameter) {
+  if (!parameter.items) return [{ channel: String(parameter.channel || ''), id: String(parameter.id || '') }];
+  let items;
+  try {
+    items = JSON.parse(String(parameter.items));
+  } catch (error) {
+    throw new Error('The purge list is not valid JSON.');
   }
+  if (!Array.isArray(items)) throw new Error('The purge list must be an array.');
+  return items.map(item => ({ channel: String((item || {}).channel || ''), id: String((item || {}).id || '') }));
+}
+
+/**
+ * Purges a batch of messages under one lock: one Drive save and one GitHub commit however
+ * many there are. A message that cannot be purged is reported in `failed` and the rest
+ * still go; only a batch where nothing could be purged is an error.
+ */
+function deleteMessages_(items) {
+  const targets = [];
+  const seen = new Set();
+  items.forEach(item => {
+    if (!/^[-_A-Za-z0-9]{1,64}$/.test(item.channel) || !item.id || item.id.length > 256) {
+      throw new Error('A valid channel and message ID are required.');
+    }
+    const key = item.channel + '\n' + item.id;
+    if (!seen.has(key)) { seen.add(key); targets.push(item); }
+  });
+  if (!targets.length) throw new Error('Select at least one message to purge.');
+  if (targets.length > MAX_PURGE) throw new Error(`Purge at most ${MAX_PURGE} messages at a time.`);
+
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Another message operation is still running.');
   try {
     const config = requiredConfig_();
     const registry = fetchRegistry_(config.snapshotUrl);
-    if (!registry.topics.includes(channel)) throw new Error('That channel is not in the published registry.');
     const state = loadState_();
-    if (!Object.prototype.hasOwnProperty.call(state.topics, channel)) {
-      throw new Error('That message channel has no stored history.');
-    }
-    const topic = topicState_(state, channel);
-    if (!Object.prototype.hasOwnProperty.call(topic.messages, id)) {
-      if (topic.deleted[id]) return { deleted: true, alreadyDeleted: true };
-      throw new Error('That message is no longer in the archive.');
+    const purge = [];
+    const removed = [];
+    const failed = [];
+    let alreadyDeleted = 0;
+    targets.forEach(item => {
+      if (!registry.topics.includes(item.channel)) {
+        failed.push({ ...item, reason: 'its channel is not in the published registry' });
+      } else if (!Object.prototype.hasOwnProperty.call(state.topics, item.channel)) {
+        failed.push({ ...item, reason: 'its channel has no stored history' });
+      } else if (Object.prototype.hasOwnProperty.call(topicState_(state, item.channel).messages, item.id)) {
+        purge.push(item);
+      } else if (state.topics[item.channel].deleted[item.id]) {
+        alreadyDeleted++;
+        removed.push(item);
+      } else {
+        failed.push({ ...item, reason: 'it is no longer in the archive' });
+      }
+    });
+    if (!purge.length) {
+      if (removed.length) return { deleted: true, batch: true, purged: 0, alreadyDeleted, removed, failed, warning: '' };
+      throw new Error(failed.length === 1
+        ? `That message could not be purged: ${failed[0].reason}.`
+        : `None of the ${failed.length} messages could be purged; the first: ${failed[0].reason}.`);
     }
 
-    let ntfyDeleted = false;
+    // Every ntfy deletion at once. The archive is purged whatever ntfy answers: the
+    // tombstones keep a message ntfy still caches from being imported again.
     let warning = '';
     try {
-      const response = UrlFetchApp.fetch(
-        registry.server + '/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id),
-        { method: 'delete', muteHttpExceptions: true }
-      );
-      const code = response.getResponseCode();
-      ntfyDeleted = code >= 200 && code < 300;
-      if (!ntfyDeleted) warning = 'ntfy returned ' + code + '; the permanent archive was still purged.';
+      const codes = UrlFetchApp.fetchAll(purge.map(item => ({
+        url: registry.server + '/' + encodeURIComponent(item.channel) + '/' + encodeURIComponent(item.id),
+        method: 'delete',
+        muteHttpExceptions: true
+      }))).map(response => response.getResponseCode());
+      const refused = codes.filter(code => code < 200 || code >= 300);
+      if (refused.length) {
+        warning = `ntfy refused ${refused.length} of ${purge.length} deletions (${[...new Set(refused)].join(', ')})`;
+      }
     } catch (error) {
-      warning = 'ntfy deletion failed (' + error.message + '); the permanent archive was still purged.';
+      warning = `ntfy deletion failed (${error.message})`;
     }
+    if (warning) warning += '; the permanent archive was still purged.';
 
-    delete topic.messages[id];
-    SIDES.forEach(side => {
-      topic.seen[side] = topic.seen[side].filter(seenId => seenId !== id);
+    const now = new Date().toISOString();
+    purge.forEach(item => {
+      const topic = topicState_(state, item.channel);
+      delete topic.messages[item.id];
+      SIDES.forEach(side => {
+        topic.seen[side] = topic.seen[side].filter(seenId => seenId !== item.id);
+      });
+      topic.deleted[item.id] = now;
+      removed.push(item);
     });
-    topic.deleted[id] = new Date().toISOString();
-    state.updatedAt = new Date().toISOString();
+    state.updatedAt = now;
     saveState_(state);
     const nextAutomaticSyncAt = nextAutomaticSyncAt_();
     pushArchive_(config, publicArchive_(state, nextAutomaticSyncAt));
-    return { deleted: true, ntfyDeleted, warning, updatedAt: state.updatedAt, nextAutomaticSyncAt };
+    return {
+      deleted: true,
+      batch: true,
+      purged: purge.length,
+      alreadyDeleted,
+      removed,
+      failed,
+      ntfyDeleted: !warning,
+      warning,
+      updatedAt: now,
+      nextAutomaticSyncAt
+    };
   } finally {
     lock.releaseLock();
   }

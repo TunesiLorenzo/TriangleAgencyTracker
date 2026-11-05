@@ -1,7 +1,8 @@
 // access.js
 // Who is looking at a published copy, and the line between them and the Manager. The
 // players sign in with the username and password set for them on the Players tab of
-// /settings; anyone else is a guest, an AGENT# with a number drawn for the visit (login.js).
+// /settings. Guests (an AGENT# with a number drawn for the visit, login.js) come in only
+// when that tab allows them, or when there are no accounts.
 //
 // Through ntfy (https://ntfy.sh) the Manager hears who signs in and what they try to
 // change (reportAttempt, from readOnly.js). The messages to and from the players, the
@@ -93,12 +94,20 @@ let identity = null;
 /** The Players tab as published (build_static.make_access). */
 export function access() {
   const data = getSnapshot()?.access;
-  return { server: 'https://ntfy.sh', notify: '', notifyGuests: true, copyChats: true, accounts: [], ...data };
+  return { server: 'https://ntfy.sh', notify: '', notifyGuests: true, allowGuests: false, copyChats: true, accounts: [], ...data };
 }
 
 /** Whether this published copy has accounts to sign in with. */
 export function hasAccounts() {
   return access().accounts.length > 0;
+}
+
+/**
+ * Whether a visitor may come in without an account: only when the Players tab allows it,
+ * or when there are no accounts at all (otherwise nobody could get in).
+ */
+export function guestsAllowed() {
+  return !hasAccounts() || access().allowGuests === true;
 }
 
 function agentOf(charId) {
@@ -128,6 +137,9 @@ export function findAccount(username, password) {
       badge: details.badge || String(10000 + Math.floor(Math.random() * 90000)),
       name: manager ? 'Manager' : agent?.name?.trim() || '',
       picture: manager ? getConfig().login.badgePicture : agent?.icon || '',
+      // Division and Qualifica on their badge (badge.js).
+      competency: manager ? '' : String(agent?.competency || ''),
+      progress: manager ? 0 : Number.parseInt(agent?.competencyProgress, 10) || 0,
       charId: details.charId || '',
       player: details.player || '',
       inbox: details.inbox || '',

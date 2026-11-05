@@ -37,7 +37,8 @@ export const SOUND_EVENTS = [
   { key: 'killed', label: 'Mission outcome: Killed', hint: 'Played after Next Mission' },
   { key: 'escaped', label: 'Mission outcome: Escaped', hint: 'Played after Next Mission' },
   { key: 'counterDown', label: 'Counter decreased', hint: 'Any counter right-clicked down' },
-  { key: 'glitch', label: 'Critical glitch', hint: 'Screen-tear burst at high risk' }
+  { key: 'glitch', label: 'Critical glitch', hint: 'Screen-tear burst at high risk' },
+  { key: 'message', label: 'Message', hint: 'Any message on the players\' phones, to or from anyone (the phone pops up)' }
 ];
 
 // Room lights (LightRPG, see lights.py). Every sound event can also cue the lights,
@@ -257,7 +258,8 @@ export const DEFAULT_CONFIG = {
       killed: slot('synth:thud', 0.9),
       escaped: slot('synth:alarm', 0.7),
       counterDown: slot('synth:tick', 0.5),
-      glitch: slot('synth:glitch', 0.35)
+      glitch: slot('synth:glitch', 0.35),
+      message: slot('synth:vibrate', 0.9)
     },
     competencies: competencyDefaults(),
     buttons: buttonDefaults()
@@ -287,6 +289,7 @@ export const DEFAULT_CONFIG = {
       globalWitness: cue('color', { hue: 265, saturation: 80, seconds: 2 }),
       counterDown: cue('none'),
       glitch: cue('none'),
+      message: cue('none'),
       prime: cue('color', { hue: 0, seconds: 2 }),
       encouraged: cue('color', { hue: 45, saturation: 85, seconds: 2 }),
       captured: cue('color', { hue: 200, saturation: 70, seconds: 4 }),
@@ -417,6 +420,7 @@ export const DEFAULT_CONFIG = {
     server: 'https://ntfy.sh',  // the ntfy server carrying the notifications and live messages
     notify: '',            // your channel on it: sign-ins, and what the players try to change
     notifyGuests: true,    // also report visitors signed in without an account
+    allowGuests: false,    // let visitors in without an account (always, when there are no accounts)
     copyChats: true,       // a copy of every in-character message on your channel
     chatSecret: '',        // makes the conversations' channels unguessable (build_static.conversation_channel)
     manager: {             // optional Manager sign-in for the published, read-only copy

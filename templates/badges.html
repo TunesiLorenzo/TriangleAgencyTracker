@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- data-session: login.css hides the overflow of a page while its login screen is up; there is none here -->
+<html lang="en" data-session="open">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Badges</title>
+  <link rel="stylesheet" href="/css/login.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='badges.css') }}">
+</head>
+<body>
+<header class="toolbar">
+  <div>
+    <h1>Agent badges</h1>
+    <p>One badge per agent at ID-card size (54 &times; 85.6 mm), nine to an A4 page. Print at
+      <b>100% / Actual size</b> with <b>Background graphics</b> on. Division is the agent's Competency and
+      Qualification the rank their Competenza track has unlocked (Agency tab); the number is their badge on the
+      Settings Players tab.</p>
+  </div>
+  <div class="toolbar-actions">
+    <label><input id="cutLines" type="checkbox" checked> Cut lines</label>
+    <a href="/settings">Settings</a>
+    <button id="print" type="button">Print</button>
+  </div>
+</header>
+<main id="sheet" class="sheet with-cut-lines"></main>
+<p id="empty" class="empty" hidden>No agents on the team yet.</p>
+<script id="agents" type="application/json">{{ agents|tojson }}</script>
+<script type="module" src="{{ url_for('static', filename='badges.js') }}"></script>
+</body>
+</html>

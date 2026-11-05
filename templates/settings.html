@@ -16,6 +16,8 @@
       </div>
       <div class="header-right">
         <a class="button small" href="/communication-center">Communication Center</a>
+        <a class="button small" href="/publish" target="_blank" rel="noopener" title="The published copy as it will look, with the bar that pushes it to GitHub Pages.">Publish</a>
+        <a class="button small" href="/badges" target="_blank" rel="noopener" title="Every agent's badge at ID-card size, ready to print.">Print badges</a>
         <span id="saveStatus" class="status" data-state="idle">Loading…</span>
         <span id="saveConflict" class="save-conflict" hidden>
           <button id="loadSavedSettings" class="small" type="button" title="Drop the edits made on this page and show the settings saved from the other one.">Load saved copy</button>
@@ -229,7 +231,8 @@
           <button id="addAccount" type="button" class="small">Add account</button>
         </div>
         <p class="hint">Players type their username and password at the login screen of the published copy. The badge then shows their agent's name and portrait,
-          and what they try shows up on your channel under that name. Usernames ignore capitals; passwords don't.
+          and what they try shows up on your channel under that name; on their screen their own agent is framed and stamped "Your agent" and the others are muted, so the tracker looks like their own.
+          Without "Allow guests" above, nobody gets in without an account. Usernames ignore capitals; passwords don't.
           Each account has its own channel for live messages: post to it in the ntfy app, or below, and it pops up on their screen
           (ntfy keeps a message 12 hours, so they also get it if they sign in later). Credentials and messages are published sealed with the account's own password.</p>
         <div id="accountList" class="account-list"></div>

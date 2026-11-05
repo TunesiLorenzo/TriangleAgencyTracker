@@ -584,6 +584,7 @@ function createSummary(card, index) {
   const tile = document.createElement('button');
   tile.type = 'button';
   tile.className = 'rel-summary';
+  tile.dataset.agentId = card._id;
   tile.classList.toggle('dead', card.classList.contains('dead'));
   tile.style.setProperty('--i', index);
   tile.setAttribute('aria-label', [
@@ -621,6 +622,7 @@ function createAgentNav(cards) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'rel-switch';
+    chip.dataset.agentId = card._id;
     chip.classList.toggle('dead', card.classList.contains('dead'));
     if (card === openCard) chip.setAttribute('aria-current', 'true');
 

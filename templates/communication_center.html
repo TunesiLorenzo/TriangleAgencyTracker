@@ -32,6 +32,14 @@
   <section class="panel">
     <div class="panel-heading archive-heading"><div><p class="eyebrow">ALL ACCOUNTS</p><h2>Stored message history</h2></div>
       <label class="search">Filter<input id="filter" type="search" placeholder="Person, channel, or message"></label></div>
+    <div class="selection-bar">
+      <span id="selectionCount" class="selection-count">No messages selected</span>
+      <span class="selection-actions">
+        <button id="selectShown" class="secondary small" type="button">Select all shown</button>
+        <button id="clearSelection" class="secondary small" type="button" disabled>Clear selection</button>
+        <button id="purgeSelected" class="danger small" type="button" disabled>Purge selected</button>
+      </span>
+    </div>
     <div id="topics" class="topics"></div><p id="emptyState" class="empty" hidden>No stored messages match this filter.</p>
   </section>
 </main>

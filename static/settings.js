@@ -829,6 +829,7 @@ async function uploadBadgePicture(file) {
 /* ---------- players (the published copy's sign-ins, js/access.js) ---------- */
 const PLAYER_FIELDS = [
   { key: 'notify', label: 'Your channel', type: 'text' },
+  { key: 'allowGuests', label: 'Allow guests', type: 'toggle' },
   { key: 'notifyGuests', label: 'Also report guests', type: 'toggle' },
   { key: 'server', label: 'ntfy server', type: 'text' }
 ];

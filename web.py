@@ -553,6 +553,26 @@ def communication_center():
     return render_template("communication_center.html")
 
 
+@app.get("/badges")
+def printable_badges():
+    """Every agent's badge at ID-card size, to print (static/badges.js draws them)."""
+    with store_lock:
+        path = tracker_file
+        players = config_state["config"].get("players")
+    team, _ = read_tracker_file(path)
+    players = players if isinstance(players, dict) else {}
+    numbers = {str(account.get("charId") or ""): str(account.get("badge") or "").strip()
+               for account in players.get("accounts") or [] if isinstance(account, dict)}
+    agents = [{
+        "name": str(char.get("name") or "").strip(),
+        "icon": str(char.get("icon") or ""),
+        "competency": str(char.get("competency") or ""),
+        "progress": char.get("competencyProgress") or 0,
+        "badge": numbers.get(str(char.get("id") or ""), ""),
+    } for char in (team or {}).get("chars") or [] if isinstance(char, dict)]
+    return render_template("badges.html", agents=agents)
+
+
 @app.get("/Communication center")
 @app.get("/Communication-center")
 def communication_center_alias():
@@ -1248,22 +1268,64 @@ def trigger_communication_sync():
     return jsonify({"ok": True, "message": "Google collector sync completed", "result": result})
 
 
+MAX_PURGE = 500   # the collector's own limit (google_apps_script/Code.gs)
+OUTDATED_COLLECTOR = "The Apps Script deployment is outdated: in Apps Script, Deploy -> Manage deployments, edit the web app, choose New version and deploy, then purge again"
+
+
+def purge_items(payload):
+    """The {channel, id} pairs a purge names, deduplicated: `items`, or one `channel` and `id`."""
+    raw = payload.get("items")
+    if raw is None:
+        raw = [{"channel": payload.get("channel"), "id": payload.get("id")}]
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("Select at least one message to purge")
+    if len(raw) > MAX_PURGE:
+        raise ValueError(f"Purge at most {MAX_PURGE} messages at a time")
+    items, seen = [], set()
+    for entry in raw:
+        channel = str((entry or {}).get("channel") or "") if isinstance(entry, dict) else ""
+        message_id = str((entry or {}).get("id") or "") if isinstance(entry, dict) else ""
+        if not re.fullmatch(r"[-_A-Za-z0-9]{1,64}", channel) or not message_id or len(message_id) > 256:
+            raise ValueError("A valid channel and message ID are required")
+        if (channel, message_id) not in seen:
+            seen.add((channel, message_id))
+            items.append({"channel": channel, "id": message_id})
+    return items
+
+
+def purge_summary(result):
+    """One line for the Communication Center out of the collector's batch result."""
+    purged = int(result.get("purged") or 0)
+    already = int(result.get("alreadyDeleted") or 0)
+    failed = result.get("failed") if isinstance(result.get("failed"), list) else []
+    parts = [f"Purged {purged} message{'' if purged == 1 else 's'}"]
+    if already:
+        parts.append(f"{already} {'was' if already == 1 else 'were'} already purged")
+    if failed:
+        reason = str((failed[0] or {}).get("reason") or "unknown reason")
+        parts.append(f"{len(failed)} could not be purged (first: {reason})")
+    return "; ".join(parts)
+
+
 @app.post("/api/communication-center/delete")
-def delete_communication_message():
-    payload = request.get_json(silent=True) or {}
-    channel = str(payload.get("channel") or "")
-    message_id = str(payload.get("id") or "")
-    if not re.fullmatch(r"[-_A-Za-z0-9]{1,64}", channel) or not message_id or len(message_id) > 256:
-        return jsonify({"ok": False, "message": "A valid channel and message ID are required"}), 400
+def delete_communication_messages():
+    """Purge one or more messages in a single collector call: one Drive save, one commit."""
     try:
-        result = call_communication_collector({"action": "delete", "channel": channel, "id": message_id})
+        items = purge_items(request.get_json(silent=True) or {})
+    except ValueError as error:
+        return jsonify({"ok": False, "message": str(error)}), 400
+    try:
+        result = call_communication_collector({"action": "delete", "items": json.dumps(items)})
     except ValueError as error:
         return jsonify({"ok": False, "message": str(error)}), 409
     except RuntimeError as error:
+        # A deployment from before batches ignores `items` and asks for its single message.
+        if "valid channel and message ID" in str(error):
+            return jsonify({"ok": False, "message": OUTDATED_COLLECTOR}), 409
         return jsonify({"ok": False, "message": str(error)}), 502
-    if not result.get("deleted"):
-        return jsonify({"ok": False, "message": "The Apps Script deployment is outdated; deploy the new Code.gs version before purging"}), 409
-    return jsonify({"ok": True, "message": "Message permanently purged", "result": result})
+    if not result.get("deleted") or not result.get("batch"):
+        return jsonify({"ok": False, "message": OUTDATED_COLLECTOR}), 409
+    return jsonify({"ok": True, "message": purge_summary(result), "result": result})
 @app.get("/public")
 def public_site_redirect():
     # The page finds its files beside itself, which needs the trailing slash.

@@ -16,4 +16,10 @@ nav,.actions{display:flex;gap:10px;flex-wrap:wrap}a,button{border:1px solid var(
 .message-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:10px}
 .clock{color:var(--amber);font-size:.8rem;font-variant-numeric:tabular-nums}
 button.danger{border-color:var(--red);color:var(--red);background:transparent}
-button.small{padding:5px 9px;font-size:.75rem}
+button.small{padding:5px 9px;font-size:.75rem}.selection-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 -20px 16px;border-block:1px solid var(--line);padding:10px 20px;background:#0f1b17f2;backdrop-filter:blur(6px)}
+.selection-count{color:var(--muted);font-size:.85rem}.selection-bar.has-selection .selection-count{color:var(--amber);font-weight:750}
+.selection-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pick{display:flex;align-items:center;gap:8px;cursor:pointer}.pick input,.group-pick input{width:auto;margin:0;accent-color:var(--red);cursor:pointer}
+.group-pick{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.78rem;cursor:pointer}.group-tools{display:flex;align-items:center;gap:12px}
+.message.selected{background:#1d1414;box-shadow:inset 3px 0 var(--red)}
+button.danger:disabled{cursor:not-allowed}

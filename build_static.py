@@ -221,6 +221,7 @@ def manager_conversations(conversations, accounts, chars):
             "channel": channel,
             "kind": "manager",
             "side": "npc",
+            "username": str(account.get("username") or "").strip(),
             "agentId": str(char.get("id") or ""),
             "agentName": str(char.get("name") or "").strip(),
             "other": MANAGER,
@@ -321,6 +322,7 @@ def make_access(players, team=None):
         "server": ntfy_server(players.get("server")),
         "notify": str(players.get("notify") or "").strip(),
         "notifyGuests": players.get("notifyGuests") is not False,
+        "allowGuests": players.get("allowGuests") is True,
         "copyChats": players.get("copyChats") is not False,
         # By id, so the order says nothing about who is who.
         "accounts": sorted(accounts, key=lambda account: account["id"]),

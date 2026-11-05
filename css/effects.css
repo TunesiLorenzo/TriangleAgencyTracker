@@ -613,6 +613,15 @@ html.chaos-atmosphere :is(.char, .world, .graph-box, #taskPanel) {
   backdrop-filter: blur(var(--panel-blur, 0px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 0px));
 }
+/* Phones and tablets: a blur behind every panel, redone on each scrolled frame, is more
+   than their graphics can keep up with. The page stays still too (effects.js). */
+@media (hover: none) and (pointer: coarse) {
+  html.chaos-atmosphere :is(.char, .world, .graph-box, #taskPanel) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  #pageWrapper.glitching { filter: none; }
+}
 
 /* New witness: short brightness/saturation punch on the background video.
    Applied to the videos so it composes with the hue-rotate on #backgroundHue. */

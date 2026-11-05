@@ -9,6 +9,7 @@
 // branch (world.items) and name agents by card._id, so an item can change hands.
 
 import { ACQUISITIONS, DEFAULT_ICON, ITEM_ICONS, PROMO_DIR, PROMO_SHUFFLE, PROMO_SLIDES, STANDARD_KIT } from './agencyData.js';
+import { RANKS, rankAt } from './badge.js';
 import { animateOnce, getCharElements } from './charSystem.js';
 import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { loadSettings, saveSettings, updateSettings } from './storage.js';
@@ -21,20 +22,8 @@ const ITEMS_OPEN_KEY = 'ta-agency-items-open';
 const CATALOG_ID = 'agencyCatalog';
 const CATALOG = [...STANDARD_KIT, ...ACQUISITIONS];
 
-// Qualifica in Agenzia along the Competenza track. The box that starts each rank carries the
-// code of its Playwall Document; from Vicedirettore on, the ranks run along the bottom row.
-const RANKS = [
-  { from: 0, title: 'Praticante' },
-  { from: 3, title: 'Impiegato', code: 'A3' },
-  { from: 6, title: 'Impiegato Senior', code: 'D4' },
-  { from: 9, title: 'Quadro', code: 'G3' },
-  { from: 12, title: 'Amministratore', code: 'J3' },
-  { from: 15, title: 'Vicedirettore', code: 'N3' },
-  { from: 18, title: 'Direttore Associato', code: 'Q3' },
-  { from: 21, title: 'Direttore', code: 'T3' },
-  { from: 24, title: 'Direttore Generale', code: 'W8' },
-  { from: 27, title: 'Poltrona in CdA', code: 'Y2' }
-];
+// Qualifica in Agenzia along the Competenza track: RANKS and rankAt live in badge.js, which
+// also puts the rank on the agent's badge.
 const CODES = Object.fromEntries(RANKS.filter(rank => rank.code).map(rank => [rank.from, rank.code]));
 
 // The two Distinzioni of every Incarico (Agenda Vita-Lavoro), with the Agency's own brand of praise.
@@ -69,11 +58,6 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-/** Index in RANKS of the rank held with `progress` boxes marked, which is also the rank box n belongs to. */
-function rankAt(progress) {
-  return RANKS.findLastIndex(rank => rank.from <= progress);
 }
 
 function statOf(card, key) {
@@ -461,8 +445,9 @@ function createNav(backLabel, entries) {
   const nav = el('nav', 'agency-nav');
   nav.append(button('agency-back', `‹ ${backLabel}`, goBack));
   const switcher = el('div', 'agency-switcher');
-  switcher.append(...entries.map(({ label, icon, current, onClick }) => {
+  switcher.append(...entries.map(({ label, icon, current, onClick, agentId }) => {
     const chip = button('agency-switch', '', onClick);
+    if (agentId) chip.dataset.agentId = agentId;
     if (icon) chip.append(el('span', 'agency-switch-icon', icon));
     chip.append(el('span', 'agency-switch-label', label));
     if (current) chip.setAttribute('aria-current', 'true');
@@ -533,6 +518,7 @@ function createSummary(card, index) {
   const { title } = RANKS[rankAt(progress)];
   const held = heldBy(card._id);
   const tile = button('agency-summary', '', () => openAgent(card));
+  tile.dataset.agentId = card._id;
   tile.classList.toggle('dead', card.classList.contains('dead'));
   tile.setAttribute('aria-label', `${agentName(card, index)}. ${title}, ${progress} di ${TRACK_LENGTH}. ${held.length} oggetti.`);
 
@@ -620,7 +606,7 @@ function createAgentPage(card, cards) {
   body.append(profile, side);
 
   const nav = createNav('Tutti gli agenti', cards.map((other, i) => ({
-    label: agentName(other, i), current: other === card, onClick: () => openAgent(other)
+    label: agentName(other, i), current: other === card, onClick: () => openAgent(other), agentId: other._id
   })));
   page.append(nav, body);
   return page;
@@ -839,13 +825,23 @@ export function renderAgency() {
   view.scrollTop = scrollTop;
 }
 
-export function initAgency() {
-  view = document.getElementById('agencyView');
+/**
+ * Take up the team's items and Distinzioni. Called once the team is known (a published copy
+ * holds the snapshot's only after the settings load), so it never reads, or seeds the
+ * standard kit into, the copy this browser keeps.
+ */
+export function loadAgency() {
   const saved = loadSettings()?.world?.items;
   items = Array.isArray(saved) ? saved.map(normalizeItem) : STANDARD_KIT.map(normalizeItem);
   if (!Array.isArray(saved)) saveItems();   // a new branch, or one saved before items existed
   const distinctions = loadSettings()?.world?.distinctions;
   holders = { mvp: distinctions?.mvp ?? null, suspended: distinctions?.suspended ?? null };
+  decorateAgentCards();
+  if (!view.hidden) renderAgency();
+}
+
+export function initAgency() {
+  view = document.getElementById('agencyView');
   document.body.append(createCatalog());
   promo = createPromo();
   // Hiring, recalling, removing an agent all end in updateTopCharacters(), which fires this.

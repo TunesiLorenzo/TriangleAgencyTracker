@@ -1,0 +1,76 @@
+/* The printable agent badges on /badges. The card itself is styled by css/login.css; this
+   sizes it as an ID card (54 x 85.6 mm, as on the login screen) and lays them out on A4. */
+@font-face {
+  font-family: 'ITCAvantGarde';
+  src: url('/various/ITCAvantGardeGothic-T.otf') format('opentype');
+  font-weight: bold;
+}
+@page { size: A4 portrait; margin: 10mm; }
+
+:root { color-scheme: light; }
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  min-height: 100vh;
+  background: #34373c;
+  color: #f2f2f2;
+  font-family: 'ITCAvantGarde', system-ui, sans-serif;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 32px;
+  padding: 20px max(16px, calc((100% - 1000px) / 2));
+  background: #1d1f22;
+  border-bottom: 3px solid #b8160e;
+}
+.toolbar h1 { margin: 0 0 6px; font-size: 1.5rem; letter-spacing: 0.04em; }
+.toolbar p { max-width: 62ch; margin: 0; color: #b9bdc2; font-family: system-ui, sans-serif; font-size: 0.9rem; line-height: 1.5; }
+.toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-family: system-ui, sans-serif; }
+.toolbar-actions label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.toolbar-actions a,
+.toolbar-actions button {
+  border: 1px solid #e0281d;
+  border-radius: 4px;
+  padding: 8px 16px;
+  background: transparent;
+  color: #ff8a80;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.toolbar-actions button { background: #e0281d; color: #fff; }
+
+.sheet {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8mm;
+  padding: 24px 16px 48px;
+}
+.empty { text-align: center; color: #b9bdc2; }
+
+.print-badge {
+  --badge-w: 54mm;
+  --card-h: 85.6mm;
+  width: var(--badge-w);
+  font-size: calc(var(--badge-w) / 17);
+  break-inside: avoid;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.print-badge .login-badge-card { box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55); }
+.print-badge .login-badge-card::after { display: none; }   /* no reader, no sheen */
+.print-badge .login-badge-pips i:nth-child(n+2) { opacity: 0.18; }   /* an agent: Level 1 of 5 */
+.with-cut-lines .print-badge .login-badge-card { outline: 0.25mm dashed #8a8a8a; outline-offset: 0.8mm; }
+
+@media print {
+  body { min-height: 0; background: #fff; }
+  .toolbar, .empty { display: none; }
+  .sheet { justify-content: flex-start; gap: 4mm; padding: 0; }
+  .print-badge .login-badge-card { box-shadow: none; }
+}

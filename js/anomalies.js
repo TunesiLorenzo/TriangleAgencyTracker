@@ -270,6 +270,7 @@ function createSummary(card, index) {
   const anomaly = statOf(card, 'anomaly');
   const { unlocked, used } = abilityCounts(card);
   const summary = button('', 'anomaly-summary', () => openAgent(card));
+  summary.dataset.agentId = card._id;
   summary.classList.toggle('dead', card.classList.contains('dead'));
   summary.setAttribute('aria-label', `${agentName(card, index)}. Anomalia: ${anomaly || 'nessuna'}. ${unlocked} abilità, ${used} usate. Tracciato ${card._anomalyState.progress} di ${TRACK_LENGTH}.`);
   summary.append(
@@ -289,6 +290,7 @@ function createAgentNav(cards) {
   const switcher = el('div', 'anomaly-switcher');
   cards.forEach((card, index) => {
     const chip = button(agentName(card, index), 'anomaly-switch', () => openAgent(card));
+    chip.dataset.agentId = card._id;
     if (card === openCard) chip.setAttribute('aria-current', 'true');
     switcher.append(chip);
   });

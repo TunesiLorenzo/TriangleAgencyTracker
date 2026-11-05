@@ -1,0 +1,199 @@
+/* messageAlert.css: the phone that buzzes on the local tracker when a player sends a
+   message (js/messageAlert.js). Slides up in the bottom-right corner, shakes with each buzz
+   of the vibrate sound, and slides back down. */
+
+.message-alert {
+  --alert-color: #ffd60a;   /* a relationship's, the default */
+  --alert-glow: rgba(255, 214, 10, 0.45);
+  position: fixed;
+  right: clamp(16px, 3vw, 44px);
+  bottom: clamp(16px, 4vh, 48px);
+  z-index: 10040;           /* over the tracker and its dialogs; under the unauthorized banner and the login screen */
+  width: clamp(170px, 14vw, 230px);
+  pointer-events: none;
+  visibility: hidden;
+  transform: translateY(calc(100% + 80px)) rotate(14deg);
+  transition: transform 520ms cubic-bezier(.2, 1.25, .35, 1), visibility 0s linear 520ms;
+}
+.message-alert.kind-manager { --alert-color: #ff3b30; --alert-glow: rgba(255, 59, 48, 0.5); }
+.message-alert.kind-agent   { --alert-color: #30d158; --alert-glow: rgba(48, 209, 88, 0.45); }
+.message-alert.kind-anomaly { --alert-color: #0a84ff; --alert-glow: rgba(10, 132, 255, 0.5); }
+
+.message-alert.is-shown {
+  visibility: visible;
+  transform: translateY(0) rotate(-6deg);
+  transition: transform 520ms cubic-bezier(.2, 1.25, .35, 1), visibility 0s;
+}
+.message-alert.is-shown.is-leaving {
+  transform: translateY(calc(100% + 80px)) rotate(10deg);
+  transition: transform 420ms cubic-bezier(.55, 0, .8, .4);
+}
+
+/* ---------- the phone ---------- */
+.message-alert-phone {
+  position: relative;
+  aspect-ratio: 9 / 17;
+  padding: 10px;
+  border-radius: 30px;
+  background: linear-gradient(145deg, #2a2a2e, #0d0d0f 60%);
+  border: 2px solid #3a3a40;
+  box-shadow:
+    0 26px 60px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 0 34px var(--alert-glow);
+}
+.message-alert.is-buzzing .message-alert-phone { animation: message-alert-buzz 70ms linear infinite; }
+
+.message-alert-notch {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 1;
+  width: 30%;
+  height: 12px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #000;
+}
+
+.message-alert-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 34px 12px 16px;
+  box-sizing: border-box;
+  border-radius: 22px;
+  overflow: hidden;
+  text-align: center;
+  color: #fff;
+  background:
+    radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--alert-color) 32%, transparent), transparent 70%),
+    linear-gradient(180deg, #17171b, #050506);
+}
+
+.message-alert-status {
+  position: absolute;
+  top: 22px;
+  left: 26px;
+  right: 26px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.message-alert-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-top: auto;
+  border-radius: 16px;
+  background: var(--alert-color);
+  color: #111;
+  font-size: 30px;
+  line-height: 1;
+  box-shadow: 0 0 22px var(--alert-glow);
+}
+.message-alert.is-shown .message-alert-icon { animation: message-alert-ping 1.4s ease-out 2; }
+
+.message-alert-title {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--alert-color);
+  text-shadow: 0 0 10px var(--alert-glow);
+}
+.message-alert-for {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+.message-alert-to {
+  max-width: 100%;
+  font-size: clamp(15px, 1.35vw, 20px);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.message-alert-count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  font-weight: 800;
+}
+.message-alert-screen::after {   /* the home bar */
+  content: '';
+  width: 38%;
+  height: 4px;
+  margin-top: auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/* ---------- the buzz in the air either side ---------- */
+.message-alert-waves {
+  position: absolute;
+  inset: 22% -26px;
+  z-index: -1;
+}
+.message-alert-waves > span {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.message-alert-waves > span::before,
+.message-alert-waves > span::after {
+  content: '';
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  width: 26px;
+  border: 3px solid var(--alert-color);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 6px var(--alert-glow));
+}
+.message-alert-waves > span::before { left: 0; border-right-color: transparent; border-top-color: transparent; border-bottom-color: transparent; }
+.message-alert-waves > span::after  { right: 0; border-left-color: transparent; border-top-color: transparent; border-bottom-color: transparent; }
+.message-alert-waves > span + span { inset: -6% -16px; }
+.message-alert.is-buzzing .message-alert-waves > span { animation: message-alert-wave 420ms ease-out both; }
+.message-alert.is-buzzing .message-alert-waves > span + span { animation-delay: 120ms; }
+
+@keyframes message-alert-buzz {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  25%  { transform: translate(-3px, 1px) rotate(-1.6deg); }
+  50%  { transform: translate(2px, -1px) rotate(1.2deg); }
+  75%  { transform: translate(-1px, -1px) rotate(-0.8deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+@keyframes message-alert-wave {
+  0%   { opacity: 0; transform: scale(0.85); }
+  35%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+@keyframes message-alert-ping {
+  0%   { box-shadow: 0 0 0 0 var(--alert-glow), 0 0 22px var(--alert-glow); }
+  100% { box-shadow: 0 0 0 18px transparent, 0 0 22px var(--alert-glow); }
+}
+
+/* Reduced motion (?motion=reduced or the system's): it fades in and out, and does not shake. */
+html[data-motion="reduced"] .message-alert,
+html[data-motion="reduced"] .message-alert.is-shown,
+html[data-motion="reduced"] .message-alert.is-shown.is-leaving {
+  transform: rotate(-6deg);
+  transition: opacity 300ms ease, visibility 0s linear 300ms;
+}
+html[data-motion="reduced"] .message-alert { opacity: 0; }
+html[data-motion="reduced"] .message-alert.is-shown { opacity: 1; transition: opacity 300ms ease, visibility 0s; }
+html[data-motion="reduced"] .message-alert.is-shown.is-leaving { opacity: 0; }
+html[data-motion="reduced"] .message-alert.is-shown .message-alert-icon { animation: none; }

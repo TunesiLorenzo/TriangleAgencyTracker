@@ -268,6 +268,7 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   // A second copy of an agent already on the branch gets its own.
   const takenIds = new Set(getCharElements().map(card => card._id));
   c._id = data?.id && !takenIds.has(String(data.id)) ? String(data.id) : createUuid();
+  c.dataset.agentId = c._id;   // what a published copy dims the other players' agents by (readOnly.showOwnAgent)
 
   // remove button
   const removeBtn = document.createElement('button');

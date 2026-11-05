@@ -70,6 +70,9 @@ function noiseBurst(ac, out, t, { length = 0.2, filter = 'bandpass', freq = 1000
   return gain;
 }
 
+/** The phone vibration's buzzes, [start, length] in seconds (messageAlert.js shakes to them). */
+export const VIBRATE_PULSES = [[0, 0.42], [0.62, 0.42]];
+
 const VOICES = {
   // Witness: a bright rising "eye opens" blip with a shimmer.
   eye(ac, out, t) {
@@ -291,6 +294,44 @@ const VOICES = {
     tone(ac, out, t + 0.17, { from: 220, to: 120, glide: 0.04, peak: 0.35, attack: 0.002, decay: 0.07 });
     return 0.26;
   },
+  // A phone vibrating on the table: two buzzes of its motor, with the wobble of the weight
+  // and the rattle against the wood. messageAlert.js shakes the phone to the same two.
+  vibrate(ac, out, t) {
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 650;
+    filter.connect(out);
+    VIBRATE_PULSES.forEach(([offset, length]) => {
+      const start = t + offset;
+      const end = start + length;
+      const envelopeGain = ac.createGain();
+      envelopeGain.gain.setValueAtTime(0.0001, start);
+      envelopeGain.gain.exponentialRampToValueAtTime(0.55, start + 0.03);
+      envelopeGain.gain.setValueAtTime(0.55, end - 0.05);
+      envelopeGain.gain.exponentialRampToValueAtTime(0.0001, end);
+      envelopeGain.connect(filter);
+      const wobble = ac.createGain();   // 0.5 to 1: the off-centre weight spinning
+      wobble.gain.value = 0.75;
+      wobble.connect(envelopeGain);
+      const lfo = ac.createOscillator();
+      lfo.frequency.value = 27;
+      const depth = ac.createGain();
+      depth.gain.value = 0.25;
+      lfo.connect(depth);
+      depth.connect(wobble.gain);
+      const sources = [148, 151.5].map(frequency => {
+        const osc = ac.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.value = frequency;
+        osc.connect(wobble);
+        return osc;
+      });
+      [lfo, ...sources].forEach(node => { node.start(start); node.stop(end + 0.05); });
+      noiseBurst(ac, out, start, { length, freq: 230, q: 3, peak: 0.22, attack: 0.03 });
+    });
+    const [offset, length] = VIBRATE_PULSES.at(-1);
+    return offset + length;
+  },
   // Card reader accepting a card: two quick piezo beeps, the second higher.
   beep(ac, out, t) {
     tone(ac, out, t, { type: 'square', from: 1976, peak: 0.07, attack: 0.002, decay: 0.07 });
@@ -306,7 +347,8 @@ const VOICE_LENGTHS = {
   tick: 0.12, glitch: 0.2, chime: 0.7, fanfare: 1, buzzer: 0.45, descend: 0.6, scan: 0.8,
   click: 0.06, tap: 0.1, pop: 0.14, switch: 0.1, open: 0.24, close: 0.22,
   confirm: 0.28, cancel: 0.26, trash: 0.36, stamp: 0.22, typewriter: 0.08,
-  paper: 0.34, drawer: 0.46, gate: 1.02, step: 0.1, clink: 0.2, cardInsert: 0.26, beep: 0.24
+  paper: 0.34, drawer: 0.46, gate: 1.02, step: 0.1, clink: 0.2, cardInsert: 0.26, beep: 0.24,
+  vibrate: 1.04
 };
 
 /** Approximate audible duration of a built-in voice, including its cleanup tail. */
@@ -329,6 +371,7 @@ export const SYNTHS = [
   { id: 'buzzer', label: 'Buzzer' },
   { id: 'descend', label: 'Descending notes' },
   { id: 'scan', label: 'Scanner sweep' },
+  { id: 'vibrate', label: 'Phone vibrating' },
   { id: 'click', label: 'Click', button: true },
   { id: 'tap', label: 'Soft tap', button: true },
   { id: 'pop', label: 'Pop (add)', button: true },

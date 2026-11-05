@@ -84,9 +84,12 @@
   cursor: pointer;
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
-.agency-summary:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 22px 40px rgba(0,0,0,0.8), 0 0 0 1px color-mix(in srgb, var(--competency-color) 40%, transparent);
+/* Lifts on hover only where there is a real hover: a tap on a phone leaves :hover stuck. */
+@media (hover: hover) {
+  .agency-summary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 22px 40px rgba(0,0,0,0.8), 0 0 0 1px color-mix(in srgb, var(--competency-color) 40%, transparent);
+  }
 }
 .agency-summary.dead { opacity: 0.8; }
 .agency-summary-rank {

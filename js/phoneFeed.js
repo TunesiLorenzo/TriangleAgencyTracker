@@ -24,11 +24,15 @@ const norm = text => String(text || '').trim().toLowerCase();
 let who = null;                 // whose channels are being read; a change starts over
 let channels = new Map();       // channel -> { kind, agentId, agentName, otherId, other }
 let messages = new Map();       // `${channel}|${id}` -> { channel, id, time, side, from, text }
+// IDs the collector purged (the archive's `deleted`), by channel. ntfy can keep a purged
+// message for up to 12 hours, so what comes from there is checked against these.
+let purged = new Map();
 let server = 'https://ntfy.sh';
 let source = null;
 let archiveTimer = 0;
 let generation = 0;             // a fetch from an earlier `who` is dropped
 const listeners = new Set();
+const arrivalListeners = new Set();
 
 /* ---------- whose ---------- */
 function viewer() {
@@ -61,6 +65,7 @@ export function phoneScope() {
 /* ---------- what passed ---------- */
 function keep(channel, message) {
   if (!channels.has(channel) || !message.id || !message.text.trim()) return false;
+  if (purged.get(channel)?.has(message.id)) return false;
   const key = `${channel}|${message.id}`;
   const old = messages.get(key);
   if (old) {
@@ -74,7 +79,9 @@ function keep(channel, message) {
 
 function fromEvent(event) {
   const tags = event.tags || [];
-  if (event.event !== 'message' || tags.includes('ta-seen')) return null;
+  if (event.event !== 'message' || tags.includes('ta-seen')
+      || tags.includes('ta-event-result') || tags.includes('ta-event-result-delete')
+      || tags.includes('ta-egg-result')) return null;
   const egg = tags.find(tag => tag.startsWith('ta-egg-'));
   return {
     id: String(event.sequence_id || event.id || ''),
@@ -106,6 +113,15 @@ async function readArchive(run) {
   if (run !== generation || archive?.format !== ARCHIVE_FORMAT || typeof archive.topics !== 'object') return;
   let any = false;
   for (const [channel, saved] of Object.entries(archive.topics || {})) {
+    // Purged: dropped if ntfy got it here first, and kept out from now on.
+    const gone = Array.isArray(saved?.deleted) ? saved.deleted.map(String) : [];
+    if (gone.length) {
+      if (!purged.has(channel)) purged.set(channel, new Set());
+      gone.forEach(id => {
+        purged.get(channel).add(id);
+        if (messages.delete(`${channel}|${id}`)) any = true;
+      });
+    }
     (Array.isArray(saved?.messages) ? saved.messages : []).forEach(item => {
       if (!item?.id || !SIDES.includes(item.side)) return;
       any = keep(channel, {
@@ -146,7 +162,10 @@ function listen(topics) {
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
     const message = fromEvent(data);
-    if (message && keep(data.topic, message)) changed();
+    if (!message || !keep(data.topic, message)) return;
+    changed();
+    const arrival = arrivalOf(data.topic, message);
+    arrivalListeners.forEach(listener => listener(arrival));
   });
 }
 
@@ -158,6 +177,7 @@ function stop() {
   archiveTimer = 0;
   channels = new Map();
   messages = new Map();
+  purged = new Map();
 }
 
 async function begin(entries) {
@@ -209,6 +229,17 @@ export function onFeed(listener) {
   listeners.add(listener);
 }
 
+/** Each message as it comes in live (not the backlog read when the feed starts): `listener({ kind, from, to })`. */
+export function onArrival(listener) {
+  arrivalListeners.add(listener);
+}
+
+function arrivalOf(channel, message) {
+  const entry = channels.get(channel);
+  const names = between(entry, message);
+  return { kind: entry.kind, from: message.from || names.from, to: names.to };
+}
+
 /* ---------- for the phone ---------- */
 /** Who wrote to whom, by the channel and the side it was written from; `fromId`: the agent who wrote. */
 function between(entry, message) {
@@ -225,12 +256,14 @@ function between(entry, message) {
 }
 
 /**
- * The latest `limit` messages, newest first:
+ * The latest `limit` messages between an agent and one of their relationships (the phone
+ * shows nothing of the Manager's line, the agent pairs or the anomalies), newest first:
  * { key, time, from, to, text, kind, agentId, fromId, npc } (`fromId`: the agent who wrote it,
  * if one did; `npc`: the relationship or anomaly on its line).
  */
 export function latestMessages(limit) {
   return [...messages.entries()]
+    .filter(([, message]) => channels.get(message.channel)?.kind === 'npc')
     .sort(([, a], [, b]) => b.time - a.time)
     .slice(0, limit)
     .map(([key, message]) => {

@@ -19,14 +19,14 @@ import { getSnapshot, isServerAvailable, startConfigSync } from './config.js';
 import { initReadOnly } from './readOnly.js';
 import { initRelationships, renderRelationships } from './relationships.js';
 import { initAnomalies, renderAnomalies } from './anomalies.js';
-import { awardMissionDistinctions, initAgency, renderAgency, resetAgency } from './agency.js';
+import { awardMissionDistinctions, initAgency, loadAgency, renderAgency, resetAgency } from './agency.js';
 import { closePreviousCases, exportCaseArchive, importCaseArchive, initPreviousCases, renderPreviousCases, setArchiveChangeHandler } from './previousCases.js';
 import { initLogin, whenSignedIn } from './login.js';
 import { initButtonSounds, initKeepAlive, isMuted, playEvent, setMuted } from './soundEffects.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 import { finishMissionWorld, initWorld, setWorldData, updateEffects } from './world.js';
 import { initMotionPreference } from './motion.js';
-import { initManagerMessaging } from './messages.js';
+import { initMessageAlert } from './messageAlert.js';
 import { initGraTakeover } from './graTakeover.js';
 import { initMeritLock } from './meritLock.js';
 import { initSilence } from './silence.js';
@@ -270,6 +270,7 @@ async function init() {
     // With the tracker server this may load the team save kept on its computer before anything is rendered.
     await initAutomaticFileSave(document.getElementById('autoSaveFileButton'), { serverAvailable: isServerAvailable() });
   }
+  loadAgency();
   bindControls();
   initWorld();
   // After initWorld: its title layers are copies of the title, which must not hold the trace yet.
@@ -277,7 +278,9 @@ async function init() {
 
   const saved = loadSettings();
   saved?.chars?.forEach((character, index) => addChar(character, { delay: index * 70 }));
-  if (!snapshot) initManagerMessaging();
+  if (!snapshot) {
+    initMessageAlert();   // after the settings: the feed asks the server for the channels
+  }
   setWorldData(saved?.world);
   updateTopCharacters();
   updateEffects();
