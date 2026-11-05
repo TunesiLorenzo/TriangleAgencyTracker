@@ -24,6 +24,9 @@ const norm = text => String(text || '').trim().toLowerCase();
 let who = null;                 // whose channels are being read; a change starts over
 let channels = new Map();       // channel -> { kind, agentId, agentName, otherId, other }
 let messages = new Map();       // `${channel}|${id}` -> { channel, id, time, side, from, text }
+// IDs the collector purged (the archive's `deleted`), by channel. ntfy can keep a purged
+// message for up to 12 hours, so what comes from there is checked against these.
+let purged = new Map();
 let server = 'https://ntfy.sh';
 let source = null;
 let archiveTimer = 0;
@@ -62,6 +65,7 @@ export function phoneScope() {
 /* ---------- what passed ---------- */
 function keep(channel, message) {
   if (!channels.has(channel) || !message.id || !message.text.trim()) return false;
+  if (purged.get(channel)?.has(message.id)) return false;
   const key = `${channel}|${message.id}`;
   const old = messages.get(key);
   if (old) {
@@ -109,6 +113,15 @@ async function readArchive(run) {
   if (run !== generation || archive?.format !== ARCHIVE_FORMAT || typeof archive.topics !== 'object') return;
   let any = false;
   for (const [channel, saved] of Object.entries(archive.topics || {})) {
+    // Purged: dropped if ntfy got it here first, and kept out from now on.
+    const gone = Array.isArray(saved?.deleted) ? saved.deleted.map(String) : [];
+    if (gone.length) {
+      if (!purged.has(channel)) purged.set(channel, new Set());
+      gone.forEach(id => {
+        purged.get(channel).add(id);
+        if (messages.delete(`${channel}|${id}`)) any = true;
+      });
+    }
     (Array.isArray(saved?.messages) ? saved.messages : []).forEach(item => {
       if (!item?.id || !SIDES.includes(item.side)) return;
       any = keep(channel, {
@@ -164,6 +177,7 @@ function stop() {
   archiveTimer = 0;
   channels = new Map();
   messages = new Map();
+  purged = new Map();
 }
 
 async function begin(entries) {
