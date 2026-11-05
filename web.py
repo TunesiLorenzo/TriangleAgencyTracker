@@ -553,24 +553,202 @@ def communication_center():
     return render_template("communication_center.html")
 
 
-@app.get("/badges")
-def printable_badges():
-    """Every agent's badge at ID-card size, to print (static/badges.js draws them)."""
+def team_and_players():
     with store_lock:
         path = tracker_file
         players = config_state["config"].get("players")
     team, _ = read_tracker_file(path)
-    players = players if isinstance(players, dict) else {}
+    return team or {}, players if isinstance(players, dict) else {}
+
+
+def picture_url(icon):
+    """A portrait as /badges can show it: the team saves `./images/...` (from the viewer's root)."""
+    icon = str(icon or "")
+    return "/" + icon[2:] if icon.startswith("./") else icon
+
+
+def badge_cards():
+    """Every agent's badge: name, portrait, Competency, Competenza track and badge number."""
+    team, players = team_and_players()
     numbers = {str(account.get("charId") or ""): str(account.get("badge") or "").strip()
                for account in players.get("accounts") or [] if isinstance(account, dict)}
-    agents = [{
+    return [{
         "name": str(char.get("name") or "").strip(),
-        "icon": str(char.get("icon") or ""),
+        "icon": picture_url(char.get("icon")),
         "competency": str(char.get("competency") or ""),
         "progress": char.get("competencyProgress") or 0,
         "badge": numbers.get(str(char.get("id") or ""), ""),
-    } for char in (team or {}).get("chars") or [] if isinstance(char, dict)]
-    return render_template("badges.html", agents=agents)
+    } for char in team.get("chars") or [] if isinstance(char, dict)]
+
+
+def access_cards():
+    """Every player account that can sign in: its agent, username, password and badge number."""
+    team, players = team_and_players()
+    names = {str(char.get("id") or ""): str(char.get("name") or "").strip()
+             for char in team.get("chars") or [] if isinstance(char, dict)}
+    return [{
+        "name": names.get(str(account.get("charId") or ""), ""),
+        "username": str(account.get("username") or "").strip(),
+        "password": str(account.get("password") or ""),
+        "badge": str(account.get("badge") or "").strip(),
+    } for account in players.get("accounts") or []
+        if isinstance(account, dict) and str(account.get("username") or "").strip() and account.get("password")]
+
+
+def published_site():
+    try:
+        return build_static.site_url() or ""
+    except Exception:
+        return DEFAULT_MESSAGE_ARCHIVE_URL.rsplit("/", 1)[0] + "/"
+
+
+def solo_card():
+    """?solo=N: only card N, filling the window (how card_files() photographs each one)."""
+    try:
+        return int(request.args["solo"])
+    except (KeyError, ValueError):
+        return None
+
+
+@app.get("/badges")
+def printable_badges():
+    """Every agent's badge at ID-card size, to print (static/badges.js draws them)."""
+    return render_template("badges.html", mode="badges", cards=badge_cards(), solo=solo_card())
+
+
+@app.get("/badges/access")
+def printable_access_cards():
+    """A card per player account with its username and password, in the badge's style, to
+    hand to the players. Only on this server: the published copy never holds the passwords."""
+    return render_template("badges.html", mode="access", cards=access_cards(), site=published_site(), solo=solo_card())
+
+
+# ---------- the cards as files: data/badges/ and data/access_cards/ ----------
+# Photographed by the Chrome or Edge on this computer, headless, from the pages above. Kept
+# under data/ (git-ignored, never published): the access cards hold the passwords.
+CARD_FOLDERS = {"badges": DATA_DIR / "badges", "access": DATA_DIR / "access_cards"}
+CARD_PAGES = {"badges": "/badges", "access": "/badges/access"}
+CARD_SCALE = 6            # 54 mm = 204 CSS px -> 1224 px across, about 576 dpi
+CARD_WINDOW = (204, 324)  # 54 x 85.6 mm in CSS px
+cards_lock = threading.Lock()
+
+
+def find_browser():
+    """Chrome, or Edge (always on Windows): CHROME_PATH first if set."""
+    candidates = [os.environ.get("CHROME_PATH", "")]
+    candidates += [shutil.which(name) or "" for name in ("chrome", "google-chrome", "chromium", "msedge")]
+    for root in (os.environ.get("PROGRAMFILES", ""), os.environ.get("PROGRAMFILES(X86)", ""), os.environ.get("LOCALAPPDATA", "")):
+        if root:
+            candidates += [os.path.join(root, "Google", "Chrome", "Application", "chrome.exe"),
+                           os.path.join(root, "Microsoft", "Edge", "Application", "msedge.exe")]
+    return next((path for path in candidates if path and os.path.isfile(path)), None)
+
+
+def card_file_name(text, used):
+    name = re.sub(r"[^-\w]+", "_", text, flags=re.ASCII).strip("_") or "card"
+    stem, n = name, 2
+    while name.lower() in used:
+        name, n = f"{stem}_{n}", n + 1
+    used.add(name.lower())
+    return name
+
+
+def card_files(base_url):
+    """Draw every badge and access card again, as a PNG each plus an A4 PDF of each set,
+    replacing what the folders held. Returns {kind: [file names]}."""
+    import subprocess
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor
+
+    browser = find_browser()
+    if not browser:
+        raise RuntimeError("No Chrome or Edge found to draw the cards with (set CHROME_PATH to one).")
+    jobs, made = [], {}
+    with tempfile.TemporaryDirectory(prefix="ta-cards-") as scratch:
+        scratch = Path(scratch)
+        for kind, cards in (("badges", badge_cards()), ("access", access_cards())):
+            (scratch / kind).mkdir()
+            used, made[kind] = set(), []
+            for index, card in enumerate(cards):
+                name = card_file_name(card["name"] if kind == "badges" else card["username"], used) + ".png"
+                made[kind].append(name)
+                jobs.append(([f"--window-size={CARD_WINDOW[0]},{CARD_WINDOW[1]}", f"--force-device-scale-factor={CARD_SCALE}",
+                              "--default-background-color=00000000", f"--screenshot={scratch / kind / name}"],
+                             f"{base_url}{CARD_PAGES[kind]}?solo={index}", scratch / kind / name))
+            if cards:
+                sheet = "badges.pdf" if kind == "badges" else "access_cards.pdf"
+                made[kind].append(sheet)
+                jobs.append((["--no-pdf-header-footer", f"--print-to-pdf={scratch / kind / sheet}"],
+                             f"{base_url}{CARD_PAGES[kind]}", scratch / kind / sheet))
+
+        def run(job):
+            flags, url, out = job
+            with tempfile.TemporaryDirectory(prefix="ta-browser-") as profile:
+                subprocess.run([browser, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
+                                "--disable-extensions", f"--user-data-dir={profile}", "--virtual-time-budget=5000",
+                                *flags, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if not out.is_file():
+                raise RuntimeError(f"The browser did not draw {out.name}.")
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(run, jobs))
+        for kind, folder in CARD_FOLDERS.items():
+            folder.mkdir(parents=True, exist_ok=True)
+            for old in folder.iterdir():
+                if old.is_file() and old.suffix.lower() in (".png", ".pdf"):
+                    old.unlink()
+            for name in made[kind]:
+                shutil.move(str(scratch / kind / name), folder / name)
+    return made
+
+
+def card_folders_status():
+    status = {}
+    for kind, folder in CARD_FOLDERS.items():
+        found = sorted(folder.glob("*.png")) + sorted(folder.glob("*.pdf")) if folder.is_dir() else []
+        status[kind] = {
+            "folder": str(folder),
+            "files": [item.name for item in found],
+            "updatedAt": datetime.datetime.fromtimestamp(max(item.stat().st_mtime for item in found)).isoformat(timespec="seconds") if found else "",
+        }
+    return status
+
+
+@app.get("/api/cards")
+def cards_status():
+    return jsonify({"ok": True, "folders": card_folders_status(),
+                    "counts": {"badges": len(badge_cards()), "access": len(access_cards())}})
+
+
+@app.post("/api/cards/update")
+def update_card_files():
+    """The Communication Center's "Update cards": every badge and access card drawn again
+    from the team and the Players tab as they are now."""
+    if not cards_lock.acquire(blocking=False):
+        return jsonify({"ok": False, "message": "The cards are already being drawn."}), 409
+    try:
+        made = card_files(f"http://127.0.0.1:{request.environ.get('SERVER_PORT', '5002')}")
+    except Exception as error:
+        app.logger.exception("drawing the cards failed")
+        return jsonify({"ok": False, "message": str(error)}), 500
+    finally:
+        cards_lock.release()
+    return jsonify({"ok": True, "made": made, "folders": card_folders_status()})
+
+
+@app.post("/api/cards/open")
+def open_card_folder():
+    """Show a card folder in Explorer (this computer only)."""
+    folder = CARD_FOLDERS.get(str((request.get_json(silent=True) or {}).get("kind") or ""))
+    if not folder:
+        return jsonify({"ok": False, "message": "Unknown folder."}), 400
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        os.startfile(folder)
+    except (AttributeError, OSError) as error:
+        return jsonify({"ok": False, "message": f"Could not open {folder}: {error}"}), 500
+    return jsonify({"ok": True})
 
 
 @app.get("/Communication center")

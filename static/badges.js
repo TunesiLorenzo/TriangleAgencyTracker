@@ -1,9 +1,12 @@
-/* The printable agent badges on /badges: the login screen's badge (index.html, css/login.css)
- * for every agent, with what badge.js says goes on it. */
+/* The printable cards on /badges: the login screen's badge (index.html, css/login.css) for
+ * every agent, with what badge.js says goes on it; and on /badges/access, a card in its style
+ * with each player account's username and password. */
 import { divisionOf, drawBarcode, qualificationOf } from '/js/badge.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
-const agents = JSON.parse(document.getElementById('agents').textContent || '[]');
+const mode = document.body.dataset.mode;
+const cards = JSON.parse(document.getElementById('cards').textContent || '[]');
+const site = JSON.parse(document.getElementById('site').textContent || '""');
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -31,10 +34,7 @@ function metaRow(label, value) {
   return row;
 }
 
-function badge(agent) {
-  const card = el('div', 'login-badge-card');
-  card.append(el('span', 'login-badge-slot'));
-
+function header() {
   const head = el('div', 'login-badge-head');
   const brand = el('span');
   brand.append('Triangle', el('br'), 'Agency');
@@ -43,6 +43,27 @@ function badge(agent) {
     brand,
     el('span', 'login-badge-chip')
   );
+  return head;
+}
+
+// Always the size the login badge gives a long name, so every card lines up whatever the
+// name's length (the bigger size is for the login screen's role words: AGENT, MANAGER).
+function nameplate(name) {
+  return el('p', 'login-badge-role is-long', name);
+}
+
+function printable(card, label, title) {
+  const wrap = el('article', 'print-badge');
+  wrap.setAttribute('aria-label', label);
+  if (title) wrap.title = title;
+  wrap.append(card);
+  return wrap;
+}
+
+function badge(agent) {
+  const card = el('div', 'login-badge-card');
+  card.append(el('span', 'login-badge-slot'));
+  const head = header();
 
   // Their portrait, or the silhouette of the login screen.
   const photo = el('div', 'login-badge-photo');
@@ -57,8 +78,7 @@ function badge(agent) {
   }
 
   const name = agent.name || 'Agent';
-  const role = el('p', 'login-badge-role', name);
-  role.classList.toggle('is-long', name.length > 9);
+  const role = nameplate(name);
 
   const meta = el('dl', 'login-badge-meta');
   const clearance = metaRow('Clearance', '');
@@ -83,16 +103,53 @@ function badge(agent) {
     barcode,
     el('p', 'login-badge-fine', 'Property of the Agency · If found, do not investigate')
   );
-  const wrap = el('article', 'print-badge');
-  wrap.setAttribute('aria-label', `Badge of ${name}`);
-  if (!agent.badge) wrap.title = 'No account on the Players tab, so no badge number';
-  wrap.append(card);
-  return wrap;
+  return printable(card, `Badge of ${name}`, agent.badge ? '' : 'No account on the Players tab, so no badge number');
+}
+
+/* ---------- the access card: what a player types at the login screen ---------- */
+function credential(label, value) {
+  const field = el('div', 'access-field');
+  const text = el('span', 'access-value', value);
+  // Long ones shrink to stay on one line: a password must be read exactly.
+  text.style.setProperty('--chars', Math.max(value.length, 8));
+  field.append(el('span', 'access-label', label), text);
+  return field;
+}
+
+function accessCard(account) {
+  const card = el('div', 'login-badge-card access-card');
+  card.append(el('span', 'login-badge-slot'), header());
+  const name = account.name || account.username;
+  card.append(
+    el('p', 'access-title', 'Access credentials'),
+    nameplate(name),
+    el('p', 'login-badge-id', account.badge ? `#${account.badge}` : '#————'),
+    credential('Username', account.username),
+    credential('Password', account.password),
+    el('p', 'access-hint', 'The password is case-sensitive')
+  );
+  if (site) {
+    const terminal = el('p', 'access-site');
+    // Host and path on a line each, in a plain face: the badge's font draws every A as a triangle.
+    const [host, ...path] = site.replace(/^https?:\/\//, '').replace(/\/$/, '').split('/');
+    const url = el('span', 'access-url');
+    url.append(el('span', '', path.length ? `${host}/` : host));
+    if (path.length) url.append(el('span', '', path.join('/')));
+    terminal.append(el('span', 'access-label', 'Terminal'), url);
+    card.append(terminal);
+  }
+  const barcode = el('div', 'login-badge-barcode');
+  drawBarcode(barcode, account.badge || account.username);
+  card.append(barcode, el('p', 'login-badge-fine', 'Confidential · Memorise, then destroy'));
+  return printable(card, `Access card of ${name}`);
 }
 
 const sheet = document.getElementById('sheet');
-sheet.replaceChildren(...agents.map(badge));
-document.getElementById('empty').hidden = agents.length > 0;
+// ?solo=N (the Communication Center's Update cards): only card N, filling the window.
+const solo = document.body.dataset.solo;
+const shown = solo === undefined ? cards : cards.slice(Number(solo), Number(solo) + 1);
+sheet.replaceChildren(...shown.map(mode === 'access' ? accessCard : badge));
+document.getElementById('empty').hidden = cards.length > 0;
 document.getElementById('print').addEventListener('click', () => window.print());
 document.getElementById('cutLines').addEventListener('change', event => {
   sheet.classList.toggle('with-cut-lines', event.target.checked);

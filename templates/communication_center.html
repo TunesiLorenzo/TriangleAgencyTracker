@@ -22,6 +22,21 @@
     <div class="actions"><button id="saveConnection" class="secondary">Save connection</button><button id="syncNow">Sync with Google now</button><button id="refreshArchive" class="secondary">Refresh cache view</button></div>
     <p id="notice" class="notice" role="status" aria-live="polite"></p>
   </section>
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">AGENT IDENTIFICATION</p><h2>Badges and access cards</h2></div><span id="cardsState" class="status">Checking...</span></div>
+    <p class="panel-note">Update cards draws them all again from the team and the Settings Players tab as they are now: each
+      agent's badge with their portrait, Division and Qualification, and each player's access card with their username and
+      password. Each is saved as a PNG, plus an A4 PDF of the set to print, in the folders below. They are on this computer
+      only: <code>data/</code> is never published or committed.</p>
+    <div class="card-sets">
+      <article><h3>Badges</h3><p id="badgesInfo" class="card-info">—</p>
+        <div class="actions"><a class="secondary" href="/badges" target="_blank" rel="noopener">Print page</a><button class="secondary" type="button" data-open-folder="badges">Open folder</button></div></article>
+      <article><h3>Access cards</h3><p id="accessInfo" class="card-info">—</p>
+        <div class="actions"><a class="secondary" href="/badges/access" target="_blank" rel="noopener">Print page</a><button class="secondary" type="button" data-open-folder="access">Open folder</button></div></article>
+    </div>
+    <div class="actions"><button id="updateCards" type="button">Update cards</button></div>
+    <p id="cardsNotice" class="notice" role="status" aria-live="polite"></p>
+  </section>
   <section class="summary" aria-label="Archive summary">
     <article><strong id="messageCount">—</strong><span>messages</span></article>
     <article><strong id="topicCount">—</strong><span>channels with history</span></article>

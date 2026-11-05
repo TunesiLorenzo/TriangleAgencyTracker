@@ -68,6 +68,83 @@ body {
 .print-badge .login-badge-pips i:nth-child(n+2) { opacity: 0.18; }   /* an agent: Level 1 of 5 */
 .with-cut-lines .print-badge .login-badge-card { outline: 0.25mm dashed #8a8a8a; outline-offset: 0.8mm; }
 
+/* The access card (/badges/access): the badge's front, with what to type at the login screen. */
+.access-title {
+  align-self: stretch;
+  margin: 0 0 0.2em;
+  padding: 0.3em 0;
+  border-top: 0.12em solid #b8160e;
+  border-bottom: 0.12em solid #b8160e;
+  color: #b8160e;
+  font-size: 0.7em;
+  letter-spacing: 0.28em;
+  text-align: center;
+  text-indent: 0.28em;
+  text-transform: uppercase;
+}
+.access-card .login-badge-role { margin-top: 0.35em; }
+.access-field {
+  display: grid;
+  gap: 0.25em;
+  align-self: stretch;
+  margin-top: 0.75em;
+}
+.access-label {
+  font-size: 0.62em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.access-value {
+  display: block;
+  padding: 0.35em 0.2em;
+  border-radius: 0.3em;
+  background: #1d1f22;
+  box-shadow: inset 0 0.08em 0.3em rgba(0, 0, 0, 0.6);
+  color: #f6f2e9;
+  font-family: Consolas, 'Courier New', monospace;
+  font-weight: 700;
+  /* about 14.5em across: as large as fits, down for long ones */
+  font-size: min(1.3em, calc(20em / var(--chars, 8)));
+  letter-spacing: 0.08em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.access-hint {
+  margin: 0.55em 0 0;
+  font-size: 0.5em;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.access-site {
+  display: grid;
+  gap: 0.15em;
+  align-self: stretch;
+  margin: 0.7em 0 0;
+  padding-top: 0.5em;
+  border-top: 1px dashed rgba(0, 0, 0, 0.2);
+  font-size: 0.62em;
+  letter-spacing: 0.04em;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.access-site .access-label { font-size: 1em; }
+.access-url { font-family: Arial, Helvetica, sans-serif; font-size: 1.15em; font-weight: 700; letter-spacing: 0.02em; line-height: 1.25; }
+.access-url span { display: block; }
+.access-card .login-badge-barcode { margin-top: auto; }
+.access-card .access-site { margin-bottom: 0.7em; }
+
+/* ?solo=N: one card in the window's top left corner, for the Communication Center to
+   photograph (web.py CARD_WINDOW: the window can be wider than asked, never narrower) */
+html.solo body { min-height: 0; background: transparent; }
+html.solo .toolbar, html.solo .empty { display: none; }
+html.solo .sheet { display: block; padding: 0; }
+html.solo .print-badge { --badge-w: 204px; --card-h: 324px; }
+html.solo .print-badge .login-badge-card { box-shadow: none; outline: none; }
+
 @media print {
   body { min-height: 0; background: #fff; }
   .toolbar, .empty { display: none; }

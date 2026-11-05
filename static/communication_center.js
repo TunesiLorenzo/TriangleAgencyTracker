@@ -315,3 +315,64 @@ ui.purgeSelected.addEventListener('click', function () {
 });
 setInterval(updateClocks, 1000);
 Promise.all([loadConfig(), loadArchive(false)]).catch(function (error) { notice(error.message, true); });
+
+/* ---------- badges and access cards: drawn again as files on Update cards ---------- */
+const cardsUi = {
+  state: document.getElementById('cardsState'),
+  notice: document.getElementById('cardsNotice'),
+  update: document.getElementById('updateCards'),
+  info: { badges: document.getElementById('badgesInfo'), access: document.getElementById('accessInfo') }
+};
+function cardsNotice(message, error) {
+  cardsUi.notice.textContent = message || '';
+  cardsUi.notice.classList.toggle('error', Boolean(error));
+}
+function showCards(data) {
+  let latest = '';
+  ['badges', 'access'].forEach(function (kind) {
+    const folder = (data.folders || {})[kind] || {};
+    const pictures = (folder.files || []).filter(function (name) { return /\.png$/i.test(name); }).length;
+    const count = data.counts ? data.counts[kind] : undefined;
+    const noun = kind === 'badges' ? 'agent' : 'player account';
+    const lines = [];
+    if (count !== undefined) lines.push(count + ' ' + noun + (count === 1 ? '' : 's'));
+    lines.push(folder.updatedAt
+      ? pictures + ' PNG' + (pictures === 1 ? '' : 's') + ' last drawn ' + new Date(folder.updatedAt).toLocaleString()
+      : 'not drawn yet');
+    cardsUi.info[kind].replaceChildren(lines.join(' · '), document.createElement('br'), element('code', '', folder.folder || ''));
+    if (folder.updatedAt > latest) latest = folder.updatedAt;
+  });
+  cardsUi.state.textContent = latest ? 'Saved' : 'Not drawn yet';
+  cardsUi.state.classList.toggle('ready', Boolean(latest));
+}
+async function loadCards() {
+  try { showCards(await api('/api/cards')); }
+  catch (error) { cardsUi.state.textContent = 'Unavailable'; cardsNotice(error.message, true); }
+}
+cardsUi.update.addEventListener('click', async function () {
+  cardsUi.update.disabled = true;
+  cardsUi.state.textContent = 'Drawing...';
+  cardsNotice('Drawing every badge and access card: this takes a few seconds.');
+  try {
+    const data = await api('/api/cards/update', { method: 'POST' });
+    const made = data.made || {};
+    const pictures = function (kind) { return (made[kind] || []).filter(function (name) { return /\.png$/i.test(name); }).length; };
+    cardsNotice('Updated ' + pictures('badges') + ' badges and ' + pictures('access') + ' access cards.');
+  } catch (error) { cardsNotice(error.message, true); }
+  finally {
+    cardsUi.update.disabled = false;
+    await loadCards();
+  }
+});
+document.querySelectorAll('[data-open-folder]').forEach(function (button) {
+  button.addEventListener('click', async function () {
+    try {
+      await api('/api/cards/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: button.dataset.openFolder })
+      });
+    } catch (error) { cardsNotice(error.message, true); }
+  });
+});
+loadCards();

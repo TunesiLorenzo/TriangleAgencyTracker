@@ -1,30 +1,40 @@
 <!doctype html>
 <!-- data-session: login.css hides the overflow of a page while its login screen is up; there is none here -->
-<html lang="en" data-session="open">
+<html lang="en" data-session="open"{% if solo is not none %} class="solo"{% endif %}>
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agent Badges</title>
+  <title>{{ 'Access Cards' if mode == 'access' else 'Agent Badges' }}</title>
   <link rel="stylesheet" href="/css/login.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='badges.css') }}">
 </head>
-<body>
+<body data-mode="{{ mode }}"{% if solo is not none %} data-solo="{{ solo }}"{% endif %}>
 <header class="toolbar">
   <div>
+  {% if mode == 'access' %}
+    <h1>Access cards</h1>
+    <p>One card per player account with its username and password, at ID-card size (54 &times; 85.6 mm), nine
+      to an A4 page: print it on the back of each badge, or on its own. Print at <b>100% / Actual size</b> with
+      <b>Background graphics</b> on. Accounts and passwords are on the Settings Players tab; this page is only on
+      this computer and never published. To save them as files, use Update cards in the Communication Center.</p>
+  {% else %}
     <h1>Agent badges</h1>
     <p>One badge per agent at ID-card size (54 &times; 85.6 mm), nine to an A4 page. Print at
       <b>100% / Actual size</b> with <b>Background graphics</b> on. Division is the agent's Competency and
       Qualification the rank their Competenza track has unlocked (Agency tab); the number is their badge on the
       Settings Players tab.</p>
+  {% endif %}
   </div>
   <div class="toolbar-actions">
     <label><input id="cutLines" type="checkbox" checked> Cut lines</label>
-    <a href="/settings">Settings</a>
+    {% if mode == 'access' %}<a href="/badges">Badges</a>{% else %}<a href="/badges/access">Access cards</a>{% endif %}
+    <a href="/communication-center">Communication Center</a>
     <button id="print" type="button">Print</button>
   </div>
 </header>
 <main id="sheet" class="sheet with-cut-lines"></main>
-<p id="empty" class="empty" hidden>No agents on the team yet.</p>
-<script id="agents" type="application/json">{{ agents|tojson }}</script>
+<p id="empty" class="empty" hidden>{{ 'No player account has a username and a password yet (Settings, Players tab).' if mode == 'access' else 'No agents on the team yet.' }}</p>
+<script id="cards" type="application/json">{{ cards|tojson }}</script>
+<script id="site" type="application/json">{{ (site or '')|tojson }}</script>
 <script type="module" src="{{ url_for('static', filename='badges.js') }}"></script>
 </body>
 </html>
