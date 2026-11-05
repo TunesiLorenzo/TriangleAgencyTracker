@@ -1127,6 +1127,8 @@ html:not([data-session="open"]) body { overflow: hidden; }
   text-transform: uppercase;
 }
 .login-badge-meta div { display: flex; justify-content: space-between; gap: 0.6em; }
+.login-badge-meta div[hidden] { display: none; }
+.login-badge-meta dd { text-align: right; }
 .login-badge-meta dt { opacity: 0.55; }
 .login-badge-meta dd { margin: 0; }
 .login-badge-pips { display: inline-flex; gap: 0.2em; vertical-align: middle; }

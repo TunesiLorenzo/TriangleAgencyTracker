@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="./css/silence.css">
   <link rel="stylesheet" href="./css/readOnly.css">
   <link rel="stylesheet" href="./css/easterEggs.css">
+  <link rel="stylesheet" href="./css/messageAlert.css">
 </head>
 <body>
   <div id="loginScreen" class="login-screen" data-state="standby" role="dialog" aria-modal="true" aria-label="Triangle Agency sign-in">
@@ -131,6 +132,8 @@
               <dl class="login-badge-meta">
                 <div><dt>Clearance</dt><dd><span class="login-badge-pips" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="login-sr" data-agent="Level 1 of 5">Level 5 of 5</span></dd></div>
                 <div><dt>Division</dt><dd data-agent="Observation">Management</dd></div>
+                <!-- an agent's Qualifica in Agenzia, from their Competenza track (login.js) -->
+                <div class="login-badge-qualification" hidden><dt>Qualification</dt><dd></dd></div>
               </dl>
               <div class="login-badge-barcode" aria-hidden="true"></div>
               <p class="login-badge-fine">Property of the Agency &middot; If found, do not investigate</p>

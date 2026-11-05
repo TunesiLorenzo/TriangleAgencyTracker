@@ -27,7 +27,7 @@
 // played on the agent's screen instead of being typed out.
 
 import { access, getIdentity, publish, who } from './access.js';
-import { getConfig, getSnapshot, onConfigChange } from './config.js';
+import { getConfig, getSnapshot } from './config.js';
 import { EGGS, eggById, playEgg } from './easterEggs.js';
 import { playButton } from './soundEffects.js';
 import { confirmDialog, openModal, toast } from './ui.js';
@@ -1213,24 +1213,12 @@ async function sendFromPanel() {
 }
 
 /* ---------- Manager shortcut: agent card -> one-off transmission ---------- */
-let localManagerMessaging = false;
+// Only on a published copy, signed in as the Manager: the local tracker has no card buttons.
 let watchingAgentCards = false;
 const quickIdentity = { name: 'The Manager', class: 'manager' };
 
-function localDirectLine(agentId) {
-  const account = (getConfig().players.accounts || []).find(item =>
-    String(item?.charId || '') === String(agentId)
-    && String(item?.username || '').trim()
-    && item?.password
-    && isTopic(String(item?.inbox || '').trim()));
-  return account ? { channel: String(account.inbox).trim() } : null;
-}
-
 function directLine(agentId) {
-  if (getSnapshot()) {
-    return getIdentity()?.manager ? managerConversation(agentId, 'npc') : null;
-  }
-  return localManagerMessaging ? localDirectLine(agentId) : null;
+  return getSnapshot() && getIdentity()?.manager ? managerConversation(agentId, 'npc') : null;
 }
 
 function messageClassOptions() {
@@ -1425,14 +1413,6 @@ function watchAgentCards() {
   watchingAgentCards = true;
   const container = document.getElementById('charContainer');
   if (container) new MutationObserver(decorateAgentCards).observe(container, { childList: true });
-}
-
-/** Enable the card shortcut on the editable, local Manager tracker. */
-export function initManagerMessaging() {
-  if (getSnapshot()) return;
-  localManagerMessaging = true;
-  onConfigChange(decorateAgentCards);
-  watchAgentCards();
 }
 
 /* ---------- the Network map: who speaks, and to whom ---------- */

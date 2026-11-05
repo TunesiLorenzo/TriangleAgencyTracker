@@ -137,6 +137,9 @@ export function findAccount(username, password) {
       badge: details.badge || String(10000 + Math.floor(Math.random() * 90000)),
       name: manager ? 'Manager' : agent?.name?.trim() || '',
       picture: manager ? getConfig().login.badgePicture : agent?.icon || '',
+      // Division and Qualifica on their badge (badge.js).
+      competency: manager ? '' : String(agent?.competency || ''),
+      progress: manager ? 0 : Number.parseInt(agent?.competencyProgress, 10) || 0,
       charId: details.charId || '',
       player: details.player || '',
       inbox: details.inbox || '',

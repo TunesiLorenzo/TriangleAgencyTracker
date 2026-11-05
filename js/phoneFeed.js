@@ -29,6 +29,7 @@ let source = null;
 let archiveTimer = 0;
 let generation = 0;             // a fetch from an earlier `who` is dropped
 const listeners = new Set();
+const arrivalListeners = new Set();
 
 /* ---------- whose ---------- */
 function viewer() {
@@ -148,7 +149,10 @@ function listen(topics) {
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
     const message = fromEvent(data);
-    if (message && keep(data.topic, message)) changed();
+    if (!message || !keep(data.topic, message)) return;
+    changed();
+    const arrival = arrivalOf(data.topic, message);
+    arrivalListeners.forEach(listener => listener(arrival));
   });
 }
 
@@ -211,6 +215,17 @@ export function onFeed(listener) {
   listeners.add(listener);
 }
 
+/** Each message as it comes in live (not the backlog read when the feed starts): `listener({ kind, from, to })`. */
+export function onArrival(listener) {
+  arrivalListeners.add(listener);
+}
+
+function arrivalOf(channel, message) {
+  const entry = channels.get(channel);
+  const names = between(entry, message);
+  return { kind: entry.kind, from: message.from || names.from, to: names.to };
+}
+
 /* ---------- for the phone ---------- */
 /** Who wrote to whom, by the channel and the side it was written from; `fromId`: the agent who wrote. */
 function between(entry, message) {
@@ -227,12 +242,14 @@ function between(entry, message) {
 }
 
 /**
- * The latest `limit` messages, newest first:
+ * The latest `limit` messages between an agent and one of their relationships (the phone
+ * shows nothing of the Manager's line, the agent pairs or the anomalies), newest first:
  * { key, time, from, to, text, kind, agentId, fromId, npc } (`fromId`: the agent who wrote it,
  * if one did; `npc`: the relationship or anomaly on its line).
  */
 export function latestMessages(limit) {
   return [...messages.entries()]
+    .filter(([, message]) => channels.get(message.channel)?.kind === 'npc')
     .sort(([, a], [, b]) => b.time - a.time)
     .slice(0, limit)
     .map(([key, message]) => {

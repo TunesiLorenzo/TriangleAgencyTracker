@@ -200,12 +200,13 @@ export function showAgentTag(identity = getIdentity()) {
 }
 
 /**
- * A player's own agent stands out on every tab: the other agents' cards, overview tiles,
- * switcher chips and Network map nodes (all marked data-agent-id) are dimmed and washed
- * out, and come back while hovered, focused, open, or offered to write to. The Manager, and a guest, see the
- * team as it is. One rule names the agent, so whatever the tabs redraw is covered.
- * `:where` keeps the rule weak, so the Network map's own dimming (hover, picking whom to
- * message) still wins over it.
+ * A player's own agent stands out on every tab: a red frame (the red of the agent tag) and,
+ * on the cards and overview tiles, a "Your agent" stamp. The other agents' cards, tiles,
+ * switcher chips and Network map nodes (all marked data-agent-id) stay solid but are
+ * greyed and darkened, and come back while hovered, focused, open, or offered to write to.
+ * The Manager, and a guest, see the team as it is. One stylesheet names the agent, so
+ * whatever the tabs redraw is covered. `:where` keeps its rules weak, so the Network map's
+ * own dimming (hover, picking whom to message) still wins over them.
  */
 export function showOwnAgent(identity = getIdentity()) {
   const root = document.documentElement;
@@ -216,14 +217,48 @@ export function showOwnAgent(identity = getIdentity()) {
     return;
   }
   root.dataset.ownAgent = '';
-  const other = `:where(html[data-own-agent]) [data-agent-id]:not([data-agent-id="${CSS.escape(own)}"])`;
+  const id = `"${CSS.escape(own)}"`;
+  const other = `:where(html[data-own-agent]) [data-agent-id]:not([data-agent-id=${id}])`;
+  const mine = `:where(html[data-own-agent]) [data-agent-id=${id}]`;
+  // The stamp is a ::after, which the GRA takeover uses on the cards: none there while it runs.
+  const stamped = `:where(html[data-own-agent]) :is(.rel-summary, .anomaly-summary, .agency-summary, body:not(.gra-takeover) .char)[data-agent-id=${id}]`;
   const style = document.createElement('style');
   style.id = 'ownAgentStyle';
   style.textContent = `
-    ${other}:not(.net-node) { opacity: 0.45; filter: grayscale(0.75) brightness(0.85); }
-    ${other}.net-node { opacity: 0.45; }
-    ${other}:not(.net-node):is(:hover, :focus-visible, :focus-within, [aria-current="true"]) { opacity: 0.9; filter: none; }
-    ${other}.net-node:is(:hover, :focus-visible, .hot, .chat-to) { opacity: 0.9; }
+    ${other} { filter: grayscale(0.6) brightness(0.72); }
+    ${other}:is(:hover, :focus-visible, :focus-within, [aria-current="true"], .hot, .chat-to) { filter: none; }
+    ${mine}:not(.net-node) {
+      outline: 2px solid rgba(255, 59, 48, 0.85);
+      outline-offset: 3px;
+      filter: drop-shadow(0 0 10px rgba(255, 59, 48, 0.45));
+    }
+    ${mine}:is(.rel-switch, .anomaly-switch, .agency-switch) { outline-width: 1px; outline-offset: 1px; filter: none; }
+    ${mine}.net-node .net-ring { stroke: #ff3b30; filter: drop-shadow(0 0 6px rgba(255, 59, 48, 0.8)); }
+    ${mine}.net-node .net-label { fill: #ff6b61; }
+    ${stamped}:not(.char) { position: relative; overflow: visible; }
+    ${stamped}::after {
+      content: '▲ Your agent';
+      position: absolute;
+      z-index: 5;
+      top: 0;
+      left: 50%;
+      transform: translate(-50%, -60%);
+      padding: 2px 10px;
+      border: 1px solid rgba(255, 59, 48, 0.85);
+      border-radius: 4px;
+      background: #140606;
+      color: #ff3b30;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      line-height: 1.4;
+      text-transform: uppercase;
+      white-space: nowrap;
+      text-shadow: 0 0 8px rgba(255, 59, 48, 0.6);
+      pointer-events: none;
+    }
+    /* A card clips what overflows it (the Top Performer shine): its stamp sits inside, top left. */
+    ${stamped}.char::after { top: 10px; left: 12px; transform: none; }
   `;
   document.head.append(style);
 }

@@ -28,6 +28,7 @@ import { startMessages, stopMessages } from './messages.js';
 import { showAgentTag, showOwnAgent } from './readOnly.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
+import { divisionOf, drawBarcode, qualificationOf } from './badge.js';
 import { playButton, powerOffAudio, soundStartDelay } from './soundEffects.js';
 import { motionAllowed } from './motion.js';
 import { triggerLightScene } from './lights.js';
@@ -153,19 +154,9 @@ function resetScreen() {
   setStatus('');
 }
 
-/** The badge's barcode, drawn from the ID so it is the same every time. */
-function buildBarcode() {
-  const widths = [2, 1, 1];
-  for (const digit of username.replace(/\D/g, '')) {
-    widths.push(1 + (digit % 3), 1 + ((digit >> 1) % 2), 1 + ((digit * 7) % 3), 1);
-  }
-  widths.push(1, 1, 2);
-  els.barcode.replaceChildren(...widths.map((width, index) => {
-    const bar = document.createElement('span');
-    bar.style.flexGrow = String(width);
-    if (index % 2) bar.className = 'gap';
-    return bar;
-  }));
+/** The badge's barcode, drawn from the badge number so it matches the printed badge (/badges). */
+function buildBarcode(number = username) {
+  drawBarcode(els.barcode, number);
 }
 
 /**
@@ -196,8 +187,17 @@ function wearIdentity(identity) {
   screen.classList.toggle('is-manager', !!identity.manager);
   const level = screen.querySelector('.login-sr[data-agent]');
   const division = screen.querySelector('[data-agent="Observation"]');
+  // An agent's account: the department of their Competency, and the Qualifica their
+  // Competenza track has unlocked. A guest stays in Observation, with no Qualifica.
+  const agentAccount = !identity.manager && !identity.guest && !!identity.charId;
   if (level) level.textContent = identity.manager ? 'Level 5 of 5' : level.dataset.agent;
-  if (division) division.textContent = identity.manager ? 'Management' : division.dataset.agent;
+  if (division) {
+    division.textContent = identity.manager ? 'Management'
+      : agentAccount && divisionOf(identity.competency) || division.dataset.agent;
+  }
+  const qualification = screen.querySelector('.login-badge-qualification');
+  qualification.hidden = !agentAccount;
+  qualification.querySelector('dd').textContent = agentAccount ? qualificationOf(identity.progress) : '';
   screen.querySelector('.login-badge').setAttribute('aria-label', identity.manager ? 'Manager badge' : 'Agent badge');
   screen.querySelector('.login-badge-id').textContent = `#${identity.badge}`;
   screen.querySelector('.login-reader-id').textContent = `#${identity.badge} · Read only`;
@@ -205,7 +205,7 @@ function wearIdentity(identity) {
   if (identity.picture) badgePicture.src = identity.picture;
   else badgePicture.removeAttribute('src');
   badgePhoto.classList.toggle('has-picture', !!identity.picture);
-  buildBarcode();
+  buildBarcode(identity.badge || identity.username);
 }
 
 /**
