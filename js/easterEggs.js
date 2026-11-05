@@ -143,12 +143,13 @@ export function playEgg(egg, onResult = null) {
       playEvent(choice.verdict === 'pass' ? 'merit' : 'demerit');
       try {
         onResult?.({
-          egg: egg.id,
+          eventId: egg.id,
+          category: 'easter-egg',
           title: egg.title,
-          verdict: choice.verdict,
+          status: choice.verdict,
           choice: choice.label,
           outcome: choice.outcome,
-          boon,
+          reward: boon,
           time: Math.floor(Date.now() / 1000)
         });
       } catch {

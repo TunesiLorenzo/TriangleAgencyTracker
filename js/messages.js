@@ -30,7 +30,7 @@ import { access, getIdentity, publish, who } from './access.js';
 import { getConfig, getSnapshot, onConfigChange } from './config.js';
 import { EGGS, eggById, playEgg } from './easterEggs.js';
 import { playButton } from './soundEffects.js';
-import { openModal, toast } from './ui.js';
+import { confirmDialog, openModal, toast } from './ui.js';
 
 const TYPE_MS = 24;              // per character of a transmission
 const MAX_TEXT = 500;            // characters of anything a player writes
@@ -45,8 +45,10 @@ const HEADINGS = { manager: 'Incoming transmission', agent: 'Incoming agent mess
 const SIDES = ['agent', 'npc', 'a', 'b'];
 const MESSAGE_CLASSES = ['manager', 'agent', 'npc', 'anomaly'];
 const EGG_TAG = 'ta-egg-';
-const EGG_RESULT_TAG = 'ta-egg-result';
-const EGG_RESULT_RETRY_DELAY = 30000;
+const EVENT_RESULT_TAG = 'ta-event-result';
+const EVENT_RESULT_DELETE_TAG = 'ta-event-result-delete';
+const LEGACY_EGG_RESULT_TAG = 'ta-egg-result';
+const EVENT_RESULT_RETRY_DELAY = 30000;
 
 let conversations = [];          // the signed-in player's, the Manager's first
 const byChannel = new Map();     // channel -> the conversations on it
@@ -54,7 +56,9 @@ const histories = new Map();     // channel -> [{ id, time, side, from, text }],
 const receipts = new Map();      // channel -> one Set of seen message ids per conversation side
 const localSeen = new Map();     // `${channel}|${side}` -> Set, what this device showed
 const deletedMessages = new Map(); // channel -> IDs purged by the durable collector
-const eggResults = new Map();    // channel -> Map(source message id -> structured result)
+const eventResults = new Map();  // channel -> Map(source message id -> structured result)
+const eventResultDeleted = new Map(); // channel -> Set(source message ids hidden permanently)
+let eventTrackerBody = null;
 const offered = new Set();       // `${channel}|${side}|${id}`, already queued this session
 let source = null;               // the live EventSource on every channel
 let started = false;
@@ -67,7 +71,31 @@ function readList(key) {
   try { return JSON.parse(storage(store => store.getItem(key)) || '[]'); } catch { return []; }
 }
 const writeList = (key, list) => storage(store => store.setItem(key, JSON.stringify(list)));
-const PENDING_EGG_RESULTS_KEY = 'ta-pending-egg-results';
+const PENDING_EVENT_RESULTS_KEY = 'ta-pending-event-results';
+const LEGACY_PENDING_EGG_RESULTS_KEY = 'ta-pending-egg-results';
+
+const trackedEventCatalog = new Map();
+const eventTypeKey = (category, eventId) => `${category}:${eventId}`;
+
+/** Register something that should appear for every user, including before it is sent.
+ * Future modules can call this once with { category, eventId, title, summary }. */
+export function registerTrackedEvent(definition) {
+  const category = String(definition?.category || 'event').slice(0, 80);
+  const eventId = String(definition?.eventId || definition?.id || '').slice(0, 80);
+  if (!/^[-_A-Za-z0-9]{1,80}$/.test(category) || !/^[-_A-Za-z0-9]{1,80}$/.test(eventId)) return false;
+  trackedEventCatalog.set(eventTypeKey(category, eventId), {
+    category,
+    eventId,
+    title: String(definition?.title || eventId).slice(0, 160),
+    summary: String(definition?.summary || '').slice(0, 1000)
+  });
+  renderEventTracker();
+  return true;
+}
+
+EGGS.forEach(egg => registerTrackedEvent({
+  category: 'easter-egg', eventId: egg.id, title: egg.title, summary: egg.summary
+}));
 
 /* ---------- conversations ---------- */
 const isTopic = channel => /^[-_A-Za-z0-9]{1,64}$/.test(channel);
@@ -161,39 +189,63 @@ function remember(channel, message, { canonical = false } = {}) {
   return true;
 }
 
-function normalizeEggResult(value) {
+function normalizeEventResult(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const sourceId = String(value.sourceId || '').slice(0, 160);
-  const egg = String(value.egg || '').slice(0, 80);
-  const verdict = String(value.verdict || '');
-  if (!sourceId || !egg || !['pass', 'fail'].includes(verdict)) return null;
+  const eventId = String(value.eventId || value.egg || '').slice(0, 80);
+  const category = String(value.category || (value.egg ? 'easter-egg' : 'event')).slice(0, 80);
+  const status = String(value.status || value.verdict || '').slice(0, 32);
+  if (!sourceId || !/^[-_A-Za-z0-9]{1,80}$/.test(eventId)
+      || !/^[-_A-Za-z0-9]{1,80}$/.test(category)
+      || !/^[-_A-Za-z0-9]{1,32}$/.test(status)) return null;
   return {
     sourceId,
-    egg,
+    eventId,
+    category,
     title: String(value.title || '').slice(0, 160),
-    verdict,
+    status,
     choice: String(value.choice || '').slice(0, 160),
     outcome: String(value.outcome || '').slice(0, 1000),
-    boon: String(value.boon || '').slice(0, 1000),
+    reward: String(value.reward || value.boon || '').slice(0, 1000),
     time: Number(value.time) || 0
   };
 }
 
-function rememberEggResult(channel, value) {
-  const result = normalizeEggResult(value);
-  if (!result) return false;
-  if (!eggResults.has(channel)) eggResults.set(channel, new Map());
-  const saved = eggResults.get(channel);
+function deletedEventResults(channel) {
+  if (!eventResultDeleted.has(channel)) eventResultDeleted.set(channel, new Set());
+  return eventResultDeleted.get(channel);
+}
+
+function applyDeletedEventResults(channel, sourceIds) {
+  const deleted = deletedEventResults(channel);
+  const saved = eventResults.get(channel);
+  sourceIds.map(String).filter(Boolean).forEach(sourceId => {
+    deleted.add(sourceId);
+    saved?.delete(sourceId);
+  });
+  renderEventTracker();
+}
+
+function rememberEventResult(channel, value) {
+  const result = normalizeEventResult(value);
+  if (!result || deletedEventResults(channel).has(result.sourceId)) return false;
+  if (!eventResults.has(channel)) eventResults.set(channel, new Map());
+  const saved = eventResults.get(channel);
   const previous = saved.get(result.sourceId);
   if (previous && JSON.stringify(previous) === JSON.stringify(result)) return false;
   saved.set(result.sourceId, result);
-  renderEggTracker();
+  renderEventTracker();
   return true;
 }
 
-function eggResultFromEvent(event) {
-  try { return normalizeEggResult(JSON.parse(String(event.message || ''))); }
+function eventResultFromEvent(event) {
+  try { return normalizeEventResult(JSON.parse(String(event.message || ''))); }
   catch { return null; }
+}
+
+function deletedEventResultFromEvent(event) {
+  try { return String((JSON.parse(String(event.message || '')) || {}).sourceId || '').slice(0, 160); }
+  catch { return ''; }
 }
 
 /* ---------- ntfy ---------- */
@@ -226,9 +278,14 @@ async function poll(topics) {
 /** A message or receipt off a channel, kept; returns a message new to this device, else null. */
 function ingest(event) {
   const tags = event.tags || [];
-  if (tags.includes(EGG_RESULT_TAG)) {
-    const result = eggResultFromEvent(event);
-    if (result) rememberEggResult(event.topic, result);
+  if (tags.includes(EVENT_RESULT_DELETE_TAG)) {
+    const sourceId = deletedEventResultFromEvent(event);
+    if (sourceId) applyDeletedEventResults(event.topic, [sourceId]);
+    return null;
+  }
+  if (tags.includes(EVENT_RESULT_TAG) || tags.includes(LEGACY_EGG_RESULT_TAG)) {
+    const result = eventResultFromEvent(event);
+    if (result) rememberEventResult(event.topic, result);
     return null;
   }
   // Old NPC/agent messages remain readable; agent-pair messages carry ta-a or ta-b.
@@ -276,6 +333,7 @@ async function loadPublishedArchive(topics) {
     const saved = archive.topics[channel];
     if (!saved || typeof saved !== 'object') return;
     applyDeleted(channel, Array.isArray(saved.deleted) ? saved.deleted : []);
+    applyDeletedEventResults(channel, Array.isArray(saved.eventResultDeleted) ? saved.eventResultDeleted : []);
     const sets = receiptSets(channel);
     SIDES.forEach(side => {
       const ids = (Array.isArray(saved.seen?.[side]) ? saved.seen[side] : []).map(String);
@@ -294,8 +352,11 @@ async function loadPublishedArchive(topics) {
         ...(typeof item.egg === 'string' && item.egg ? { egg: item.egg } : {})
       }, { canonical: true });
     });
-    (Array.isArray(saved.eggResults) ? saved.eggResults : []).forEach(result => {
-      rememberEggResult(channel, result);
+    const archivedResults = Array.isArray(saved.eventResults) ? saved.eventResults
+      : Array.isArray(saved.eggResults) ? saved.eggResults
+        : [];
+    archivedResults.forEach(result => {
+      rememberEventResult(channel, result);
     });
   });
 }
@@ -398,72 +459,84 @@ function markSeen(conv, id) {
   updateBadge();
 }
 
-/* ---------- durable easter-egg results ---------- */
-let eggResultFlush = null;
-let eggResultTimer = 0;
-let eggResultQueue = null;
+/* ---------- durable tracked-event results ---------- */
+let eventResultFlush = null;
+let eventResultTimer = 0;
+let eventResultQueue = null;
 
-function pendingEggResults() {
-  if (eggResultQueue === null) {
-    const saved = readList(PENDING_EGG_RESULTS_KEY);
-    eggResultQueue = (Array.isArray(saved) ? saved : []).filter(item =>
+function pendingEventResults() {
+  if (eventResultQueue === null) {
+    const current = readList(PENDING_EVENT_RESULTS_KEY);
+    const saved = current.length ? current : readList(LEGACY_PENDING_EGG_RESULTS_KEY);
+    eventResultQueue = (Array.isArray(saved) ? saved : []).filter(item =>
       item && isTopic(String(item.channel || '')) && SIDES.includes(item.side)
-        && normalizeEggResult(item.result));
+        && normalizeEventResult(item.result));
   }
-  return eggResultQueue;
+  return eventResultQueue;
 }
 
-function savePendingEggResults(items) {
-  eggResultQueue = items;
-  if (items.length) writeList(PENDING_EGG_RESULTS_KEY, items);
-  else storage(store => store.removeItem(PENDING_EGG_RESULTS_KEY));
+function savePendingEventResults(items) {
+  eventResultQueue = items;
+  if (items.length) writeList(PENDING_EVENT_RESULTS_KEY, items);
+  else storage(store => store.removeItem(PENDING_EVENT_RESULTS_KEY));
+  storage(store => store.removeItem(LEGACY_PENDING_EGG_RESULTS_KEY));
 }
 
-function scheduleEggResultFlush(delay = 0) {
-  if (eggResultTimer || eggResultFlush) return;
-  eggResultTimer = setTimeout(() => {
-    eggResultTimer = 0;
-    flushEggResults();
+function scheduleEventResultFlush(delay = 0) {
+  if (eventResultTimer || eventResultFlush) return;
+  eventResultTimer = setTimeout(() => {
+    eventResultTimer = 0;
+    flushEventResults();
   }, delay);
 }
 
-function flushEggResults() {
-  clearTimeout(eggResultTimer);
-  eggResultTimer = 0;
-  if (eggResultFlush) return eggResultFlush;
-  eggResultFlush = (async () => {
-    const pending = pendingEggResults();
+function flushEventResults() {
+  clearTimeout(eventResultTimer);
+  eventResultTimer = 0;
+  if (eventResultFlush) return eventResultFlush;
+  eventResultFlush = (async () => {
+    const pending = pendingEventResults();
     const left = [];
     for (const item of pending) {
-      const result = normalizeEggResult(item.result);
+      const result = normalizeEventResult(item.result);
       const sent = await post(item.channel, {
-        title: 'Easter egg result',
+        title: 'Tracked event result',
         message: JSON.stringify(result),
-        tags: [EGG_RESULT_TAG, `ta-${item.side}`],
-        sequence_id: `ta-result-${result.sourceId}`
+        tags: [EVENT_RESULT_TAG, `ta-${item.side}`],
+        sequence_id: newMessageId()
       });
       if (!sent) left.push(item);
     }
-    savePendingEggResults(left);
+    savePendingEventResults(left);
     return left.length;
   })().finally(() => {
-    eggResultFlush = null;
-    if (pendingEggResults().length) scheduleEggResultFlush(EGG_RESULT_RETRY_DELAY);
+    eventResultFlush = null;
+    if (pendingEventResults().length) scheduleEventResultFlush(EVENT_RESULT_RETRY_DELAY);
   });
-  return eggResultFlush;
+  return eventResultFlush;
 }
 
-function queueEggResult(conv, message, value) {
-  const result = normalizeEggResult({ ...value, sourceId: message.id });
+function queueEventResult(conv, sourceId, value) {
+  const result = normalizeEventResult({ ...value, sourceId });
   if (!result || !isTopic(conv.channel)) return;
-  const pending = pendingEggResults();
+  const pending = pendingEventResults();
   const key = `${conv.channel}|${result.sourceId}`;
   const item = { channel: conv.channel, side: conv.side, result };
   const at = pending.findIndex(entry => `${entry.channel}|${entry.result?.sourceId}` === key);
   if (at === -1) pending.push(item);
   else pending[at] = item;
-  savePendingEggResults(pending);
-  scheduleEggResultFlush();
+  savePendingEventResults(pending);
+  scheduleEventResultFlush();
+}
+
+/** Record a future interactive event for the signed-in agent on their Manager line.
+ * Returns the stable source ID, or an empty string when that account has no direct line. */
+export function recordTrackedEventResult(value) {
+  const conv = conversations.find(item => item.kind === 'manager' && item.side === 'agent' && isTopic(item.channel));
+  if (!conv) return '';
+  const sourceId = String(value?.sourceId || newMessageId()).slice(0, 160);
+  queueEventResult(conv, sourceId, value);
+  return sourceId;
 }
 
 /* ---------- writing ---------- */
@@ -660,7 +733,7 @@ async function drain() {
     if (isSeen(next.conv, next.message.id)) continue;
     const egg = next.conv.kind === 'manager' && eggById(next.message.egg);
     if (egg) {
-      await playEgg(egg, result => queueEggResult(next.conv, next.message, result));
+      await playEgg(egg, result => queueEventResult(next.conv, next.message.id, result));
       markSeen(next.conv, next.message.id);
     } else {
       await present(next);
@@ -672,14 +745,13 @@ async function drain() {
 /* ---------- the Messages panel, grouped by the character this account controls ---------- */
 let panel = null;
 let button = null;
-let eggTrackerBody = null;
 let openConv = null;   // the conversation on show in the panel
 let activePersona = ''; // the controlled character whose conversation list is on show
 
 const unreadIn = conv => history(conv.channel).filter(message => incoming(conv, message) && !isSeen(conv, message.id)).length;
 
 function updateBadge() {
-  renderEggTracker();
+  renderEventTracker();
   if (!button) return;
   const unread = conversations.reduce((sum, conv) => sum + unreadIn(conv), 0);
   const badge = button.querySelector('.messages-unread');
@@ -701,9 +773,9 @@ function addButton() {
   if (getIdentity()?.manager) {
     const tracker = document.createElement('button');
     tracker.type = 'button';
-    tracker.id = 'eggTrackerButton';
-    tracker.innerHTML = '<span aria-hidden="true">&#10003;</span> Test log';
-    tracker.addEventListener('click', openEggTracker);
+    tracker.id = 'eventTrackerButton';
+    tracker.innerHTML = '<span aria-hidden="true">&#10003;</span> Event log';
+    tracker.addEventListener('click', openEventTracker);
     disconnect.before(tracker);
   }
 }
@@ -868,24 +940,45 @@ function managerDirectLines() {
   return [...unique.values()].sort((a, b) => String(a.agentName || '').localeCompare(String(b.agentName || '')));
 }
 
-function eggTypesFor(conv) {
-  const attempts = history(conv.channel).filter(message => message.egg);
-  const results = eggResults.get(conv.channel) || new Map();
-  const ids = new Set(EGGS.map(egg => egg.id));
-  attempts.forEach(message => ids.add(message.egg));
-  results.forEach(result => ids.add(result.egg));
-  return [...ids].map(id => {
-    const defined = eggById(id);
-    const recorded = [...results.values()].find(result => result.egg === id);
-    return { id, title: defined?.title || recorded?.title || id, summary: defined?.summary || '' };
+function trackedAttempts(conv) {
+  const deleted = deletedEventResults(conv.channel);
+  return history(conv.channel)
+    .filter(message => message.egg && !deleted.has(message.id))
+    .map(message => ({ id: message.id, time: message.time, category: 'easter-egg', eventId: message.egg }));
+}
+
+function trackedEventTypesFor(conv) {
+  const types = new Map([...trackedEventCatalog].map(([key, value]) => [key, { ...value }]));
+  trackedAttempts(conv).forEach(attempt => {
+    const key = eventTypeKey(attempt.category, attempt.eventId);
+    if (!types.has(key)) types.set(key, {
+      category: attempt.category,
+      eventId: attempt.eventId,
+      title: eggById(attempt.eventId)?.title || attempt.eventId,
+      summary: eggById(attempt.eventId)?.summary || ''
+    });
   });
+  (eventResults.get(conv.channel) || new Map()).forEach(result => {
+    const key = eventTypeKey(result.category, result.eventId);
+    if (!types.has(key)) types.set(key, {
+      category: result.category,
+      eventId: result.eventId,
+      title: result.title || result.eventId,
+      summary: ''
+    });
+  });
+  return [...types.values()];
 }
 
 function attemptStatus(conv, attempt, result) {
   if (result) return {
-    label: result.verdict === 'pass' ? 'Passed' : 'Failed',
-    className: `is-${result.verdict}`,
-    detail: [result.choice ? `Choice: ${result.choice}` : '', result.outcome, result.boon ? `Benefit: ${result.boon}` : ''].filter(Boolean)
+    label: ['pass', 'passed'].includes(result.status) ? 'Passed'
+      : ['fail', 'failed'].includes(result.status) ? 'Failed'
+        : result.status.replace(/[-_]+/g, ' ').replace(/^./, letter => letter.toUpperCase()),
+    className: ['pass', 'passed'].includes(result.status) ? 'is-pass'
+      : ['fail', 'failed'].includes(result.status) ? 'is-fail'
+        : 'is-recorded',
+    detail: [result.choice ? `Choice: ${result.choice}` : '', result.outcome, result.reward ? `Reward: ${result.reward}` : ''].filter(Boolean)
   };
   if (receiptSets(conv.channel).agent.has(attempt.id)) return {
     label: 'Discovered · result unavailable',
@@ -895,39 +988,63 @@ function attemptStatus(conv, attempt, result) {
   return { label: 'Awaiting agent', className: 'is-pending', detail: [] };
 }
 
-function renderEggTracker() {
-  if (!eggTrackerBody) return;
+async function removeTrackedEventRecord(conv, attempt, type) {
+  const confirmed = await confirmDialog({
+    title: 'Remove event record?',
+    message: `${type.title} for ${conv.agentName || 'this agent'} will disappear from the Event log and cannot be restored by an old ntfy event.`,
+    confirmLabel: 'Remove record',
+    danger: true
+  });
+  if (!confirmed) return;
+  const sent = await post(conv.channel, {
+    title: 'Tracked event record removed',
+    message: JSON.stringify({ sourceId: attempt.id, eventId: type.eventId, category: type.category, time: now() }),
+    tags: [EVENT_RESULT_DELETE_TAG, `ta-${conv.side}`],
+    sequence_id: newMessageId()
+  });
+  if (!sent) {
+    toast('The event record could not be removed. Check the connection and try again.', { kind: 'error' });
+    return;
+  }
+  applyDeletedEventResults(conv.channel, [attempt.id]);
+  toast(`${type.title} removed from the Event log.`, { kind: 'success' });
+}
+
+function renderEventTracker() {
+  if (!eventTrackerBody) return;
   const lines = managerDirectLines();
   if (!lines.length) {
     const empty = document.createElement('p');
     empty.className = 'egg-ledger-empty';
     empty.textContent = 'No agent account has a direct message channel, so there is nothing to track yet.';
-    eggTrackerBody.replaceChildren(empty);
+    eventTrackerBody.replaceChildren(empty);
     return;
   }
 
-  eggTrackerBody.replaceChildren(...lines.map(conv => {
+  eventTrackerBody.replaceChildren(...lines.map(conv => {
     const card = document.createElement('article');
     card.className = 'egg-ledger-agent';
     const heading = document.createElement('header');
     const name = document.createElement('h3');
     name.textContent = `${conv.agentName || 'Unnamed agent'}${conv.username ? ` · ${conv.username}` : ''}`;
-    const results = eggResults.get(conv.channel) || new Map();
-    const attempts = history(conv.channel).filter(message => message.egg);
+    const results = eventResults.get(conv.channel) || new Map();
+    const attempts = trackedAttempts(conv);
     const totals = [...results.values()].reduce((count, result) => {
-      count[result.verdict]++;
+      if (['pass', 'passed'].includes(result.status)) count.pass++;
+      else if (['fail', 'failed'].includes(result.status)) count.fail++;
+      else count.other++;
       return count;
-    }, { pass: 0, fail: 0 });
+    }, { pass: 0, fail: 0, other: 0 });
     const summary = document.createElement('p');
     const unresolved = attempts.filter(message => !results.has(message.id));
     const legacy = unresolved.filter(message => receiptSets(conv.channel).agent.has(message.id)).length;
     const waiting = unresolved.length - legacy;
-    summary.textContent = `${totals.pass} passed · ${totals.fail} failed${waiting ? ` · ${waiting} awaiting` : ''}${legacy ? ` · ${legacy} legacy` : ''}`;
+    summary.textContent = `${totals.pass} passed · ${totals.fail} failed${totals.other ? ` · ${totals.other} recorded` : ''}${waiting ? ` · ${waiting} awaiting` : ''}${legacy ? ` · ${legacy} legacy` : ''}`;
     heading.append(name, summary);
 
     const tests = document.createElement('div');
     tests.className = 'egg-ledger-tests';
-    eggTypesFor(conv).forEach(type => {
+    trackedEventTypesFor(conv).forEach(type => {
       const section = document.createElement('section');
       section.className = 'egg-ledger-test';
       const title = document.createElement('h4');
@@ -939,12 +1056,14 @@ function renderEggTracker() {
         description.textContent = type.summary;
         section.append(description);
       }
-      const recorded = [...results.values()].filter(result => result.egg === type.id);
-      const fired = attempts.filter(message => message.egg === type.id);
+      const recorded = [...results.values()].filter(result => result.category === type.category && result.eventId === type.eventId);
+      const fired = attempts.filter(attempt => attempt.category === type.category && attempt.eventId === type.eventId);
       const knownIds = new Set(fired.map(message => message.id));
       const all = [
         ...fired,
-        ...recorded.filter(result => !knownIds.has(result.sourceId)).map(result => ({ id: result.sourceId, time: result.time, egg: result.egg }))
+        ...recorded.filter(result => !knownIds.has(result.sourceId)).map(result => ({
+          id: result.sourceId, time: result.time, category: result.category, eventId: result.eventId
+        }))
       ].sort((a, b) => Number(b.time || 0) - Number(a.time || 0));
       if (!all.length) {
         const none = document.createElement('p');
@@ -964,7 +1083,13 @@ function renderEggTracker() {
           label.textContent = status.label;
           const date = document.createElement('time');
           date.textContent = attempt.time ? clock(attempt.time) : `Attempt ${all.length - index}`;
-          line.append(label, date);
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'egg-ledger-remove';
+          remove.textContent = 'Remove';
+          remove.setAttribute('aria-label', `Remove ${type.title} record for ${conv.agentName || 'agent'}`);
+          remove.addEventListener('click', () => removeTrackedEventRecord(conv, attempt, type));
+          line.append(label, date, remove);
           item.append(line);
           status.detail.forEach(text => {
             const detail = document.createElement('small');
@@ -982,17 +1107,17 @@ function renderEggTracker() {
   }));
 }
 
-function openEggTracker() {
+function openEventTracker() {
   const content = document.createElement('div');
   content.className = 'egg-ledger';
-  eggTrackerBody = content;
-  renderEggTracker();
+  eventTrackerBody = content;
+  renderEventTracker();
   openModal({
-    title: 'Agency test log',
+    title: 'Agency event log',
     content,
     className: 'egg-ledger-modal',
-    closeLabel: 'Close test log',
-    onClose: () => { if (eggTrackerBody === content) eggTrackerBody = null; }
+    closeLabel: 'Close event log',
+    onClose: () => { if (eventTrackerBody === content) eventTrackerBody = null; }
   });
 }
 
@@ -1471,7 +1596,7 @@ export async function startMessages() {
     byChannel.get(conv.channel).push(conv);
     if (isTopic(conv.channel)) pendingReceiptSet(`${conv.channel}|${conv.side}`);
   }
-  if (pendingEggResults().length) scheduleEggResultFlush();
+  if (pendingEventResults().length) scheduleEventResultFlush();
   addButton();
   if (identity.manager) watchAgentCards();
   watchMaps();
@@ -1509,7 +1634,7 @@ export async function startMessages() {
 /** Log Out: the last receipts go out, and nothing more comes in. */
 export function stopMessages() {
   flushReceipts();
-  flushEggResults();
+  flushEventResults();
   source?.close();
   source = null;
 }

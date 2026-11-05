@@ -74,7 +74,9 @@ function keep(channel, message) {
 
 function fromEvent(event) {
   const tags = event.tags || [];
-  if (event.event !== 'message' || tags.includes('ta-seen') || tags.includes('ta-egg-result')) return null;
+  if (event.event !== 'message' || tags.includes('ta-seen')
+      || tags.includes('ta-event-result') || tags.includes('ta-event-result-delete')
+      || tags.includes('ta-egg-result')) return null;
   const egg = tags.find(tag => tag.startsWith('ta-egg-'));
   return {
     id: String(event.sequence_id || event.id || ''),

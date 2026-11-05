@@ -199,6 +199,35 @@ export function showAgentTag(identity = getIdentity()) {
   tag.setAttribute('aria-label', `Signed in as ${name}, ${identity.manager ? 'manager' : 'agent'} number ${identity.badge}`);
 }
 
+/**
+ * A player's own agent stands out on every tab: the other agents' cards, overview tiles,
+ * switcher chips and Network map nodes (all marked data-agent-id) are dimmed and washed
+ * out, and come back while hovered, focused, open, or offered to write to. The Manager, and a guest, see the
+ * team as it is. One rule names the agent, so whatever the tabs redraw is covered.
+ * `:where` keeps the rule weak, so the Network map's own dimming (hover, picking whom to
+ * message) still wins over it.
+ */
+export function showOwnAgent(identity = getIdentity()) {
+  const root = document.documentElement;
+  document.getElementById('ownAgentStyle')?.remove();
+  const own = identity && !identity.manager && !identity.guest ? String(identity.charId || '') : '';
+  if (!own) {
+    delete root.dataset.ownAgent;
+    return;
+  }
+  root.dataset.ownAgent = '';
+  const other = `:where(html[data-own-agent]) [data-agent-id]:not([data-agent-id="${CSS.escape(own)}"])`;
+  const style = document.createElement('style');
+  style.id = 'ownAgentStyle';
+  style.textContent = `
+    ${other}:not(.net-node) { opacity: 0.45; filter: grayscale(0.75) brightness(0.85); }
+    ${other}.net-node { opacity: 0.45; }
+    ${other}:not(.net-node):is(:hover, :focus-visible, :focus-within, [aria-current="true"]) { opacity: 0.9; filter: none; }
+    ${other}.net-node:is(:hover, :focus-visible, .hot, .chat-to) { opacity: 0.9; }
+  `;
+  document.head.append(style);
+}
+
 export function initReadOnly() {
   document.documentElement.dataset.readOnly = '';
   showDisconnect();

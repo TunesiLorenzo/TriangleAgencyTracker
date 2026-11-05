@@ -14,17 +14,18 @@
 // of lights.py, set under Session lights on /settings).
 // A published copy is signed into by a read-only Agent instead (becomeAgent): no retina
 // scan, and a warning once the badge is read. With player accounts set up (access.js), the
-// player types their own username and password and the badge becomes their agent's; left
-// blank, or without accounts, the visitor is a guest with a number drawn for the visit and
-// a redacted badge.
+// player types their own username and password and the badge becomes their agent's. A
+// guest (a number drawn for the visit and a redacted badge) gets in only without accounts,
+// or when the Players tab allows guests: then both fields are left blank. Otherwise there is
+// no way past the credentials, Ctrl + click included (except in the /publish preview).
 
 import { getConfig, getSnapshot, onConfigChange, whenConfigLoaded } from './config.js';
 import {
-  endSession, findAccount, getIdentity, guestIdentity, hasAccounts, playWarning, reportFailedSignIn,
-  setIdentity, startSession
+  endSession, findAccount, getIdentity, guestIdentity, guestsAllowed, hasAccounts, playWarning,
+  reportFailedSignIn, setIdentity, startSession
 } from './access.js';
 import { startMessages, stopMessages } from './messages.js';
-import { showAgentTag } from './readOnly.js';
+import { showAgentTag, showOwnAgent } from './readOnly.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { playButton, powerOffAudio, soundStartDelay } from './soundEffects.js';
@@ -214,7 +215,7 @@ function wearIdentity(identity) {
 function enableEntry() {
   entry = true;
   els.screen.classList.add('is-entry');
-  els.start.innerHTML = '<span>&#9650;</span> Enter your credentials<small class="login-shortcut">Leave both blank to sign in as a guest</small>';
+  els.start.innerHTML = `<span>&#9650;</span> Enter your credentials<small class="login-shortcut">${entryHint()}</small>`;
   els.entries = els.fields.map(field => {
     const password = field.dataset.field === 'password';
     const input = document.createElement('input');
@@ -226,7 +227,11 @@ function enableEntry() {
     input.setAttribute('autocapitalize', 'off');
     input.setAttribute('aria-labelledby', field.querySelector('.login-label').id);
     const shown = field.querySelector('.login-value');
-    input.addEventListener('input', () => { shown.textContent = password ? '*'.repeat(input.value.length) : input.value; });
+    input.addEventListener('input', event => {
+      shown.textContent = password ? '*'.repeat(input.value.length) : input.value;
+      // A key typed or deleted clicks like the sign-in animation's typing; a refusal clearing the password does not.
+      if (event.isTrusted) playButton('session', 'typing');
+    });
     input.addEventListener('focus', () => field.classList.add('is-typing'));
     input.addEventListener('blur', () => field.classList.remove('is-typing'));
     field.querySelector('.login-input').append(input);
@@ -251,11 +256,18 @@ function focusEntry() {
   (els.entries.find(input => !input.value) || els.entries[1]).focus({ preventScroll: true });
 }
 
-/** Enter in the password field: an account's credentials, or nothing at all for a guest. */
+/** Under "Enter your credentials": how a guest gets in, or that nobody gets in without an account. */
+const entryHint = () => (guestsAllowed() ? 'Leave both blank to sign in as a guest' : 'Username and password required');
+
+/** Enter in the password field: an account's credentials, or nothing at all for a guest (when allowed). */
 function submitEntry() {
   if (state !== 'locked') return;
   const [user, pass] = els.entries.map(input => input.value);
   if (!user.trim() && !pass) {
+    if (!guestsAllowed()) {
+      refuse(user, { blank: true });
+      return;
+    }
     els.entries.forEach(input => input.blur());
     authenticate();   // a guest: their drawn AGENT# is typed in for them
     return;
@@ -270,10 +282,10 @@ function submitEntry() {
   authenticate({ typed: true });
 }
 
-/** Wrong credentials: a buzz, the form shakes, the password goes. */
-function refuse(user) {
+/** Wrong (or no) credentials: a buzz, the form shakes, the password goes. Blank ones are not reported. */
+function refuse(user, { blank = false } = {}) {
   playWarning();
-  reportFailedSignIn(user);
+  if (!blank) reportFailedSignIn(user);
   const [, pass] = els.entries;
   pass.value = '';
   pass.dispatchEvent(new Event('input'));
@@ -286,13 +298,13 @@ function refuse(user) {
   const main = els.start.querySelector('span').nextSibling;
   const small = els.start.querySelector('small');
   main.textContent = ' Access denied';
-  small.textContent = 'Credentials not recognised';
+  small.textContent = blank ? 'Credentials required' : 'Credentials not recognised';
   clearTimeout(deniedTimer);
   deniedTimer = setTimeout(() => {
     form.classList.remove('is-denied');
     els.start.classList.remove('is-denied');
     main.textContent = ' Enter your credentials';
-    small.textContent = 'Leave both blank to sign in as a guest';
+    small.textContent = entryHint();
   }, 2600);
 }
 
@@ -558,8 +570,12 @@ function warmUp() {
   });
 }
 
+/** Ctrl + click straight in: not on a published copy that only lets accounts in (but in its /publish preview). */
+const canSkip = () => !agent || guestsAllowed() || 'publishPreview' in document.documentElement.dataset;
+
 async function signIn(event) {
   if (event?.button !== undefined && event.button !== 0) return;
+  if (event?.ctrlKey && !canSkip()) event = { button: event.button };
   if (state === 'standby') {
     if (event?.ctrlKey) {
       setState('open');
@@ -671,6 +687,7 @@ async function authenticate({ typed = false } = {}) {
 /** A published copy, signed in: the Manager hears of it; the player gets what waits for them. */
 function beginSession() {
   showAgentTag();
+  showOwnAgent();
   startSession();
   startMessages();
 }
@@ -680,6 +697,7 @@ async function signOut() {
   if (agent) {
     endSession();
     stopMessages();
+    showOwnAgent(null);
   }
   // The sound comes from the button itself (Log in / out on /settings).
   resetScreen();

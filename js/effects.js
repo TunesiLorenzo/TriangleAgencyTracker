@@ -13,6 +13,11 @@ import { noise } from './noise.js';
 import { playEvent } from './soundEffects.js';
 
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+// Phones and tablets: moving the whole page has their graphics redraw all of it on every
+// frame, which shows as stutter and shimmering text. The page stays still there; the
+// other layers and the critical glitch's title tear and sound still play.
+const touchScreen = window.matchMedia?.('(hover: none) and (pointer: coarse)');
+const pageMoves = () => motionAllowed() && !touchScreen?.matches;
 
 let tuning = structuredClone(DEFAULT_CONFIG.effects);
 
@@ -126,7 +131,8 @@ function updateJitter(now, dt, level) {
   jitter.x += (jitter.tx - jitter.x) * k;
   jitter.y += (jitter.ty - jitter.y) * k;
   jitter.r += (jitter.tr - jitter.r) * k;
-  wrapper.style.transform = `translate(${jitter.x.toFixed(2)}px, ${jitter.y.toFixed(2)}px) rotate(${jitter.r.toFixed(3)}deg)`;
+  if (pageMoves()) wrapper.style.transform = `translate(${jitter.x.toFixed(2)}px, ${jitter.y.toFixed(2)}px) rotate(${jitter.r.toFixed(3)}deg)`;
+  else if (wrapper.style.transform) wrapper.style.transform = '';
 }
 
 // The CRT band sweeps upward faster as intensity rises.
@@ -159,7 +165,7 @@ function frame(now) {
   // At zero Chaos there is nothing changing. Let the browser and GPU sleep until
   // a counter, risk, setting or mute state wakes this loop again.
   const active = Math.abs(goal - state.level) >= 0.001 || state.level >= 0.002 || glitchActive();
-  state.els.wrapper?.classList.toggle('atmosphere-motion', active && motionAllowed());
+  state.els.wrapper?.classList.toggle('atmosphere-motion', active && pageMoves());
   if (active && !document.hidden) {
     requestAnimationFrame(frame);
   } else {

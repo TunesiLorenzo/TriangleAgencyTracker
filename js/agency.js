@@ -461,8 +461,9 @@ function createNav(backLabel, entries) {
   const nav = el('nav', 'agency-nav');
   nav.append(button('agency-back', `‹ ${backLabel}`, goBack));
   const switcher = el('div', 'agency-switcher');
-  switcher.append(...entries.map(({ label, icon, current, onClick }) => {
+  switcher.append(...entries.map(({ label, icon, current, onClick, agentId }) => {
     const chip = button('agency-switch', '', onClick);
+    if (agentId) chip.dataset.agentId = agentId;
     if (icon) chip.append(el('span', 'agency-switch-icon', icon));
     chip.append(el('span', 'agency-switch-label', label));
     if (current) chip.setAttribute('aria-current', 'true');
@@ -533,6 +534,7 @@ function createSummary(card, index) {
   const { title } = RANKS[rankAt(progress)];
   const held = heldBy(card._id);
   const tile = button('agency-summary', '', () => openAgent(card));
+  tile.dataset.agentId = card._id;
   tile.classList.toggle('dead', card.classList.contains('dead'));
   tile.setAttribute('aria-label', `${agentName(card, index)}. ${title}, ${progress} di ${TRACK_LENGTH}. ${held.length} oggetti.`);
 
@@ -620,7 +622,7 @@ function createAgentPage(card, cards) {
   body.append(profile, side);
 
   const nav = createNav('Tutti gli agenti', cards.map((other, i) => ({
-    label: agentName(other, i), current: other === card, onClick: () => openAgent(other)
+    label: agentName(other, i), current: other === card, onClick: () => openAgent(other), agentId: other._id
   })));
   page.append(nav, body);
   return page;

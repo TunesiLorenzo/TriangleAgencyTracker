@@ -209,7 +209,7 @@ html[data-motion="reduced"] :is(.egg, .egg-cipher, .egg-banner, .egg-verdict, .e
 .egg-picker small { color: rgba(255,255,255,0.55); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
 .egg-picker button { grid-row: 1; grid-column: 2; }
 
-/* Manager-only history of sent tests and the structured results returned by agents. */
+/* Manager-only history of tracked interactions and the structured results returned by agents. */
 .egg-ledger-modal {
   width: min(900px, calc(100vw - 32px));
   max-height: min(820px, calc(100dvh - 32px));
@@ -259,11 +259,27 @@ html[data-motion="reduced"] :is(.egg, .egg-cipher, .egg-banner, .egg-verdict, .e
 }
 .egg-ledger-attempts li.is-pass { border-color: #30d158; background: rgba(48,209,88,0.08); }
 .egg-ledger-attempts li.is-fail { border-color: #ff453a; background: rgba(255,69,58,0.09); }
+.egg-ledger-attempts li.is-recorded { border-color: #64d2ff; background: rgba(100,210,255,0.08); }
 .egg-ledger-attempts li.is-legacy { border-color: #8e8e93; background: rgba(142,142,147,0.08); }
 .egg-ledger-attempts li > p { display: flex; justify-content: space-between; gap: 12px; }
 .egg-ledger-attempts strong { color: #fff; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
 .egg-ledger-attempts time { color: rgba(255,255,255,0.5); font-size: 11px; }
 .egg-ledger-attempts small { display: block; margin-top: 4px; color: rgba(255,255,255,0.65); line-height: 1.35; }
+.egg-ledger-remove {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid rgba(255,69,58,0.5);
+  border-radius: 5px;
+  background: rgba(255,69,58,0.08);
+  color: #ff8a82;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.egg-ledger-remove:is(:hover, :focus-visible) { background: rgba(255,69,58,0.28); color: #fff; outline: none; }
 
 @media (max-width: 600px) {
   .egg-ledger-modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }

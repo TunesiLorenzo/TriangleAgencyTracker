@@ -5,7 +5,7 @@
 // amplifier awake with a near-silent tone. The same events also cue the room
 // lights (lights.js), whether or not this screen is muted.
 
-import { BUTTON_GROUPS, EVENT_SOUND_BUTTONS, LIGHT_BUTTONS, competencyFile, getConfig, onConfigChange } from './config.js';
+import { BUTTON_GROUPS, EVENT_SOUND_BUTTONS, LIGHT_BUTTONS, competencyFile, getConfig, getSnapshot, onConfigChange, whenConfigLoaded } from './config.js';
 import { triggerLight } from './lights.js';
 import { getAudioContext, playSynth, shutdownAudioContext, synthDuration } from './synth.js';
 
@@ -41,7 +41,9 @@ export function setMuted(value) {
    and swallow the start of the next sound. After the first touch or key press (the
    browser allows no audio before one) a very quiet sine runs for as long as the
    viewer is open, so the amp never sees silence. Waking from standby genuinely takes
-   hundreds of milliseconds, so sounds wait out WAKE_MS after the tone starts. */
+   hundreds of milliseconds, so sounds wait out WAKE_MS after the tone starts.
+   A published copy plays on the players' own phones and headphones, where the tone is
+   only a hum, so it never runs there. */
 const WAKE_MS = 500;
 let keepAliveArmed = false;
 let keepAlive = null;   // { oscillator, gain } while the tone runs
@@ -58,7 +60,7 @@ function stopKeepAlive() {
 function updateKeepAlive() {
   if (poweredOff || !keepAliveArmed) return;
   const { enabled, frequency, level } = getConfig().sounds.keepAlive;
-  if (!enabled || muted) {
+  if (!enabled || muted || getSnapshot()) {
     stopKeepAlive();
     return;
   }
@@ -94,6 +96,8 @@ export function initKeepAlive() {
   document.addEventListener('pointerdown', wake, { capture: true, passive: true });
   document.addEventListener('keydown', wake, true);
   onConfigChange(updateKeepAlive);
+  // A touch before the page knows it is a published copy may have started the tone.
+  whenConfigLoaded().then(updateKeepAlive);
 }
 
 /** Resolves once the amplifier has had time to wake after the keep-alive tone started. */
