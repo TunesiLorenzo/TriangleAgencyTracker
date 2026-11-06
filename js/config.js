@@ -9,6 +9,8 @@
 //   'synth:<id>'  a built-in sound generated in the browser (see synth.js)
 //   'file:<path>' a file under audio/
 
+import { ACQUISITIONS } from './agencyData.js';
+
 export const COMPETENCIES = ['PR', 'R&D', 'Caffetteria', 'CDA', 'Stagisti', 'Smaltimento', 'Reception', 'Centralino', 'Clown'];
 
 // Italian edition names (Materiale/Realtà_lista.pdf).
@@ -148,6 +150,7 @@ export const BUTTON_GROUPS = [
       { key: 'trackBox', label: 'Tracciato Realtà box', selector: '.reality-square', sound: 'synth:typewriter' },
       { key: 'dose', label: 'Dose di Realtà track', selector: '#relationshipsView .dose-track', sound: 'synth:step' },
       { key: 'rules', label: 'Come usare il tracciato', selector: '#relationshipsView .reality-rules summary', sound: 'synth:paper' },
+      { key: 'bonusUsed', label: 'Bonus Used box', selector: '.rel-used input', sound: 'synth:switch' },
       { key: 'bonusActive', label: 'Bonus Active box', selector: '.rel-active input', sound: 'synth:switch' },
       { key: 'picture', label: 'Relationship picture', selector: '.rel-picture', sound: 'synth:click' },
       { key: 'add', label: '+ Add Relationship', selector: '#relationshipsView .rel-add', sound: 'synth:pop' },
@@ -429,8 +432,50 @@ export const DEFAULT_CONFIG = {
       badge: '56776544'
     },
     accounts: []           // { username, password, charId, badge, inbox, message }
+  },
+  // Purchase requests on the published copy (agency.js), set on the Players tab of /settings.
+  purchases: {
+    // Which agents may ask the Manager for which Acquisizioni: everything is allowed except the
+    // `${agentId}|${itemId}` pairs listed here (PURCHASE_OTHER for "something else"), so a new
+    // agent or a new catalog item starts out allowed.
+    denied: [],
+    // What is on sale: { id, name, icon, description, options: [{ label, cost }] }, edited on
+    // /settings. It starts as the rulebook's (agencyData.js), whose ids are their names, so the
+    // permissions above keep working; one added on /settings gets an id of its own.
+    catalog: ACQUISITIONS.map(entry => ({ id: entry.name, ...entry, options: entry.options.map(option => ({ ...option })) }))
   }
 };
+
+/** The rulebook's Acquisizioni as they start out in the catalog (/settings restores them from here). */
+export const DEFAULT_PURCHASE_CATALOG = DEFAULT_CONFIG.purchases.catalog;
+
+/**
+ * The Acquisizioni on sale, tidied up: each with an id, a name, an icon, a description and at
+ * least one way to get it at a whole, non-negative price. An entry still being written on
+ * /settings (no name, or no version) is left out.
+ */
+export function purchaseCatalog(config = current) {
+  const list = Array.isArray(config?.purchases?.catalog) ? config.purchases.catalog : [];
+  return list.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') return [];
+    const name = String(entry.name ?? '').trim();
+    const id = String(entry.id ?? '').trim() || name;
+    const options = (Array.isArray(entry.options) ? entry.options : []).flatMap(option => {
+      const cost = Math.round(Number(option?.cost));
+      return option && Number.isFinite(cost) && cost >= 0 ? [{ label: String(option.label ?? '').trim() || 'Standard', cost }] : [];
+    });
+    if (!name || !options.length) return [];
+    return [{ id, name, icon: String(entry.icon ?? '').trim() || '📦', description: String(entry.description ?? '').trim(), options }];
+  });
+}
+
+export const PURCHASE_OTHER = '*';
+
+/** Whether this agent may ask the Manager for this Acquisizione (its catalog id; PURCHASE_OTHER: anything else). */
+export function purchaseAllowed(agentId, item, config = current) {
+  const denied = Array.isArray(config?.purchases?.denied) ? config.purchases.denied : [];
+  return !denied.includes(`${agentId}|${item}`);
+}
 
 /* ---------- merge ---------- */
 function isObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }

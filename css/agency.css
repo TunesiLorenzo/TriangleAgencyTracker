@@ -916,3 +916,120 @@ select.agency-input { cursor: pointer; }
   .promo-slide { grid-template-columns: minmax(0, 34%) minmax(0, 1fr); }
   .promo-art-icon { font-size: 54px; }
 }
+
+/* ---------- Purchase requests (agency.js; a published copy, signed in as an agent) ---------- */
+.agency-request {
+  min-height: 60px;
+  padding: 12px 18px;
+  border: 1px solid var(--competency-color);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--competency-color) 22%, rgba(0,0,0,0.55));
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+.agency-request:hover {
+  background: color-mix(in srgb, var(--competency-color) 38%, rgba(0,0,0,0.55));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--competency-color) 45%, transparent);
+}
+.agency-request:focus-visible { outline: 2px solid rgba(255,255,255,0.7); outline-offset: 2px; }
+.agency-request-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 18px;
+  margin: 0 auto 16px;
+  padding: 12px 16px;
+  border: 1px dashed color-mix(in srgb, var(--competency-color) 45%, transparent);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.5);
+  max-width: 900px;
+}
+.agency-request-text { color: rgba(255,255,255,0.8); font-size: 15px; text-align: center; }
+.agency-request-bar .agency-request { min-height: 0; }
+.purchase-modal { width: min(680px, 100%); }
+.purchase-form textarea { min-height: 3.2em; }
+.purchase-form [hidden] { display: none; }
+.purchase-balance { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0; color: rgba(255,255,255,0.7); font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+.purchase-balance strong { color: var(--competency-color); font-size: 22px; letter-spacing: 0; }
+
+/* the catalog, as cards: what it is, then each way to get it with its price */
+.purchase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(52vh, 560px);
+  margin: 0 -4px;
+  padding: 2px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.purchase-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  background: linear-gradient(145deg, #2a2a2a, #1d1d1d);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.purchase-entry.selected {
+  border-color: var(--competency-color);
+  box-shadow: 0 0 0 1px var(--competency-color), 0 0 14px color-mix(in srgb, var(--competency-color) 35%, transparent);
+}
+.purchase-entry.unaffordable { opacity: 0.55; }
+.purchase-entry-head { display: flex; align-items: center; gap: 10px; }
+.purchase-entry-icon { flex: none; width: 34px; font-size: 26px; line-height: 1; text-align: center; }
+.purchase-entry-name { font-size: 16px; }
+.purchase-entry-description { margin: 0; color: rgba(255,255,255,0.68); font-size: 13px; line-height: 1.45; }
+.purchase-options { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.purchase-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.35);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.purchase-option:hover { border-color: color-mix(in srgb, var(--competency-color) 60%, transparent); }
+.purchase-option:has(input:checked) { border-color: var(--competency-color); background: color-mix(in srgb, var(--competency-color) 22%, rgba(0,0,0,0.5)); }
+.purchase-option:has(input:focus-visible) { outline: 2px solid rgba(255,255,255,0.7); outline-offset: 2px; }
+.manager-message-form .purchase-option input { flex: none; width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--competency-color); }
+.purchase-option-label { flex: 1; min-width: 0; font-size: 14px; }
+.purchase-cost { flex: none; color: var(--competency-color); font-size: 15px; font-weight: 700; white-space: nowrap; }
+.purchase-option.unaffordable { cursor: not-allowed; }
+.purchase-option.unaffordable .purchase-cost { color: rgba(255,255,255,0.45); text-decoration: line-through; }
+.purchase-option.unaffordable .purchase-option-label::after { content: ' · Note di Merito insufficienti'; color: #ff8a82; font-size: 12px; }
+.purchase-other .purchase-cost { color: rgba(255,255,255,0.6); font-weight: 400; font-size: 13px; }
+@media (orientation: portrait) {
+  .agency-request { min-height: 70px; font-size: clamp(14px, 2.1vw, 17px); }
+  .agency-request-text { font-size: clamp(15px, 2.3vw, 18px); }
+}
+
+/* "+ Aggiungi oggetto" on the tracker: the same cards, and the box that takes the price off the agent */
+.item-picker .purchase-entry:first-child { border-style: dashed; }
+.purchase-deduct {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--competency-color) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--competency-color) 12%, rgba(0,0,0,0.4));
+  font-size: 14px;
+  cursor: pointer;
+}
+.purchase-form .purchase-deduct[hidden] { display: none; }
+.manager-message-form .purchase-deduct input { flex: none; width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--competency-color); }
+.purchase-deduct.unaffordable { border-color: rgba(255,255,255,0.15); background: rgba(0,0,0,0.35); color: #ff8a82; cursor: default; }

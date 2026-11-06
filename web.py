@@ -34,6 +34,7 @@ import os
 import re
 import secrets
 import shutil
+import sys
 import threading
 import time
 import urllib.error
@@ -578,6 +579,7 @@ def badge_cards():
         "competency": str(char.get("competency") or ""),
         "progress": char.get("competencyProgress") or 0,
         "badge": numbers.get(str(char.get("id") or ""), ""),
+        "id": str(char.get("id") or ""),
     } for char in team.get("chars") or [] if isinstance(char, dict)]
 
 
@@ -591,6 +593,7 @@ def access_cards():
         "username": str(account.get("username") or "").strip(),
         "password": str(account.get("password") or ""),
         "badge": str(account.get("badge") or "").strip(),
+        "charId": str(account.get("charId") or ""),
     } for account in players.get("accounts") or []
         if isinstance(account, dict) and str(account.get("username") or "").strip() and account.get("password")]
 
@@ -621,6 +624,26 @@ def printable_access_cards():
     """A card per player account with its username and password, in the badge's style, to
     hand to the players. Only on this server: the published copy never holds the passwords."""
     return render_template("badges.html", mode="access", cards=access_cards(), site=published_site(), solo=solo_card())
+
+
+def duplex_pairs():
+    """Each agent's badge with their player's access card, then any account without an agent
+    on the team: [{front, back}], either side None when there is nothing for it."""
+    accounts = access_cards()
+    pairs = []
+    for badge in badge_cards():
+        back = next((account for account in accounts if badge["id"] and account["charId"] == badge["id"]), None)
+        if back:
+            accounts.remove(back)
+        pairs.append({"front": badge, "back": back})
+    return pairs + [{"front": None, "back": account} for account in accounts]
+
+
+@app.get("/badges/duplex")
+def printable_duplex():
+    """Badges on the odd pages, their access cards on the even ones behind them (mirrored),
+    to print on both sides of the sheet."""
+    return render_template("badges.html", mode="duplex", cards=duplex_pairs(), site=published_site(), solo=None)
 
 
 # ---------- the cards as files: data/badges/ and data/access_cards/ ----------
@@ -680,6 +703,11 @@ def card_files(base_url):
                 made[kind].append(sheet)
                 jobs.append((["--no-pdf-header-footer", f"--print-to-pdf={scratch / kind / sheet}"],
                              f"{base_url}{CARD_PAGES[kind]}", scratch / kind / sheet))
+        if made["badges"] or made["access"]:
+            # Both sides together: with the access cards, as it holds the passwords too.
+            made["access"].append("duplex_badges_and_access.pdf")
+            jobs.append((["--no-pdf-header-footer", f"--print-to-pdf={scratch / 'access' / 'duplex_badges_and_access.pdf'}"],
+                         f"{base_url}/badges/duplex", scratch / "access" / "duplex_badges_and_access.pdf"))
 
         def run(job):
             flags, url, out = job
@@ -1352,6 +1380,100 @@ def get_communication_registry():
     return jsonify({"ok": True, "registry": communication_topic_registry(), "server": build_static.ntfy_server(players.get("server"))})
 
 
+COMMUNICATION_MESSAGE_TYPES = {
+    "agency": "manager",
+    "relationship": "npc",
+    "anomaly": "anomaly",
+}
+MAX_COMMUNICATION_SENDER = 80
+MAX_COMMUNICATION_MESSAGE = 500
+
+
+def communication_direct_lines():
+    """Player inboxes the local Communication Center may write to, by channel."""
+    return {
+        str(item.get("channel") or ""): item
+        for item in communication_topic_registry()
+        if isinstance(item, dict) and item.get("kind") == "manager"
+        and re.fullmatch(r"[-_A-Za-z0-9]{1,64}", str(item.get("channel") or ""))
+    }
+
+
+def dead_relationship_on_line(line, sender):
+    """Whether `sender` names a dead relationship belonging to this player inbox's agent."""
+    agent_id = str((line or {}).get("agentId") or "")
+    wanted = str(sender or "").strip().casefold()
+    if not agent_id or not wanted:
+        return False
+    with store_lock:
+        path = tracker_file
+    team, _ = read_tracker_file(path)
+    character = next((char for char in (team or {}).get("chars") or []
+                      if isinstance(char, dict) and str(char.get("id") or "") == agent_id), None)
+    return any(isinstance(relationship, dict)
+               and str(relationship.get("name") or "").strip().casefold() == wanted
+               and relationship.get("dead") is True
+               for relationship in (character or {}).get("relationships") or [])
+
+
+@app.post("/api/communication-center/send")
+def send_communication_message():
+    """Send a one-off Agency, relationship, or anomaly transmission to one player."""
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "message": "The message request must be a JSON object."}), 400
+    channel = str(payload.get("channel") or "").strip()
+    sender = str(payload.get("sender") or "").strip()
+    message = str(payload.get("message") or "").strip()
+    message_type = str(payload.get("type") or "").strip().lower()
+    line = communication_direct_lines().get(channel)
+    if not line:
+        return jsonify({"ok": False, "message": "Select a configured player."}), 400
+    if not sender or len(sender) > MAX_COMMUNICATION_SENDER:
+        return jsonify({"ok": False, "message": f"Enter a sender name of at most {MAX_COMMUNICATION_SENDER} characters."}), 400
+    if not message or len(message) > MAX_COMMUNICATION_MESSAGE:
+        return jsonify({"ok": False, "message": f"Enter a message of at most {MAX_COMMUNICATION_MESSAGE} characters."}), 400
+    message_class = COMMUNICATION_MESSAGE_TYPES.get(message_type)
+    if not message_class:
+        return jsonify({"ok": False, "message": "Choose Agency, Relationship, or Anomaly as the message type."}), 400
+    if message_type in ("relationship", "anomaly") and dead_relationship_on_line(line, sender):
+        return jsonify({"ok": False, "message": "That character is marked dead and cannot send messages."}), 409
+
+    with store_lock:
+        players = config_state["config"].get("players")
+    players = players if isinstance(players, dict) else {}
+    server = build_static.ntfy_server(players.get("server"))
+    sequence_id = f"ta-local-{int(time.time() * 1000):x}-{secrets.token_hex(5)}"
+    body = json.dumps({
+        "topic": channel,
+        "title": sender,
+        "message": message,
+        "tags": ["ta-npc", f"ta-class-{message_class}"],
+        "sequence_id": sequence_id,
+    }, ensure_ascii=False).encode("utf-8")
+    ntfy_request = urllib.request.Request(
+        f"{server}/",
+        data=body,
+        headers={"Content-Type": "application/json; charset=utf-8", "User-Agent": "TriangleAgencyTracker/1.0"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(ntfy_request, timeout=20) as response:
+            result = json.loads(response.read(64 * 1024).decode("utf-8") or "{}")
+    except urllib.error.HTTPError as error:
+        return jsonify({"ok": False, "message": f"ntfy refused the message (HTTP {error.code})."}), 502
+    except (urllib.error.URLError, TimeoutError, UnicodeDecodeError, ValueError) as error:
+        return jsonify({"ok": False, "message": f"Could not send the message through ntfy: {error}"}), 502
+
+    result = result if isinstance(result, dict) else {}
+    agent_name = str(line.get("agentName") or "the player")
+    return jsonify({
+        "ok": True,
+        "message": f"Message sent to {agent_name} as {sender}",
+        "result": {"id": sequence_id, "ntfyId": str((result or {}).get("id") or "")},
+    })
+
+
 def fetch_json_url(url):
     request_object = urllib.request.Request(
         url + ("&" if "?" in url else "?") + f"local={int(time.time())}",
@@ -1686,6 +1808,64 @@ def shutdown():
 
     threading.Timer(SHUTDOWN_DELAY, stop).start()
     return jsonify({"ok": True})
+
+
+# -----------------------------
+# RESTART (Settings, at the bottom): this server only, to take up code changes
+# -----------------------------
+SERVER_STARTED_AT = datetime.datetime.now().isoformat(timespec="seconds")
+RESTART_DELAY = 0.5        # seconds, for the reply to reach the browser first
+RESTART_LIGHTS_WAIT = 5    # at most this long for light cues already queued to go out
+
+
+def restart_command():
+    """How this server was started, to start it again: only serve.py (the launchers) knows how
+    to wait for the old one to let go of the port. None when it was started some other way."""
+    script = getattr(sys.modules.get("__main__"), "__file__", "") or ""
+    if Path(script).name != "serve.py":
+        return None
+    # The command line as typed (with python's own options, such as -u), in the same folder.
+    original = getattr(sys, "orig_argv", None)
+    command = [sys.executable, *original[1:]] if original else [sys.executable, str(Path(script).resolve()), *sys.argv[1:]]
+    if "--no-browser" not in command:
+        command.append("--no-browser")
+    return command
+
+
+@app.get("/api/server")
+def server_info():
+    return jsonify({"ok": True, "pid": os.getpid(), "startedAt": SERVER_STARTED_AT,
+                    "canRestart": restart_command() is not None})
+
+
+@app.post("/api/restart")
+def restart_server():
+    """Stop this server and start it again in the same console window, with no browser and
+    without touching LightRPG or the VoiceMeeter bridge (unlike Log Out, /api/shutdown)."""
+    command = restart_command()
+    if not command:
+        return jsonify({"ok": False, "message": "Only a server started with serve.py (run_locally.bat or "
+                                                "run_triangleOnly.bat) can restart itself."}), 409
+
+    def restart():
+        try:
+            light_bridge.wait_idle(RESTART_LIGHTS_WAIT)
+        except Exception:
+            pass
+        # Holding the locks, no save is half written when this process goes.
+        with store_lock, cases_lock:
+            try:
+                import subprocess
+                subprocess.Popen(command, cwd=os.getcwd(),
+                                 env={**os.environ, "TRIANGLE_RESTART_FROM": str(os.getpid())})
+                print("Restarting the Triangle Agency Tracker...", flush=True)
+            except Exception:
+                app.logger.exception("The tracker could not start again; it keeps running")
+                return
+            os._exit(0)   # the new one waits for this process to free the port and the lock
+
+    threading.Timer(RESTART_DELAY, restart).start()
+    return jsonify({"ok": True, "pid": os.getpid()})
 
 
 move_old_data()

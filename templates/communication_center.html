@@ -22,17 +22,36 @@
     <div class="actions"><button id="saveConnection" class="secondary">Save connection</button><button id="syncNow">Sync with Google now</button><button id="refreshArchive" class="secondary">Refresh cache view</button></div>
     <p id="notice" class="notice" role="status" aria-live="polite"></p>
   </section>
+  <section class="panel transmission-panel">
+    <div class="panel-heading"><div><p class="eyebrow">PLAYER TRANSMISSION</p><h2>Send a message</h2></div><span id="sendState" class="status">Loading players...</span></div>
+    <p class="panel-note">Send a one-off message to a player's direct line. The sender name and colour are independent of your Manager identity.</p>
+    <form id="sendMessageForm">
+      <div class="transmission-grid">
+        <label>Player<select id="messagePlayer" required><option value="">Loading players...</option></select></label>
+        <label>Type<select id="messageType" required>
+          <option value="agency">Agency (red)</option>
+          <option value="relationship">Relationship (yellow)</option>
+          <option value="anomaly">Anomaly (blue)</option>
+        </select></label>
+        <label class="wide">Sender name<input id="messageSender" type="text" maxlength="80" placeholder="e.g. The Agency, a relationship, or an anomaly" autocomplete="off" required></label>
+        <label class="wide">Content<textarea id="messageContent" rows="5" maxlength="500" required></textarea></label>
+      </div>
+      <div class="actions"><button id="sendMessage" type="submit">Transmit message</button></div>
+    </form>
+    <p id="sendNotice" class="notice" role="status" aria-live="polite"></p>
+  </section>
   <section class="panel">
     <div class="panel-heading"><div><p class="eyebrow">AGENT IDENTIFICATION</p><h2>Badges and access cards</h2></div><span id="cardsState" class="status">Checking...</span></div>
     <p class="panel-note">Update cards draws them all again from the team and the Settings Players tab as they are now: each
       agent's badge with their portrait, Division and Qualification, and each player's access card with their username and
-      password. Each is saved as a PNG, plus an A4 PDF of the set to print, in the folders below. They are on this computer
+      password. Each is saved as a PNG, plus an A4 PDF of the set to print, in the folders below; the access cards folder also gets
+      <code>duplex_badges_and_access.pdf</code>, badges in front and access cards behind, to print double-sided (flip on long edge). They are on this computer
       only: <code>data/</code> is never published or committed.</p>
     <div class="card-sets">
       <article><h3>Badges</h3><p id="badgesInfo" class="card-info">—</p>
         <div class="actions"><a class="secondary" href="/badges" target="_blank" rel="noopener">Print page</a><button class="secondary" type="button" data-open-folder="badges">Open folder</button></div></article>
       <article><h3>Access cards</h3><p id="accessInfo" class="card-info">—</p>
-        <div class="actions"><a class="secondary" href="/badges/access" target="_blank" rel="noopener">Print page</a><button class="secondary" type="button" data-open-folder="access">Open folder</button></div></article>
+        <div class="actions"><a class="secondary" href="/badges/access" target="_blank" rel="noopener">Print page</a><a class="secondary" href="/badges/duplex" target="_blank" rel="noopener" title="Badges on one side, access cards behind them on the other: print double-sided, flip on long edge.">Duplex page</a><button class="secondary" type="button" data-open-folder="access">Open folder</button></div></article>
     </div>
     <div class="actions"><button id="updateCards" type="button">Update cards</button></div>
     <p id="cardsNotice" class="notice" role="status" aria-live="polite"></p>

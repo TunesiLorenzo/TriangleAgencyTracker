@@ -275,7 +275,7 @@ export function latestMessages(limit) {
         from: message.from || names.from,
         to: names.to,
         text: message.text,
-        kind: entry.kind,
+        kind: entry.anomaly ? 'anomaly' : entry.kind,   // a relationship marked as an anomaly is blue
         agentId: String(entry.agentId || ''),
         fromId: names.fromId,
         npc: entry.kind === 'npc' || entry.kind === 'anomaly' ? String(entry.other || '') : ''

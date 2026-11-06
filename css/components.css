@@ -673,3 +673,26 @@ input[type=text] { padding:2px 5px; border-radius:4px; border:none; background:#
   cursor: pointer;
 }
 .stat select.value option { color: #fff; background: #222; }
+
+/* Agenda Vita-Lavoro: a box crossed off the end of a track for good (lifeWorkTrack.js). The
+   doubled class outranks each track's own tints, such as .competency-square.alt. */
+:is(.competency-square, .reality-square, .anomaly-square, .agency-mini-square, .rel-summary-square, .anomaly-summary-square).track-lost.track-lost {
+  border-color: rgba(255,255,255,0.12);
+  background:
+    linear-gradient(to top right, transparent calc(50% - 1px), rgba(255,255,255,0.45) 50%, transparent calc(50% + 1px)),
+    linear-gradient(to bottom right, transparent calc(50% - 1px), rgba(255,255,255,0.45) 50%, transparent calc(50% + 1px)),
+    #141414;
+  color: rgba(255,255,255,0.25);
+  cursor: not-allowed;
+}
+
+/* A right-click away from the end of a track points at the box that can be crossed off. */
+:is(.competency-square, .reality-square, .anomaly-square).track-end-hint {
+  animation: track-end-hint 0.8s ease-in-out 2;
+}
+@keyframes track-end-hint {
+  50% { outline: 3px solid #fff; outline-offset: 2px; box-shadow: 0 0 14px rgba(255,255,255,0.8); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.competency-square, .reality-square, .anomaly-square).track-end-hint { animation: none; outline: 3px solid #fff; outline-offset: 2px; }
+}

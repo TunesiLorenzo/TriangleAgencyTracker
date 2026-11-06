@@ -148,7 +148,44 @@ const sheet = document.getElementById('sheet');
 // ?solo=N (the Communication Center's Update cards): only card N, filling the window.
 const solo = document.body.dataset.solo;
 const shown = solo === undefined ? cards : cards.slice(Number(solo), Number(solo) + 1);
-sheet.replaceChildren(...shown.map(mode === 'access' ? accessCard : badge));
+
+/* ---------- duplex: badges on one page, their access cards behind on the next ---------- */
+// Nine to a sheet, in a grid centred on the page. Flipped on the long edge, the back page's
+// columns run the other way, so each card goes in the mirrored column of its badge's row.
+const PER_PAGE = 9;
+const COLUMNS = 3;
+
+function slot(card, index, mirrored) {
+  const row = Math.floor(index / COLUMNS);
+  const column = index % COLUMNS;
+  const place = card || el('div', 'print-badge duplex-blank');
+  place.style.gridRow = String(row + 1);
+  place.style.gridColumn = String((mirrored ? COLUMNS - 1 - column : column) + 1);
+  return place;
+}
+
+function duplexPages(pairs) {
+  const pages = [];
+  for (let start = 0; start < pairs.length; start += PER_PAGE) {
+    const chunk = pairs.slice(start, start + PER_PAGE);
+    const sheetNo = start / PER_PAGE + 1;
+    const front = el('section', 'duplex-page duplex-front');
+    front.dataset.label = `Sheet ${sheetNo} · front: badges`;
+    front.append(...chunk.map((pair, index) => slot(pair.front && badge(pair.front), index, false)));
+    const back = el('section', 'duplex-page duplex-back');
+    back.dataset.label = `Sheet ${sheetNo} · back: access cards (mirrored)`;
+    back.append(...chunk.map((pair, index) => slot(pair.back && accessCard(pair.back), index, true)));
+    pages.push(front, back);
+  }
+  return pages;
+}
+
+if (mode === 'duplex') {
+  sheet.classList.add('duplex');
+  sheet.replaceChildren(...duplexPages(cards));
+} else {
+  sheet.replaceChildren(...shown.map(mode === 'access' ? accessCard : badge));
+}
 document.getElementById('empty').hidden = cards.length > 0;
 document.getElementById('print').addEventListener('click', () => window.print());
 document.getElementById('cutLines').addEventListener('change', event => {

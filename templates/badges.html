@@ -3,7 +3,7 @@
 <html lang="en" data-session="open"{% if solo is not none %} class="solo"{% endif %}>
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ 'Access Cards' if mode == 'access' else 'Agent Badges' }}</title>
+  <title>{{ {'access': 'Access Cards', 'duplex': 'Duplex Cards'}.get(mode, 'Agent Badges') }}</title>
   <link rel="stylesheet" href="/css/login.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='badges.css') }}">
 </head>
@@ -16,6 +16,12 @@
       to an A4 page: print it on the back of each badge, or on its own. Print at <b>100% / Actual size</b> with
       <b>Background graphics</b> on. Accounts and passwords are on the Settings Players tab; this page is only on
       this computer and never published. To save them as files, use Update cards in the Communication Center.</p>
+  {% elif mode == 'duplex' %}
+    <h1>Badges with access cards behind</h1>
+    <p>Fronts on the first page, each agent's access card on the second in the same place, mirrored so it lands
+      behind their badge. Print <b>double-sided, flip on long edge</b>, at <b>100% / Actual size</b> with
+      <b>Background graphics</b> on; cut along the lines on the front. More than nine agents take another pair of
+      pages. Holds the passwords: this page is only on this computer and never published.</p>
   {% else %}
     <h1>Agent badges</h1>
     <p>One badge per agent at ID-card size (54 &times; 85.6 mm), nine to an A4 page. Print at
@@ -26,13 +32,13 @@
   </div>
   <div class="toolbar-actions">
     <label><input id="cutLines" type="checkbox" checked> Cut lines</label>
-    {% if mode == 'access' %}<a href="/badges">Badges</a>{% else %}<a href="/badges/access">Access cards</a>{% endif %}
+    {% if mode != 'badges' %}<a href="/badges">Badges</a>{% endif %}{% if mode != 'access' %}<a href="/badges/access">Access cards</a>{% endif %}{% if mode != 'duplex' %}<a href="/badges/duplex">Duplex</a>{% endif %}
     <a href="/communication-center">Communication Center</a>
     <button id="print" type="button">Print</button>
   </div>
 </header>
 <main id="sheet" class="sheet with-cut-lines"></main>
-<p id="empty" class="empty" hidden>{{ 'No player account has a username and a password yet (Settings, Players tab).' if mode == 'access' else 'No agents on the team yet.' }}</p>
+<p id="empty" class="empty" hidden>{{ 'No player account has a username and a password yet (Settings, Players tab).' if mode == 'access' else 'No agents or player accounts yet.' if mode == 'duplex' else 'No agents on the team yet.' }}</p>
 <script id="cards" type="application/json">{{ cards|tojson }}</script>
 <script id="site" type="application/json">{{ (site or '')|tojson }}</script>
 <script type="module" src="{{ url_for('static', filename='badges.js') }}"></script>

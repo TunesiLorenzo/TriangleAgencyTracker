@@ -8,19 +8,22 @@
 // The track lives on the agent card (card._competencyProgress); the items belong to the
 // branch (world.items) and name agents by card._id, so an item can change hands.
 
-import { ACQUISITIONS, DEFAULT_ICON, ITEM_ICONS, PROMO_DIR, PROMO_SHUFFLE, PROMO_SLIDES, STANDARD_KIT } from './agencyData.js';
+import { DEFAULT_ICON, ITEM_ICONS, PROMO_DIR, PROMO_SHUFFLE, PROMO_SLIDES, STANDARD_KIT } from './agencyData.js';
 import { RANKS, rankAt } from './badge.js';
 import { animateOnce, getCharElements } from './charSystem.js';
-import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
+import { createLifeWorkTrack, lastObtainable, markCrossedOff, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { loadSettings, saveSettings, updateSettings } from './storage.js';
 import { openModal, toast } from './ui.js';
 import { createUuid } from './uuid.js';
 import { motionAllowed } from './motion.js';
+import { purchasingAgentId, requestPurchase } from './messages.js';
+import { onConfigChange, PURCHASE_OTHER, purchaseAllowed, purchaseCatalog } from './config.js';
 
 const TEAM = 'team';   // owner or holder of a communal item
 const ITEMS_OPEN_KEY = 'ta-agency-items-open';
 const CATALOG_ID = 'agencyCatalog';
-const CATALOG = [...STANDARD_KIT, ...ACQUISITIONS];
+// Every item the Agency knows: the standard kit, then the Acquisizioni on sale (set on /settings).
+const catalog = () => [...STANDARD_KIT, ...purchaseCatalog()];
 
 // Qualifica in Agenzia along the Competenza track: RANKS and rankAt live in badge.js, which
 // also puts the rank on the agent's badge.
@@ -92,7 +95,7 @@ function normalizeItem(data) {
 }
 
 function catalogEntry(name) {
-  return CATALOG.find(entry => entry.name.toLowerCase() === name.trim().toLowerCase());
+  return catalog().find(entry => entry.name.toLowerCase() === name.trim().toLowerCase());
 }
 
 function iconOf(item) {
@@ -124,8 +127,8 @@ function saveHolders() {
 
 /** The box a Distinzione lets the agent mark without erasing others: Competenza (MVP) or Anomalia (Sospeso). */
 function markTrack(card, kind) {
-  if (kind === 'mvp') card._competencyProgress = Math.min(TRACK_LENGTH, card._competencyProgress + 1);
-  else card._anomalyState.progress = Math.min(TRACK_LENGTH, card._anomalyState.progress + 1);
+  if (kind === 'mvp') card._competencyProgress = Math.min(lastObtainable(card, 'competency'), card._competencyProgress + 1);
+  else card._anomalyState.progress = Math.min(lastObtainable(card, 'anomaly'), card._anomalyState.progress + 1);
   saveSettings();
   renderAgency();
 }
@@ -277,14 +280,17 @@ function createDistinctions(card) {
   return section;
 }
 
+/** The names offered when naming an item; drawn again whenever the catalog on /settings changes. */
 function createCatalog() {
   const list = el('datalist');
   list.id = CATALOG_ID;
-  list.append(...CATALOG.map(entry => {
-    const option = el('option');
-    option.value = entry.name;
-    return option;
-  }));
+  onConfigChange(() => {
+    list.replaceChildren(...catalog().map(entry => {
+      const option = el('option');
+      option.value = entry.name;
+      return option;
+    }));
+  });
   return list;
 }
 
@@ -349,7 +355,7 @@ function createStatus(card) {
     count.textContent = `${progress} / ${TRACK_LENGTH}`;
     title.textContent = RANKS[rank].title;
     if (upcoming) next.textContent = `Prossima: ${upcoming.title} · casella ${upcoming.from}`;
-    else next.textContent = progress < TRACK_LENGTH ? 'Vertice della carriera' : 'Tracciato completo';
+    else next.textContent = progress < lastObtainable(card, 'competency') ? 'Vertice della carriera' : 'Tracciato completo';
   };
   update();
   return { box, title, update };
@@ -362,6 +368,7 @@ function createTrack(card, status, onChange) {
     label: 'Tracciato Competenza', className: 'competency-track', squareClass: 'competency-square', codes: CODES,
     get: () => card._competencyProgress,
     set: value => { card._competencyProgress = value; },
+    card, trackKey: 'competency',
     describe: n => {
       const { title } = RANKS[rankAt(n)];
       return CODES[n] ? `Casella ${n} — ${CODES[n]}: promozione a ${title}` : `Casella ${n} — ${title}`;
@@ -485,6 +492,7 @@ function createTrackSummary(card) {
     square.classList.toggle('current-rank', rank === current);
     square.style.gridRow = n <= row ? '1' : '2';
     square.style.gridColumn = String(n <= row ? n : TRACK_LENGTH + 1 - n);
+    markCrossedOff(square, n, card, 'competency');
     squares.append(square);
   }
   return squares;
@@ -504,12 +512,276 @@ function createItemTile(item, cards, from) {
 }
 
 /** A new item, straight to its page: added on an agent's page it is theirs, otherwise the Team's. */
-function addItem(from) {
+function addBlankItem(from) {
   const item = normalizeItem(from ? { owner: from._id, holder: from._id } : {});
   items.push(item);
   saveItems();
   openItemPage(item, from);
   view.querySelector('.agency-item-page-name')?.focus();
+}
+
+const BLANK = 'blank';   // the picker's "write it yourself" choice
+
+/**
+ * "+ Aggiungi oggetto": pick what to give, `from` the agent (or the Team, with no agent). The
+ * standard kit, then the catalog of /settings, each version with its price; or a blank item to
+ * write. Given to an agent, its price can come off their banked Note di Merito in the same
+ * step, which is how a purchase request from the published copy is settled.
+ */
+function addItem(from) {
+  const cards = getCharElements();
+  const who = from ? agentName(from, cards.indexOf(from)) : 'il Team';
+  const merits = from ? meritsOf(from) : 0;
+  const entries = [
+    ...STANDARD_KIT.map(entry => ({ ...entry, options: [{ label: 'Dotazione standard', cost: 0 }] })),
+    ...purchaseCatalog()
+  ];
+
+  const form = el('form', 'manager-message-form purchase-form item-picker');
+  form.innerHTML = `
+    <p class="purchase-balance" hidden>Note di Merito disponibili <strong></strong></p>
+    <div class="purchase-list" role="radiogroup" aria-label="Oggetti"></div>
+    <label class="purchase-deduct" hidden><input type="checkbox" name="deduct"><span></span></label>
+    <p class="manager-message-state" aria-live="polite"></p>`;
+  if (from) {
+    form.querySelector('.purchase-balance').hidden = false;
+    form.querySelector('.purchase-balance strong').textContent = `★ ${merits}`;
+  }
+  const list = form.querySelector('.purchase-list');
+  const blank = el('article', 'purchase-entry');
+  const blankHead = el('div', 'purchase-entry-head');
+  blankHead.append(el('span', 'purchase-entry-icon', DEFAULT_ICON), el('strong', 'purchase-entry-name', 'Oggetto nuovo'));
+  const blankOptions = el('div', 'purchase-options');
+  blankOptions.append(purchaseOption(BLANK, 'Scrivi tu nome, descrizione e icona', '', true));
+  blank.append(blankHead, blankOptions);
+  // Everything can be given, whatever it costs: Infinity leaves no version greyed out.
+  list.append(blank, ...entries.map((entry, index) => purchaseCard(entry, index, Infinity)));
+
+  const deduct = form.querySelector('.purchase-deduct');
+  const deductBox = deduct.querySelector('input');
+  const state = form.querySelector('.manager-message-state');
+  const picked = () => {
+    const value = form.querySelector('input[name="choice"]:checked')?.value || '';
+    if (!value || value === BLANK) return value ? { blank: true } : null;
+    const [index, n] = value.split(':').map(Number);
+    const entry = entries[index];
+    return entry?.options[n] ? { entry, option: entry.options[n] } : null;
+  };
+  list.addEventListener('change', () => {
+    list.querySelectorAll('.purchase-entry').forEach(card => card.classList.toggle('selected', !!card.querySelector('input:checked')));
+    state.textContent = '';
+    const choice = picked();
+    const cost = choice?.option?.cost || 0;
+    deduct.hidden = !from || !cost;
+    if (deduct.hidden) return;
+    const enough = cost <= merits;
+    deductBox.disabled = !enough;
+    deductBox.checked = enough;
+    deduct.classList.toggle('unaffordable', !enough);
+    deduct.querySelector('span').textContent = enough
+      ? `Scala ★ ${cost} Note di Merito a ${who} (ne resteranno ${merits - cost})`
+      : `${who} ha solo ★ ${merits}: le Note di Merito non vengono scalate`;
+  });
+
+  let close = null;
+  const give = () => {
+    const choice = picked();
+    if (!choice) {
+      state.textContent = 'Scegli che cosa assegnare.';
+      return;
+    }
+    close?.();
+    if (choice.blank) {
+      addBlankItem(from);
+      return;
+    }
+    const { entry, option } = choice;
+    const party = from ? from._id : TEAM;
+    const item = normalizeItem({
+      name: entry.options.length > 1 ? `${entry.name} (${option.label})` : entry.name,
+      description: entry.description,
+      icon: entry.icon,
+      owner: party,
+      holder: party
+    });
+    items.push(item);
+    saveItems();
+    let paid = 0;
+    if (from && option.cost > 0 && deductBox.checked && option.cost <= merits) {
+      const total = from.querySelector('.counter-input.merit');
+      total.value = String(merits - option.cost);
+      total.dispatchEvent(new Event('input', { bubbles: true }));   // saves, like typing in it
+      paid = option.cost;
+    }
+    renderAgency();
+    toast(`${item.name} assegnato a ${who}${paid ? ` · −★ ${paid} Note di Merito` : ''}.`, { kind: 'success', duration: 5000 });
+  };
+
+  close = openModal({
+    title: from ? `Assegna un oggetto a ${who}` : 'Assegna un oggetto al Team',
+    content: form,
+    className: 'manager-message-modal purchase-modal item-picker-modal tx-manager',
+    closeLabel: 'Annulla',
+    actions: [{ label: 'Assegna', variant: 'primary', submit: true, onClick: () => { give(); return false; } }]
+  });
+}
+
+// ---------- purchase requests (a published copy, signed in as an agent) ----------
+const OTHER = 'other';   // the "something else" choice: the player names it, the Manager sets the price
+
+/** What this agent may ask for, as set on the Players tab of /settings: catalog entries, and whether "Altro…". */
+function purchaseChoices(agentId) {
+  return {
+    catalog: purchaseCatalog().filter(entry => purchaseAllowed(agentId, entry.id)),
+    other: purchaseAllowed(agentId, PURCHASE_OTHER)
+  };
+}
+
+/**
+ * The agent's Note di Merito to spend: the total banked beside the merit triangle on their card
+ * (the triangle itself is this Incarico's, added to the total when it ends, and may be sealed).
+ */
+function availableMerits(agentId) {
+  return meritsOf(getCharElements().find(candidate => String(candidate._id) === agentId));
+}
+
+/** The banked Note di Merito of an agent card (the box beside its merit triangle). */
+function meritsOf(card) {
+  return Math.max(0, Number.parseInt(card?.querySelector('.counter-input.merit')?.value, 10) || 0);
+}
+
+const meritText = n => `${n} ${n === 1 ? 'Nota' : 'Note'} di Merito`;
+const priceText = cost => (cost === 0 ? 'Gratis' : `★ ${cost}`);
+
+/** One choice in the list: a way to get an Acquisizione (or "Altro…"), with its price. */
+function purchaseOption(value, label, price, affordable) {
+  const option = el('label', 'purchase-option');
+  option.classList.toggle('unaffordable', !affordable);
+  const radio = el('input');
+  radio.type = 'radio';
+  radio.name = 'choice';
+  radio.value = value;
+  radio.disabled = !affordable;
+  option.append(radio, el('span', 'purchase-option-label', label), el('span', 'purchase-cost', price));
+  if (!affordable) option.title = 'Note di Merito insufficienti';
+  return option;
+}
+
+/** An Acquisizione as a card: icon, name, description, then each way to get it with its cost. */
+function purchaseCard(entry, index, merits) {
+  const card = el('article', 'purchase-entry');
+  const options = el('div', 'purchase-options');
+  options.append(...entry.options.map((option, n) => purchaseOption(`${index}:${n}`, option.label, priceText(option.cost), option.cost <= merits)));
+  card.classList.toggle('unaffordable', entry.options.every(option => option.cost > merits));
+  const head = el('div', 'purchase-entry-head');
+  head.append(el('span', 'purchase-entry-icon', entry.icon), el('strong', 'purchase-entry-name', entry.name));
+  card.append(head, el('p', 'purchase-entry-description', entry.description), options);
+  return card;
+}
+
+/**
+ * Ask the Manager for an Acquisizione from the catalog, or anything else, with a note. Only what
+ * the agent's banked Note di Merito cover can be picked. It goes on the agent's direct line and
+ * as a notification (messages.js), with the cost: the Manager gives the item, takes the Note di
+ * Merito and publishes the new version. Nothing on this copy changes.
+ */
+function openPurchaseForm(agentId, { catalog, other: otherAllowed }) {
+  const merits = availableMerits(agentId);
+  const form = el('form', 'manager-message-form purchase-form');
+  form.innerHTML = `
+    <p class="manager-message-target">Richiesta all’<strong>Amministrazione</strong>: l’oggetto arriva con il prossimo aggiornamento del fascicolo, e le Note di Merito vengono scalate allora.</p>
+    <p class="purchase-balance">Note di Merito disponibili <strong></strong></p>
+    <div class="purchase-list" role="radiogroup" aria-label="Acquisizioni"></div>
+    <label class="field purchase-other-name" hidden><span class="field-label">Che cosa</span><input name="other" type="text" maxlength="120" autocomplete="off" placeholder="Nome dell’oggetto"></label>
+    <label class="field"><span class="field-label">Nota per l’Amministrazione (facoltativa)</span><textarea name="note" rows="2" maxlength="300" placeholder="Per chi è, quante, o perché serve"></textarea></label>
+    <p class="manager-message-state" aria-live="polite"></p>`;
+  form.querySelector('.purchase-balance strong').textContent = `★ ${merits}`;
+  const list = form.querySelector('.purchase-list');
+  list.append(...catalog.map((entry, index) => purchaseCard(entry, index, merits)));
+  if (otherAllowed) {
+    const card = el('article', 'purchase-entry purchase-other');
+    const head = el('div', 'purchase-entry-head');
+    head.append(el('span', 'purchase-entry-icon', '📦'), el('strong', 'purchase-entry-name', 'Altro…'));
+    const options = el('div', 'purchase-options');
+    options.append(purchaseOption(OTHER, 'Qualcosa che non è in catalogo', 'Prezzo da concordare', true));
+    card.append(head, el('p', 'purchase-entry-description', 'Descrivi l’oggetto: l’Amministrazione ne stabilisce il prezzo.'), options);
+    list.append(card);
+  }
+  const other = form.elements.namedItem('other');
+  const note = form.elements.namedItem('note');
+  const state = form.querySelector('.manager-message-state');
+  const picked = () => form.querySelector('input[name="choice"]:checked')?.value || '';
+  list.addEventListener('change', () => {
+    list.querySelectorAll('.purchase-entry').forEach(card => card.classList.toggle('selected', !!card.querySelector('input:checked')));
+    other.closest('.field').hidden = picked() !== OTHER;
+    if (picked() === OTHER) other.focus();
+    state.textContent = '';
+  });
+
+  let close = null;
+  const submit = async () => {
+    const value = picked();
+    other.classList.remove('invalid');
+    state.className = 'manager-message-state';
+    let request;
+    if (value === OTHER && otherAllowed) {
+      const item = other.value.trim();
+      if (!item) {
+        other.classList.add('invalid');
+        other.focus();
+        state.textContent = 'Scrivi il nome dell’oggetto.';
+        return;
+      }
+      request = { item, option: '', cost: null };
+    } else {
+      // Only what the Players tab allows and the Note di Merito cover, even if the form was tampered with.
+      const [index, n] = value.split(':').map(Number);
+      const entry = catalog[index];
+      const option = entry?.options[n];
+      if (!option || option.cost > merits) {
+        state.textContent = 'Scegli un’Acquisizione che puoi permetterti.';
+        return;
+      }
+      request = { item: entry.name, option: option.label, cost: option.cost };
+    }
+    const send = form.closest('.modal-panel')?.querySelector('.modal-btn-primary');
+    const fields = [...form.elements].filter(field => !field.disabled);
+    if (send) send.disabled = true;
+    fields.forEach(field => { field.disabled = true; });
+    state.textContent = 'Invio in corso…';
+    if (await requestPurchase({ ...request, available: merits, note: note.value })) {
+      close?.();
+      const what = request.option ? `${request.item} (${request.option})` : request.item;
+      toast(`Richiesta inviata all’Amministrazione: ${what}${request.cost === null ? '' : ` · ★ ${request.cost}`}.`, { kind: 'success', duration: 6000 });
+      return;
+    }
+    fields.forEach(field => { field.disabled = false; });
+    if (send) send.disabled = false;
+    state.classList.add('is-error');
+    state.textContent = 'Invio non riuscito · riprova';
+  };
+
+  close = openModal({
+    title: 'Richiedi un’Acquisizione',
+    content: form,
+    className: 'manager-message-modal purchase-modal tx-manager',
+    closeLabel: 'Annulla',
+    actions: [{ label: 'Invia richiesta', variant: 'primary', submit: true, onClick: () => { submit(); return false; } }]
+  });
+}
+
+/**
+ * Only for the player signed in as `card`'s agent (or any agent, without a card), and only
+ * when the Players tab of /settings lets that agent ask for something.
+ */
+function createPurchaseButton(card = null) {
+  const agentId = purchasingAgentId();
+  if (!agentId || (card && String(card._id) !== agentId)) return null;
+  const choices = purchaseChoices(agentId);
+  if (!choices.catalog.length && !choices.other) return null;
+  const node = button('agency-request', '🛒 Richiedi un’Acquisizione', () => openPurchaseForm(agentId, choices));
+  node.title = `Chiedi all’Amministrazione un oggetto in cambio di Note di Merito (ne hai ${availableMerits(agentId)})`;
+  return node;
 }
 
 // ---------- overview ----------
@@ -598,6 +870,8 @@ function createAgentPage(card, cards) {
   const grid = el('div', 'agency-item-grid');
   if (!held.length) grid.append(el('p', 'agency-empty', 'Nessun oggetto.'));
   grid.append(...held.map(item => createItemTile(item, cards, card)), button('agency-add', '+ Aggiungi oggetto', () => addItem(card)));
+  const request = createPurchaseButton(card);
+  if (request) grid.append(request);
   inventory.append(el('h3', '', `Inventario (${held.length})`), grid);
 
   const side = el('div', 'agency-agent-side');
@@ -820,7 +1094,11 @@ export function renderAgency() {
     const overview = el('div', 'agency-overview');
     if (!cards.length) overview.append(el('p', 'rel-empty', 'Nessun agente. Aggiungi un agente con Hire Agent.'));
     overview.append(...cards.map(createSummary));
-    view.replaceChildren(promo, overview, createTeamItems(cards));
+    const request = createPurchaseButton();
+    const bar = request && el('div', 'agency-request-bar');
+    const merits = request ? availableMerits(purchasingAgentId()) : 0;
+    bar?.append(el('span', 'agency-request-text', `Hai ★ ${meritText(merits)} da spendere: chiedi un’Acquisizione all’Amministrazione.`), request);
+    view.replaceChildren(promo, ...(bar ? [bar] : []), overview, createTeamItems(cards));
   }
   view.scrollTop = scrollTop;
 }
@@ -847,6 +1125,10 @@ export function initAgency() {
   // Hiring, recalling, removing an agent all end in updateTopCharacters(), which fires this.
   document.addEventListener('dashboard-refresh', () => {
     decorateAgentCards();
+    if (!view.hidden) renderAgency();
+  });
+  // Signed in on a published copy: the purchase request button appears once the line is known.
+  document.addEventListener('messages-ready', () => {
     if (!view.hidden) renderAgency();
   });
   view.addEventListener('keydown', event => {

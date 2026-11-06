@@ -238,6 +238,32 @@
 
       <div class="card">
         <div class="section-heading">
+          <div><span class="eyebrow">PUBLISHED COPY</span><h2>Acquisition catalog</h2></div>
+          <span class="field-actions">
+            <button id="restoreCatalog" type="button" class="secondary small">Restore rulebook items</button>
+            <button id="addCatalogItem" type="button" class="small">Add acquisition</button>
+          </span>
+        </div>
+        <p class="hint">What the agents can ask you for from the Agency tab, in this order. Each acquisition has one or more versions (a size, rented for one Incarico or bought…),
+          each with its price in Note di Merito: a player can only pick the versions their banked Note di Merito cover. The names are also offered when you name an item on the Agency tab,
+          and a match fills in its description and icon. "Restore rulebook items" puts back any of the rulebook's acquisitions you deleted, leaving the rest as it is.
+          Changes reach the public site the next time you publish.</p>
+        <div id="catalogList" class="catalog-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
+          <div><span class="eyebrow">PUBLISHED COPY</span><h2>Purchase requests</h2></div>
+        </div>
+        <p class="hint">A signed-in agent can ask you for an Acquisizione from the Agency tab of the published copy: it reaches your notification channel as
+          "🛒 Purchase request" and stays on their direct line, and you give the item, take the Note di Merito and publish. Tick what each agent may ask for;
+          the agent's box (or the item's) ticks or clears a whole column (or row). An agent with nothing ticked gets no request button.
+          New agents and new catalog items start out allowed. Changes reach the public site the next time you publish.</p>
+        <div id="purchaseTable" class="purchase-table-wrap"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-heading">
           <div><span class="eyebrow">PUBLISHED COPY</span><h2>In-character conversations</h2></div>
           <button id="refreshConversations" type="button" class="secondary small">Refresh</button>
         </div>
@@ -260,6 +286,16 @@
         </div>
       </div>
       <p class="hint">Save sound assignments, volumes, delays, effects, lights, and login options in a separate file you can sync with your drive. Loading a file replaces the current settings. Uploaded sound files and the badge picture are not embedded in the JSON.</p>
+    </section>
+
+    <section class="card server-card" aria-labelledby="serverTitle">
+      <div class="section-heading">
+        <div><span class="eyebrow">THIS COMPUTER</span><h2 id="serverTitle">Tracker server</h2></div>
+        <button id="restartServer" class="secondary" type="button">Restart server</button>
+      </div>
+      <p class="hint">Stops the tracker server and starts it again in its own window, so changes to its code take effect. Only the tracker:
+        LightRPG and the VoiceMeeter bridge keep running, no browser window opens, and this page reloads once it is back.
+        Settings are saved first. <span id="serverInfo"></span></p>
     </section>
 
     <footer>

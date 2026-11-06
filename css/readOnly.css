@@ -379,6 +379,8 @@ html[data-read-only] #eventTrackerButton:is(:hover, :focus-visible) { background
 }
 .messages-item:is(:hover, :focus-visible) { background: rgba(255,255,255,0.06); outline: none; }
 .messages-item.is-open { border-color: rgba(var(--tx-rgb),0.6); background: rgba(var(--tx-rgb),0.1); }
+.messages-item.is-dead { opacity: 0.55; }
+.messages-item.is-dead .messages-who strong { text-decoration: line-through; text-decoration-color: #ff3b30; }
 .messages-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--tx); box-shadow: 0 0 6px var(--tx); }
 .messages-who { display: grid; flex: 1; min-width: 0; }
 .messages-who strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -386,6 +388,8 @@ html[data-read-only] #eventTrackerButton:is(:hover, :focus-visible) { background
 .messages-count { min-width: 1.6em; padding: 1px 6px; border-radius: 999px; background: var(--tx); color: #000; font-size: 12px; font-weight: 800; text-align: center; }
 .messages-count[hidden] { display: none; }
 .messages-thread { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 10px 14px; }
+.messages-thread.is-dead { filter: saturate(0.35); }
+.messages-thread.is-dead .messages-thread-name { text-decoration: line-through; text-decoration-color: #ff3b30; }
 .messages-thread-top { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(var(--tx-rgb),0.4); }
 .messages-thread-name { margin: 0; color: var(--tx-text); font-weight: 800; letter-spacing: 0.06em; }
 .messages-log {
@@ -413,6 +417,7 @@ html[data-read-only] #eventTrackerButton:is(:hover, :focus-visible) { background
 .messages-compose { display: flex; align-items: flex-end; gap: 10px; }
 .messages-compose[hidden] { display: none; }
 .messages-compose textarea { flex: 1; min-height: 2.8em; }
+.messages-state.is-closed { color: #ff8a82; }
 @media (max-width: 720px) {
   .messages { inset: 0; width: auto; height: auto; }
   .messages-window { border-radius: 0; }

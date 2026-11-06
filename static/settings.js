@@ -9,15 +9,16 @@
 // open viewers.
 
 import {
-  BUTTON_GROUPS, COMPETENCIES, DEFAULT_CONFIG, GRA_CHAOS_EFFECTS, LIGHT_ACTIONS, LIGHT_EFFECTS, LIGHT_EVENTS,
-  LIGHT_TARGETS, RISK_LEVELS, SOUND_EVENTS, competencyFile, getConfig, isCompetencyFolderFile,
+  BUTTON_GROUPS, COMPETENCIES, DEFAULT_CONFIG, DEFAULT_PURCHASE_CATALOG, GRA_CHAOS_EFFECTS, LIGHT_ACTIONS, LIGHT_EFFECTS, LIGHT_EVENTS,
+  LIGHT_TARGETS, PURCHASE_OTHER, RISK_LEVELS, SOUND_EVENTS, competencyFile, getConfig, isCompetencyFolderFile,
   getConfigRevision, mergeConfig, onConfigChange, reloadConfig, saveConfig, setLocalConfig, setSoundFiles,
-  startConfigSync
+  purchaseCatalog, startConfigSync
 } from '/js/config.js';
 import { sendLightCue, sendLightScene } from '/js/lights.js';
 import { playSlot, resolveSlot } from '/js/soundEffects.js';
 import { SYNTHS } from '/js/synth.js';
 import { COMPETENCY_INFO } from '/js/competencies.js';
+import { DEFAULT_ICON, ITEM_ICONS } from '/js/agencyData.js';
 import { setVoiceMeeterLevel } from '/js/voicemeeter.js';
 
 const TAB_KEY = 'ta-settings-tab';
@@ -948,7 +949,156 @@ function renderPlayers() {
   $('#chatOptions').innerHTML = renderField('players.copyChats', { label: 'Copy every in-character message to me', type: 'toggle' });
   renderManager();
   renderAccounts();
+  renderCatalog();
+  renderPurchases();
   renderConversations();
+}
+
+/* ---------- acquisition catalog (config.purchases.catalog, for agency.js) ---------- */
+const openCatalogItems = new Set();   // ids of the acquisitions unfolded in the editor
+
+function catalogOf() {
+  if (!draft.purchases || typeof draft.purchases !== 'object') draft.purchases = { denied: [], catalog: [] };
+  if (!Array.isArray(draft.purchases.catalog)) draft.purchases.catalog = [];
+  return draft.purchases.catalog;
+}
+
+/** The folded line: "☕ Tazza Ufficiale…" and its price range, "★ 3–18". */
+function catalogSummary(entry) {
+  const costs = (entry.options || []).map(option => Math.round(Number(option?.cost))).filter(cost => Number.isFinite(cost) && cost >= 0);
+  const low = Math.min(...costs);
+  const high = Math.max(...costs);
+  const price = !costs.length ? 'No price' : low === high ? `★ ${low}` : `★ ${low}–${high}`;
+  const icon = String(entry.icon ?? '').trim() || '📦';
+  return { title: `${icon} ${String(entry.name ?? '').trim() || 'Unnamed acquisition'}`, price };
+}
+
+/** Why the players don't see an acquisition yet (purchaseCatalog leaves it out), or ''. */
+function catalogProblem(entry) {
+  if (!String(entry.name ?? '').trim()) return 'Needs a name: until then the players don’t see it.';
+  if (!(entry.options || []).length) return 'Needs at least one version with a price: until then the players don’t see it.';
+  return '';
+}
+
+/** The icons an acquisition can have (the Agency tab's own list); one set some other way stays on offer. */
+function iconOptions(selected) {
+  const current = String(selected ?? '').trim() || DEFAULT_ICON;
+  const icons = ITEM_ICONS.includes(current) ? ITEM_ICONS : [current, ...ITEM_ICONS];
+  return icons.map(icon => `<option value="${escapeHtml(icon)}"${icon === current ? ' selected' : ''}>${escapeHtml(icon)}</option>`).join('');
+}
+
+function renderCatalog() {
+  const box = $('#catalogList');
+  if (!box) return;
+  const list = catalogOf();
+  if (!list.length) {
+    box.innerHTML = '<p class="hint">Nothing on sale: the agents only get “Anything else (Altro…)”, where it is allowed below.</p>';
+    return;
+  }
+  box.innerHTML = list.map((entry, index) => {
+    const path = `purchases.catalog.${index}`;
+    const { title, price } = catalogSummary(entry);
+    const problem = catalogProblem(entry);
+    const options = (entry.options || []).map((option, n) => `<div class="catalog-option">
+        <input type="text" value="${escapeHtml(option?.label ?? '')}" data-path="${path}.options.${n}.label" placeholder="Version, e.g. Acquisto" maxlength="80" aria-label="Version">
+        <label class="catalog-cost"><span aria-hidden="true">★</span><input type="number" min="0" step="1" value="${escapeHtml(option?.cost ?? 0)}" data-kind="number" data-path="${path}.options.${n}.cost" aria-label="Price in Note di Merito"></label>
+        <button type="button" class="secondary small" data-option-remove="${index}.${n}" aria-label="Remove this version" title="Remove this version">✕</button>
+      </div>`).join('');
+    return `<details class="catalog-item" data-catalog-index="${index}"${openCatalogItems.has(entry.id) ? ' open' : ''}>
+      <summary><span class="catalog-title">${escapeHtml(title)}</span><span class="catalog-price">${escapeHtml(price)}</span></summary>
+      <div class="catalog-body">
+        <div class="catalog-head">
+          <label class="account-field catalog-icon"><span>Icon</span><select data-path="${path}.icon">${iconOptions(entry.icon)}</select></label>
+          <label class="account-field"><span>Name</span><input type="text" value="${escapeHtml(entry.name ?? '')}" data-path="${path}.name" maxlength="120"></label>
+        </div>
+        <label class="account-field"><span>Description, shown to the players</span><textarea rows="3" data-path="${path}.description" maxlength="1000">${escapeHtml(entry.description ?? '')}</textarea></label>
+        <div class="catalog-options"><span class="catalog-options-label">Versions and prices in Note di Merito</span>${options}</div>
+        <p class="account-problem" data-catalog-problem="${index}"${problem ? '' : ' hidden'}>${escapeHtml(problem)}</p>
+        <div class="field-actions catalog-actions">
+          <button type="button" class="secondary small" data-option-add="${index}">Add version</button>
+          <button type="button" class="secondary small danger" data-catalog-remove="${index}">Delete acquisition</button>
+        </div>
+      </div>
+    </details>`;
+  }).join('');
+}
+
+/** After typing in an acquisition: its folded line and warning, and the labels of the permission table. */
+function catalogEdited(index) {
+  const entry = catalogOf()[index];
+  const item = document.querySelector(`.catalog-item[data-catalog-index="${index}"]`);
+  if (!entry || !item) return;
+  const { title, price } = catalogSummary(entry);
+  item.querySelector('.catalog-title').textContent = title;
+  item.querySelector('.catalog-price').textContent = price;
+  const problem = catalogProblem(entry);
+  const warning = item.querySelector('[data-catalog-problem]');
+  warning.textContent = problem;
+  warning.hidden = !problem;
+  renderPurchases();
+}
+
+/** The catalog changed shape (added, deleted, a version more or less): draw it and the permissions again, and save. */
+function catalogChanged() {
+  renderCatalog();
+  renderPurchases();
+  scheduleSave();
+}
+
+const newCatalogId = () => `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+/* ---------- purchase requests (agency.js on the published copy) ---------- */
+/** What can be asked for: the catalog's Acquisizioni, then "something else" (PURCHASE_OTHER). */
+const purchaseItems = () => [
+  ...purchaseCatalog(draft).map(entry => ({ key: entry.id, label: `${entry.icon} ${entry.name}` })),
+  { key: PURCHASE_OTHER, label: '📦 Anything else (Altro…)' }
+];
+const purchasePair = (agentId, item) => `${agentId}|${item}`;
+
+function deniedPurchases() {
+  if (!draft.purchases || typeof draft.purchases !== 'object') draft.purchases = { denied: [] };
+  if (!Array.isArray(draft.purchases.denied)) draft.purchases.denied = [];
+  return draft.purchases.denied;
+}
+
+/** A tick per agent and item; the agent's box sets the whole column, the item's the whole row. */
+function renderPurchases() {
+  const box = $('#purchaseTable');
+  if (!box) return;
+  if (!teamChars.length) {
+    box.innerHTML = '<p class="hint">No agents on the team yet.</p>';
+    return;
+  }
+  const denied = new Set(deniedPurchases());
+  const items = purchaseItems();
+  const allowed = (id, item) => !denied.has(purchasePair(id, item));
+  const toggle = (attribute, value, count, total, label, small = '') => `<label class="purchase-toggle">
+      <input type="checkbox" ${attribute}="${escapeHtml(value)}"${count === total ? ' checked' : ''}${count && count < total ? ' data-mixed' : ''}>
+      <span>${escapeHtml(label)}</span>${small ? `<small>${escapeHtml(small)}</small>` : ''}</label>`;
+  const head = teamChars.map(char => {
+    const id = String(char.id);
+    const count = items.filter(item => allowed(id, item.key)).length;
+    return `<th scope="col">${toggle('data-purchase-agent', id, count, items.length, char.name || 'Unnamed agent', char.player || '')}</th>`;
+  }).join('');
+  const rows = items.map(item => {
+    const count = teamChars.filter(char => allowed(String(char.id), item.key)).length;
+    const cells = teamChars.map(char => {
+      const id = String(char.id);
+      return `<td><input type="checkbox" data-purchase="${escapeHtml(purchasePair(id, item.key))}"${allowed(id, item.key) ? ' checked' : ''}
+        aria-label="${escapeHtml(`${char.name || 'Unnamed agent'} may ask for ${item.label}`)}"></td>`;
+    }).join('');
+    return `<tr><th scope="row">${toggle('data-purchase-item', item.key, count, teamChars.length, item.label)}</th>${cells}</tr>`;
+  }).join('');
+  box.innerHTML = `<table class="purchase-table"><thead><tr><th scope="col" class="purchase-corner">Acquisizione</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+  box.querySelectorAll('[data-mixed]').forEach(input => { input.indeterminate = true; });
+}
+
+function setPurchases(pairs, allow) {
+  const denied = new Set(deniedPurchases());
+  pairs.forEach(pair => (allow ? denied.delete(pair) : denied.add(pair)));
+  draft.purchases.denied = [...denied];
+  renderPurchases();
+  scheduleSave();
 }
 
 /* ---------- in-character conversations (build_static.list_conversations) ---------- */
@@ -985,12 +1135,14 @@ function renderConversations() {
   const description = conv => {
     if (conv.kind === 'agent') return 'Agent to agent';
     if (conv.kind === 'anomaly') return 'Anomaly · yours';
-    return conv.playedBy === 'Manager' ? 'Relationship · yours' : `Relationship · played by ${escapeHtml(conv.playedBy)}`;
+    const what = conv.anomaly ? 'Anomaly' : 'Relationship';
+    const role = conv.playedBy === 'Manager' ? `${what} · yours` : `${what} · played by ${escapeHtml(conv.playedBy)}`;
+    return conv.dead ? `${role} · deceased · messaging disabled` : role;
   };
   const agents = [...new Set(conversations.map(conv => conv.agentName))];
   box.innerHTML = agents.map(agent => `<div class="conversation-agent">
     <h3>${escapeHtml(agent || 'Unnamed agent')}</h3>
-    ${conversations.map((conv, index) => conv.agentName !== agent ? '' : `<div class="conversation conversation-${conv.kind}">
+    ${conversations.map((conv, index) => conv.agentName !== agent ? '' : `<div class="conversation conversation-${conv.anomaly ? 'anomaly' : conv.kind}${conv.dead ? ' is-dead' : ''}">
       <div class="conversation-head">
         <span class="conversation-dot" aria-hidden="true"></span>
         <strong>${escapeHtml(conv.other)}</strong>
@@ -998,8 +1150,8 @@ function renderConversations() {
         <span class="field-actions"><button type="button" class="secondary small" data-copy-conversation="${index}">Copy channel</button></span>
       </div>
       ${senders(conv).map(sender => `<div class="account-send">
-        <input type="text" data-say-text="${index}-${sender.side}" placeholder="As ${escapeHtml(sender.from)}, to ${escapeHtml(sender.to)}…">
-        <button type="button" class="small" data-say="${index}" data-side="${sender.side}">Send</button>
+        <input type="text" data-say-text="${index}-${sender.side}" placeholder="${conv.dead ? 'Messaging disabled: character is dead' : `As ${escapeHtml(sender.from)}, to ${escapeHtml(sender.to)}…`}"${conv.dead ? ' disabled' : ''}>
+        <button type="button" class="small" data-say="${index}" data-side="${sender.side}"${conv.dead ? ' disabled' : ''}>Send</button>
       </div>`).join('')}
     </div>`).join('')}
   </div>`).join('');
@@ -1011,6 +1163,10 @@ function handleConversationClick(event) {
   const say = event.target.closest('[data-say]');
   if (!say) return;
   const conv = conversations[Number(say.dataset.say)];
+  if (conv.dead) {
+    setStatus('That character is deceased; messages cannot be sent to or from them', 'error');
+    return;
+  }
   const side = say.dataset.side || 'npc';
   const field = document.querySelector(`[data-say-text="${say.dataset.say}-${side}"]`);
   if (!field.value.trim()) return;
@@ -1119,6 +1275,7 @@ function handleEdit(event) {
   if (input.dataset.kind === 'boolean') value = input.checked;
   setPath(draft, path, value);
   if (path.startsWith('players.')) checkAccounts();   // your channel counts too
+  if (path.startsWith('purchases.catalog.')) catalogEdited(Number(path.split('.')[2]));
 
   const output = document.querySelector(`output[data-out="${path}"]`);
   if (output) output.textContent = formatValue(fieldFor(path) || { percent: true }, value);
@@ -1376,6 +1533,67 @@ async function init() {
     await loadTeam();
     await loadConversations();
     renderAccounts();
+    renderPurchases();
+  });
+  // 'toggle' doesn't bubble: listen while it comes down.
+  $('#catalogList').addEventListener('toggle', event => {
+    const item = event.target;
+    if (!(item instanceof HTMLDetailsElement) || !item.matches('.catalog-item')) return;
+    const entry = catalogOf()[Number(item.dataset.catalogIndex)];
+    if (!entry) return;
+    if (item.open) openCatalogItems.add(entry.id);
+    else openCatalogItems.delete(entry.id);
+  }, true);
+  $('#catalogList').addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    const list = catalogOf();
+    if (button.dataset.optionAdd !== undefined) {
+      const index = Number(button.dataset.optionAdd);
+      list[index].options = [...(list[index].options || []), { label: '', cost: 1 }];
+      catalogChanged();
+      document.querySelector(`.catalog-item[data-catalog-index="${index}"] .catalog-option:last-of-type input[type=text]`)?.focus();
+    } else if (button.dataset.optionRemove) {
+      const [index, n] = button.dataset.optionRemove.split('.').map(Number);
+      list[index].options.splice(n, 1);
+      catalogChanged();
+    } else if (button.dataset.catalogRemove !== undefined) {
+      const index = Number(button.dataset.catalogRemove);
+      const entry = list[index];
+      if (!confirm(`Delete “${String(entry.name ?? '').trim() || 'this acquisition'}” from the catalog? The players can no longer ask for it once you publish.`)) return;
+      list.splice(index, 1);
+      // Its ticks on the permission table go with it.
+      draft.purchases.denied = deniedPurchases().filter(pair => !pair.endsWith(`|${entry.id}`));
+      openCatalogItems.delete(entry.id);
+      catalogChanged();
+    }
+  });
+  $('#addCatalogItem').addEventListener('click', () => {
+    const entry = { id: newCatalogId(), name: '', icon: '📦', description: '', options: [{ label: 'Acquisto', cost: 1 }] };
+    catalogOf().push(entry);
+    openCatalogItems.add(entry.id);
+    catalogChanged();
+    const added = document.querySelector('.catalog-item:last-of-type');
+    added?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    added?.querySelector('[data-path$=".name"]')?.focus({ preventScroll: true });
+  });
+  $('#restoreCatalog').addEventListener('click', event => {
+    const list = catalogOf();
+    const missing = DEFAULT_PURCHASE_CATALOG.filter(entry => !list.some(item => item.id === entry.id));
+    const button = event.currentTarget;
+    if (!missing.length) {
+      button.textContent = 'All rulebook items are there';
+      setTimeout(() => { button.textContent = 'Restore rulebook items'; }, 2200);
+      return;
+    }
+    list.push(...structuredClone(missing));
+    catalogChanged();
+  });
+  $('#purchaseTable').addEventListener('change', event => {
+    const { purchase, purchaseAgent, purchaseItem } = event.target.dataset;
+    if (purchase) setPurchases([purchase], event.target.checked);
+    else if (purchaseAgent) setPurchases(purchaseItems().map(item => purchasePair(purchaseAgent, item.key)), event.target.checked);
+    else if (purchaseItem) setPurchases(teamChars.map(char => purchasePair(String(char.id), purchaseItem)), event.target.checked);
   });
   $('#accountList').addEventListener('keydown', event => {
     if (event.key === 'Enter' && event.target.matches('[data-send-text]')) {
@@ -1441,6 +1659,55 @@ async function init() {
     scheduleSave();
   });
 }
+
+/* ---------- restarting the tracker server (this one only) ---------- */
+async function serverInfo() {
+  const response = await fetch('/api/server', { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
+  return data;
+}
+
+function initServerCard() {
+  const button = $('#restartServer');
+  const info = $('#serverInfo');
+  serverInfo().then(data => {
+    info.textContent = `Running since ${new Date(data.startedAt).toLocaleString()}.`;
+    if (!data.canRestart) {
+      button.disabled = true;
+      info.textContent += ' Started without serve.py (the launchers), so it cannot restart itself.';
+    }
+  }).catch(() => { info.textContent = 'An older server: restart it by hand this once.'; });
+
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      // Nothing typed here is lost: the debounced save goes out now.
+      if ((saveTimer || savePromise) && !(await saveNow())) throw new Error('Settings not saved, so the server was not restarted');
+      if (savePromise) await savePromise.catch(() => {});
+      const response = await fetch('/api/restart', { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.message || `HTTP ${response.status}`);
+      setStatus('Restarting the server…', 'saving');
+      const deadline = Date.now() + 45000;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 700));
+        const now = await serverInfo().catch(() => null);
+        if (now && now.pid !== data.pid) {
+          setStatus('Server restarted', 'saved');
+          setTimeout(() => location.reload(), 400);
+          return;
+        }
+      }
+      throw new Error('The server did not come back within 45 seconds: check its window, or run the launcher again.');
+    } catch (error) {
+      console.error(error);
+      setStatus(error.message || 'The server could not restart', 'error');
+      button.disabled = false;
+    }
+  });
+}
+initServerCard();
 
 // Say so instead of sitting on "Loading…" forever.
 init().catch(error => {

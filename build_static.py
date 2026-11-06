@@ -167,7 +167,11 @@ def list_conversations(team, players):
             if not name:
                 continue
             played = str(relationship.get("playedBy") or "").strip()
+            # An anomaly kept as a relationship keeps the "npc" channel (its history and its
+            # Played by stay put when the box is ticked); `anomaly` only colours it blue.
             conversations.append({**agent, "kind": "npc", "other": name,
+                                  **({"anomaly": True} if relationship.get("anomaly") is True else {}),
+                                  **({"dead": True} if relationship.get("dead") is True else {}),
                                   "playedBy": account_players.get(played.casefold(), MANAGER),
                                   "channel": conversation_channel(secret, agent["agentId"], "npc", name)})
     pairs = sorted((str(char["id"]), str(char.get("name") or "").strip()) for char in chars)

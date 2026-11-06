@@ -1,7 +1,8 @@
 const ids = [
   'webAppUrl','manualToken','archiveUrl','saveConnection','syncNow','refreshArchive',
   'connectionState','notice','messageCount','topicCount','unreadCount','updatedAt',
-  'nextSync','filter','topics','emptyState','selectionCount','selectShown','clearSelection','purgeSelected'
+  'nextSync','filter','topics','emptyState','selectionCount','selectShown','clearSelection','purgeSelected',
+  'sendMessageForm','messagePlayer','messageType','messageSender','messageContent','sendMessage','sendState','sendNotice'
 ];
 const ui = Object.fromEntries(ids.map(function (id) { return [id, document.getElementById(id)]; }));
 let archiveData = null;
@@ -33,8 +34,58 @@ function busy(value) {
   ui.saveConnection.disabled = value;
   ui.syncNow.disabled = value;
   ui.refreshArchive.disabled = value;
+  ui.sendMessageForm.querySelectorAll('button, input, select, textarea').forEach(function (control) { control.disabled = value; });
   ui.topics.querySelectorAll('button, input').forEach(function (control) { control.disabled = value; });
+  if (!value) showPlayers(registry);
   updateSelection();
+}
+function sendNotice(message, error) {
+  ui.sendNotice.textContent = message || '';
+  ui.sendNotice.classList.toggle('error', Boolean(error));
+}
+function directLines(items) {
+  const channels = new Set();
+  return (items || []).filter(function (item) {
+    if (item.kind !== 'manager' || !item.channel || channels.has(item.channel)) return false;
+    channels.add(item.channel);
+    return true;
+  }).sort(function (a, b) {
+    return String(a.agentName || '').localeCompare(String(b.agentName || ''));
+  });
+}
+function showPlayers(items) {
+  const lines = directLines(items);
+  const previous = ui.messagePlayer.value;
+  ui.messagePlayer.replaceChildren();
+  if (!lines.length) {
+    ui.messagePlayer.append(new Option('No configured players', ''));
+    ui.messagePlayer.disabled = true;
+    ui.sendMessage.disabled = true;
+    ui.sendState.textContent = 'No players';
+    ui.sendState.classList.remove('ready');
+    return;
+  }
+  ui.messagePlayer.append(new Option('Select a player', ''));
+  lines.forEach(function (line) {
+    const label = line.agentName || line.username || line.channel;
+    ui.messagePlayer.append(new Option(label, line.channel));
+  });
+  if (lines.some(function (line) { return line.channel === previous; })) ui.messagePlayer.value = previous;
+  ui.messagePlayer.disabled = working;
+  ui.sendMessage.disabled = working;
+  ui.sendState.textContent = lines.length + ' player' + (lines.length === 1 ? '' : 's') + ' available';
+  ui.sendState.classList.add('ready');
+}
+async function loadPlayers() {
+  try {
+    const data = await api('/api/communication-center/registry');
+    registry = data.registry || [];
+    showPlayers(registry);
+  } catch (error) {
+    ui.sendState.textContent = 'Unavailable';
+    ui.sendState.classList.remove('ready');
+    sendNotice(error.message, true);
+  }
 }
 function keyOf(channel, id) { return channel + '\n' + id; }
 function labelFor(channel) {
@@ -42,7 +93,7 @@ function labelFor(channel) {
   if (!item) return { title: channel, detail: 'Archived channel' };
   const kind = item.kind === 'manager' ? 'Direct Manager line'
     : item.kind === 'agent' ? 'Agent conversation'
-    : item.kind === 'anomaly' ? 'Anomaly conversation'
+    : item.kind === 'anomaly' || item.anomaly ? 'Anomaly conversation'
     : 'Relationship conversation';
   return {
     title: (item.agentName || 'Agent') + ' <-> ' + (item.other || 'Unknown'),
@@ -313,8 +364,34 @@ ui.clearSelection.addEventListener('click', function () {
 ui.purgeSelected.addEventListener('click', function () {
   purge(Array.from(selected.values()));
 });
+ui.sendMessageForm.addEventListener('submit', async function (event) {
+  event.preventDefault();
+  if (working || !ui.sendMessageForm.reportValidity()) return;
+  busy(true);
+  ui.sendState.textContent = 'Transmitting...';
+  ui.sendState.classList.remove('ready');
+  sendNotice('Sending the message through ntfy...');
+  try {
+    const data = await api('/api/communication-center/send', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        channel: ui.messagePlayer.value,
+        type: ui.messageType.value,
+        sender: ui.messageSender.value,
+        message: ui.messageContent.value
+      })
+    });
+    ui.messageContent.value = '';
+    sendNotice(data.message + '.');
+  } catch (error) { sendNotice(error.message, true); }
+  finally {
+    busy(false);
+    ui.messageContent.focus();
+  }
+});
 setInterval(updateClocks, 1000);
-Promise.all([loadConfig(), loadArchive(false)]).catch(function (error) { notice(error.message, true); });
+Promise.all([loadConfig(), loadArchive(false), loadPlayers()]).catch(function (error) { notice(error.message, true); });
 
 /* ---------- badges and access cards: drawn again as files on Update cards ---------- */
 const cardsUi = {

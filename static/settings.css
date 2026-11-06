@@ -128,7 +128,8 @@ code { font-size: 0.85em; color: var(--text); }
   margin-bottom: 10px;
 }
 .settings-file-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.settings-file-card .hint { margin-bottom: 0; }
+.settings-file-card .hint,
+.server-card .hint { margin-bottom: 0; }
 
 /* ---------- controls ---------- */
 button, .button {
@@ -366,7 +367,9 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
 /* ---------- players: the published copy's accounts ---------- */
 .field input[type=text],
 .account input[type=text],
-.account textarea {
+.account textarea,
+.catalog-item input,
+.catalog-item textarea {
   min-width: 0;
   width: 100%;
   padding: 8px 10px;
@@ -377,7 +380,7 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
   font: inherit;
   font-size: 0.85rem;
 }
-.account textarea { resize: vertical; line-height: 1.4; }
+.account textarea, .catalog-item textarea { resize: vertical; line-height: 1.4; }
 .account-list { display: flex; flex-direction: column; gap: 12px; }
 .account {
   display: flex;
@@ -403,6 +406,8 @@ output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.8
 .conversation-list { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
 .conversation-agent h3 { margin: 0 0 6px; font-size: 0.95rem; letter-spacing: 0.06em; }
 .conversation { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--conversation); border-radius: 10px; background: rgba(0,0,0,0.2); }
+.conversation.is-dead { border-color: rgba(255,59,48,0.45); opacity: 0.62; }
+.conversation.is-dead .conversation-head strong { text-decoration: line-through; text-decoration-color: #ff3b30; }
 .conversation + .conversation { margin-top: 8px; }
 .conversation-npc { --conversation: #ffd60a; }
 .conversation-anomaly { --conversation: #3d9bff; }
@@ -441,7 +446,8 @@ footer { display: flex; justify-content: center; padding-top: 10px; }
 /* ---------- phones ---------- */
 @media (max-width: 720px) {
   h1 { font-size: 1.6rem; }
-  .settings-file-card .section-heading { align-items: stretch; flex-direction: column; }
+  .settings-file-card .section-heading,
+  .server-card .section-heading { align-items: stretch; flex-direction: column; }
   .settings-file-actions { justify-content: stretch; }
   .settings-file-actions > * { flex: 1; }
   .tabs { flex-wrap: wrap; }
@@ -490,3 +496,68 @@ footer { display: flex; justify-content: center; padding-top: 10px; }
 ::-webkit-scrollbar-thumb:hover { background-color: rgba(116, 158, 207, 0.92); }
 ::-webkit-scrollbar-thumb:active { background-color: rgba(140, 184, 235, 1); }
 ::-webkit-scrollbar-button { display: none; }
+
+/* ---------- Purchase requests: a tick per agent and Acquisizione ---------- */
+.purchase-table-wrap { overflow-x: auto; }
+.purchase-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.purchase-table th, .purchase-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: center; vertical-align: middle; }
+.purchase-table thead th { vertical-align: bottom; }
+.purchase-table tbody th, .purchase-corner {
+  position: sticky;
+  left: 0;
+  background: var(--card);
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.purchase-corner { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.purchase-table tbody tr:hover > * { background: var(--accent-soft); }
+.purchase-table tbody tr:hover > th { background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+.purchase-toggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.purchase-table thead .purchase-toggle { flex-direction: column; gap: 3px; }
+.purchase-toggle small { color: var(--muted); font-size: 0.72rem; font-weight: 400; }
+.purchase-table input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+
+/* ---------- Acquisition catalog: one folding row per acquisition ---------- */
+.catalog-list { display: flex; flex-direction: column; gap: 8px; }
+.catalog-item { border: 1px solid var(--line); border-radius: 12px; background: rgba(0,0,0,0.2); }
+.catalog-item[open] { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.catalog-item > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.catalog-item > summary::-webkit-details-marker { display: none; }
+.catalog-item > summary::before { content: '▸'; color: var(--muted); transition: transform 150ms ease; }
+.catalog-item[open] > summary::before { transform: rotate(90deg); }
+.catalog-title { flex: 1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-price { flex: none; color: var(--accent); font-weight: 700; white-space: nowrap; }
+.catalog-body { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
+.catalog-head { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 10px; }
+.catalog-icon select {
+  width: 100%;
+  min-height: 37px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #140d0d;
+  color: var(--text);
+  font-size: 1.25rem;
+  text-align: center;
+  cursor: pointer;
+}
+.catalog-icon select option { background: #140d0d; font-size: 1.25rem; }
+.catalog-options { display: flex; flex-direction: column; gap: 6px; }
+.catalog-options-label { color: var(--muted); font-size: 0.75rem; letter-spacing: 0.04em; }
+.catalog-option { display: flex; align-items: center; gap: 8px; }
+.catalog-option > input { flex: 1; min-width: 0; }
+.catalog-cost { display: flex; flex: none; align-items: center; gap: 4px; color: var(--accent); font-weight: 700; }
+.catalog-cost input { width: 5.5em; }
+.catalog-actions { justify-content: space-between; }
+@media (max-width: 560px) {
+  .catalog-head { grid-template-columns: 64px minmax(0, 1fr); }
+  .catalog-cost input { width: 4.5em; }
+}

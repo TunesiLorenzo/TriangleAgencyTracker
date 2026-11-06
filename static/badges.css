@@ -145,9 +145,50 @@ html.solo .sheet { display: block; padding: 0; }
 html.solo .print-badge { --badge-w: 204px; --card-h: 324px; }
 html.solo .print-badge .login-badge-card { box-shadow: none; outline: none; }
 
+/* /badges/duplex: an A4 page per side, the cards on a grid centred on it so the back's
+   mirrored columns land exactly behind the front's */
+.sheet.duplex { display: grid; justify-content: center; gap: 24px; }
+.duplex-page {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 54mm);
+  grid-template-rows: repeat(3, 85.6mm);
+  gap: 4mm;
+  justify-content: center;
+  align-content: start;
+  width: 210mm;
+  height: 296mm;   /* a hair under A4, so rounding never spills onto a blank page */
+  padding: 10mm 0;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.duplex-page::before {
+  content: attr(data-label);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  padding-bottom: 6px;
+  color: #b9bdc2;
+  font-family: system-ui, sans-serif;
+  font-size: 0.85rem;
+}
+.duplex-page .print-badge .login-badge-card { box-shadow: none; }
+/* cut along the front's lines only: the back's would show wherever the printer shifts it */
+.with-cut-lines .duplex-back .print-badge .login-badge-card { outline: none; }
+
 @media print {
   body { min-height: 0; background: #fff; }
   .toolbar, .empty { display: none; }
   .sheet { justify-content: flex-start; gap: 4mm; padding: 0; }
   .print-badge .login-badge-card { box-shadow: none; }
+  .duplex-page:has(~ .duplex-page) { break-after: page; }
+}
+/* duplex: the page box is the paper itself, with no margins (a page of its own name, so the
+   other sheets keep theirs) */
+@page duplex { size: A4 portrait; margin: 0; }
+@media print {
+  .duplex-page { page: duplex; }
+  .sheet.duplex { display: block; padding: 0; }
+  .duplex-page { box-shadow: none; }
+  .duplex-page::before { display: none; }
 }
