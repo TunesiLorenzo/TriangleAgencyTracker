@@ -5,8 +5,9 @@ import { getCharacterData, saveCharacterToFile, saveSettings } from './storage.j
 import { playEvent } from './soundEffects.js';
 import { COMPETENCIES, REALITIES } from './config.js';
 import { ANOMALIES } from './anomalyData.js';
+import { findBonus } from './bonusData.js';
 import { normalizeAnomalyState } from './anomalyState.js';
-import { TRACK_LENGTH } from './lifeWorkTrack.js';
+import { normalizeCrossedOff, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 import { COMPETENCY_INFO, competencyText, isGeneratedText } from './competencies.js';
 import { createUuid } from './uuid.js';
@@ -25,6 +26,13 @@ export function getCharElements() {
   return [...document.querySelectorAll('.char:not(.leaving)')];
 }
 
+function bonusTypeOf(r) {
+  if (r.bonusType === 'custom') return 'custom';
+  const preset = findBonus(r.bonusType);
+  if (preset) return preset.name;
+  return String(r.bonusName ?? '').trim() || String(r.bonus ?? '').trim() ? 'custom' : '';
+}
+
 /** Coerce a saved (or brand new) relationship into the shape stored on an agent. */
 export function normalizeRelationship(data) {
   const r = data && typeof data === 'object' ? data : {};
@@ -35,8 +43,15 @@ export function normalizeRelationship(data) {
     description: String(r.description ?? ''),
     playedBy: String(r.playedBy ?? ''),
     connection: Math.min(MAX_CONNECTION, Math.max(0, connection)),
+    // The Bonus Legame: one of the manual's (bonusType is its name) or 'custom', whose name and
+    // description are bonusName and bonus. Saves from before the list only had the free text.
+    bonusType: bonusTypeOf(r),
+    bonusName: String(r.bonusName ?? ''),
     bonus: String(r.bonus ?? ''),
-    bonusActive: r.bonusActive === true
+    bonusActive: r.bonusActive === true,
+    bonusUsed: r.bonusUsed === true,   // spent during the current Incarico
+    anomaly: r.anomaly === true,   // an Anomalia met on an Incarico, kept like a relationship and shown in blue
+    dead: r.dead === true
   };
 }
 
@@ -261,6 +276,10 @@ export function addChar(data = {}, { index, animate = true, delay = 0 } = {}) {
   // The Realtà track is edited on the Relationships tab, the Competenza track on the Agency tab.
   c._realityProgress = Math.min(TRACK_LENGTH, Math.max(0, Number.parseInt(data?.realityProgress, 10) || 0));
   c._competencyProgress = Math.min(TRACK_LENGTH, Math.max(0, Number.parseInt(data?.competencyProgress, 10) || 0));
+  // Boxes crossed off the end of each track for good (marking one track erases the others' last box).
+  c._crossedOff = normalizeCrossedOff(data?.crossedOff, {
+    competency: c._competencyProgress, reality: c._realityProgress, anomaly: c._anomalyState.progress
+  });
   // Distinzioni received so far (Agenda Vita-Lavoro, "Numero di volte"); who holds them now is branch data.
   const times = key => Math.max(0, Number.parseInt(data?.distinctions?.[key], 10) || 0);
   c._distinctions = { mvp: times('mvp'), suspended: times('suspended') };

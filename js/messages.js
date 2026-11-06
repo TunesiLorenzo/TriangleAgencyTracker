@@ -106,6 +106,10 @@ const newMessageId = () => {
   return `ta-${Date.now().toString(36)}-${[...random].map(byte => byte.toString(36).padStart(2, '0')).join('')}`;
 };
 
+/** The colour a conversation is drawn in: a relationship marked as an anomaly is blue, like the agent's own. */
+const colourOf = conv => (conv.kind === 'npc' && conv.anomaly ? 'anomaly' : conv.kind);
+const conversationClosed = conv => conv?.dead === true;
+
 /** Who the player writes as in a conversation, and who they write to. */
 function myName(conv) {
   if (conv.kind === 'agent') return conv.side === 'a' ? conv.agentName : conv.other;
@@ -125,8 +129,8 @@ function label(conv) {
   if (conv.kind === 'anomaly') return conv.side === 'agent'
     ? { name: conv.other, note: 'Your anomaly' }
     : { name: `${conv.other} → ${conv.agentName}`, note: `You play ${conv.other} · anomaly` };
-  if (conv.side === 'agent') return { name: conv.other, note: 'Relationship' };
-  return { name: `${conv.other} → ${conv.agentName}`, note: `You play ${conv.other}` };
+  if (conv.side === 'agent') return { name: conv.other, note: conversationClosed(conv) ? 'Deceased · messages disabled' : conv.anomaly ? 'Anomaly' : 'Relationship' };
+  return { name: `${conv.other} → ${conv.agentName}`, note: conversationClosed(conv) ? 'Deceased · messages disabled' : `You play ${conv.other}${conv.anomaly ? ' · anomaly' : ''}` };
 }
 
 function seenSet(conv) {
@@ -546,7 +550,8 @@ export function recordTrackedEventResult(value) {
  * messages use the conversation's channel and are copied when the Manager plays the other
  * side or wants every message.
  */
-async function send(conv, text, { answering = null, from = '', messageClass = '', egg = '' } = {}) {
+async function send(conv, text, { answering = null, from = '', messageClass = '', egg = '', notify = null } = {}) {
+  if (conversationClosed(conv)) return false;
   text = text.trim().slice(0, MAX_TEXT);
   if (!text) return false;
   const author = String(from || myName(conv)).trim().slice(0, 80) || myName(conv);
@@ -566,7 +571,9 @@ async function send(conv, text, { answering = null, from = '', messageClass = ''
       ...(egg ? { egg } : {})
     });
     // Keep the Manager's ntfy subscription useful when they are not signed into the site.
-    if (conv.side === 'agent' && access().notify !== conv.channel) {
+    if (conv.side === 'agent' && access().notify !== conv.channel && notify) {
+      publish(notify.title, notify.text, notify.tags);
+    } else if (conv.side === 'agent' && access().notify !== conv.channel) {
       const quote = answering ? `\n\n↩ to ${answering.from || 'The Manager'}: “${answering.text.length > 120 ? `${answering.text.slice(0, 117)}…` : answering.text}”` : '';
       publish(`${answering ? 'Reply' : 'Message'} from ${who()}`, text + quote, ['speech_balloon']);
     }
@@ -575,12 +582,57 @@ async function send(conv, text, { answering = null, from = '', messageClass = ''
     if (!sent) return false;
     remember(conv.channel, { id: messageId, time: sent.time || now(), side: conv.side, from: myName(conv), text });
     if (conv.manager || access().copyChats) {
-      const kind = conv.kind === 'anomaly' ? 'anomaly' : 'in character';
+      const kind = colourOf(conv) === 'anomaly' ? 'anomaly' : 'in character';
       publish(`💬 ${myName(conv)} → ${theirName(conv)}`, `${text}\n\n— ${kind}, written by ${who()}`, ['speech_balloon']);
     }
   }
   refreshPanel(conv.channel);
   return true;
+}
+
+/* ---------- purchase requests ---------- */
+/** The signed-in agent's direct line to the Manager, which carries their purchase requests:
+ * none for the Manager, a guest, or an account without a channel of its own. */
+function purchaseLine() {
+  const identity = getIdentity();
+  if (!started || !identity || identity.guest || identity.manager) return null;
+  return conversations.find(conv => conv.kind === 'manager' && conv.side === 'agent' && isTopic(conv.channel)) || null;
+}
+
+/** The agent (card id) whose player can ask the Manager for an Acquisizione here, or ''. */
+export function purchasingAgentId() {
+  return purchaseLine() ? String(getIdentity().charId || '') : '';
+}
+
+/**
+ * Ask the Manager for an Acquisizione: a message on the agent's direct line (so it stays in
+ * their Messages history, the Communication Center and the Manager's view of the line) and a
+ * 🛒 notification on the Manager's channel. The Manager gives the item, takes the Note di
+ * Merito and publishes; nothing here changes the team. `option`: which way to get it (a size,
+ * rented or bought); `cost`: its price in Note di Merito, null when the Manager sets it ("Altro…");
+ * `available`: the agent's banked Note di Merito. Resolves to whether it was sent.
+ */
+export async function requestPurchase({ item, option = '', cost = null, available = null, note = '' } = {}) {
+  const conv = purchaseLine();
+  item = String(item || '').trim().slice(0, 120);
+  option = String(option || '').trim().slice(0, 80);
+  note = String(note || '').trim().slice(0, 300);
+  if (!conv || !item) return false;
+  const what = option ? `${item} (${option})` : item;
+  const price = Number.isInteger(cost) ? cost : null;
+  const balance = Number.isInteger(available) ? available : null;
+  const costLine = price === null ? 'Costo: da concordare' : `Costo: ★ ${price} Note di Merito`;
+  const balanceLine = balance === null ? '' : ` · disponibili ★ ${balance}`;
+  const managerCost = price === null
+    ? 'Cost: not in the catalog, set it yourself'
+    : `Cost: ${price} Note di Merito${balance === null ? '' : ` (they have ${balance}, ${balance - price} left after)`}`;
+  return send(conv, `🛒 Richiesta di acquisto: ${what}\n${costLine}${balanceLine}${note ? `\nNota: ${note}` : ''}`, {
+    notify: {
+      title: `🛒 Purchase request from ${who()}`,
+      text: `${what}\n${managerCost}${note ? `\n\n“${note}”` : ''}\n\nGive it on the Agency tab, take the Note di Merito, then publish.`,
+      tags: ['shopping_cart']
+    }
+  });
 }
 
 /* ---------- transmissions: one message at a time, typed out ---------- */
@@ -667,7 +719,7 @@ async function sendReply() {
 
 /** Type out one message; it stays until acknowledged or answered, and is then seen. */
 function present({ conv, message }) {
-  const messageClass = MESSAGE_CLASSES.includes(message.class) ? message.class : conv.kind;
+  const messageClass = MESSAGE_CLASSES.includes(message.class) ? message.class : colourOf(conv);
   overlay.className = `transmission tx-${messageClass}`;
   overlay.setAttribute('aria-label', HEADINGS[messageClass]);
   part('heading').textContent = HEADINGS[messageClass];
@@ -678,7 +730,7 @@ function present({ conv, message }) {
   part('answer').readOnly = false;
   part('state').textContent = '';
   // Nowhere for an answer to the Manager to go without the Manager's channel.
-  part('answer-button').hidden = !isTopic(conv.channel);
+  part('answer-button').hidden = !isTopic(conv.channel) || conversationClosed(conv);
   part('answer-button').textContent = `Reply as ${myName(conv)}`;
   part('send').hidden = true;
   part('send').disabled = false;
@@ -717,6 +769,12 @@ function present({ conv, message }) {
 function offer(conv, message) {
   const key = `${conv.channel}|${conv.side}|${message.id}`;
   if (!incoming(conv, message) || !message.text.trim() || isSeen(conv, message.id) || offered.has(key)) return;
+  // Old clients may still post after the relationship was marked dead. Acknowledge the
+  // blocked message so the collector does not rejuvenate it, but never present it.
+  if (conversationClosed(conv)) {
+    markSeen(conv, message.id);
+    return;
+  }
   offered.add(key);
   queue.push({ conv, message });
   updateBadge();
@@ -748,7 +806,8 @@ let button = null;
 let openConv = null;   // the conversation on show in the panel
 let activePersona = ''; // the controlled character whose conversation list is on show
 
-const unreadIn = conv => history(conv.channel).filter(message => incoming(conv, message) && !isSeen(conv, message.id)).length;
+const unreadIn = conv => conversationClosed(conv) ? 0
+  : history(conv.channel).filter(message => incoming(conv, message) && !isSeen(conv, message.id)).length;
 
 function updateBadge() {
   renderEventTracker();
@@ -913,7 +972,7 @@ function renderList() {
     const item = document.createElement('li');
     const choose = document.createElement('button');
     choose.type = 'button';
-    choose.className = `messages-item tx-${conv.kind}${conv === openConv ? ' is-open' : ''}`;
+    choose.className = `messages-item tx-${colourOf(conv)}${conv === openConv ? ' is-open' : ''}${conversationClosed(conv) ? ' is-dead' : ''}`;
     choose.dataset.conv = String(conversations.indexOf(conv));
     choose.innerHTML = '<span class="messages-dot" aria-hidden="true"></span><span class="messages-who"><strong></strong><small></small></span><span class="messages-count"></span>';
     choose.querySelector('strong').textContent = name;
@@ -1125,12 +1184,12 @@ function renderThread() {
   const conv = openConv;
   const log = panel.querySelector('.messages-log');
   const { name, note } = label(conv);
-  panel.querySelector('.messages-thread').className = `messages-thread tx-${conv.kind}`;
+  panel.querySelector('.messages-thread').className = `messages-thread tx-${colourOf(conv)}${conversationClosed(conv) ? ' is-dead' : ''}`;
   panel.querySelector('.messages-thread-name').textContent = `${name} · ${note}`;
   const messages = history(conv.channel);
   log.replaceChildren(...messages.map(message => {
     const entry = document.createElement('li');
-    const messageClass = MESSAGE_CLASSES.includes(message.class) ? message.class : conv.kind;
+    const messageClass = MESSAGE_CLASSES.includes(message.class) ? message.class : colourOf(conv);
     entry.className = `messages-entry tx-${messageClass}${message.side === conv.side ? ' is-mine' : ''}`;
     const meta = document.createElement('small');
     meta.textContent = `${message.side === conv.side ? `You, as ${message.from || myName(conv)}` : message.from || theirName(conv)}${message.time ? ` · ${clock(message.time)}` : ''}`;
@@ -1142,16 +1201,24 @@ function renderThread() {
   if (!messages.length) {
     const empty = document.createElement('li');
     empty.className = 'messages-empty';
-    empty.textContent = conv.side === 'npc'
+    empty.textContent = conversationClosed(conv) ? 'This character is dead. No messages can be sent to or from them.'
+      : conv.side === 'npc'
       ? `Nothing yet. Write to Agent ${conv.agentName} as ${conv.other}.`
       : `Nothing yet. Write to ${theirName(conv)}.`;
     log.append(empty);
   }
   log.scrollTop = log.scrollHeight;
   const compose = panel.querySelector('.messages-compose textarea');
-  compose.placeholder = `As ${myName(conv)}, to ${theirName(conv)}…`;
+  compose.placeholder = conversationClosed(conv) ? 'Messaging disabled: this character is dead' : `As ${myName(conv)}, to ${theirName(conv)}…`;
+  compose.readOnly = conversationClosed(conv);
+  panel.querySelector('.messages-send').disabled = conversationClosed(conv);
   // The Manager is reached through the Manager's channel, if there is one.
   panel.querySelector('.messages-compose').hidden = !isTopic(conv.channel);
+  if (conversationClosed(conv)) {
+    const state = panel.querySelector('.messages-state');
+    state.className = 'messages-state is-closed';
+    state.textContent = 'This character is deceased. The conversation is read-only.';
+  }
   // Reading it here is seeing it.
   messages.filter(message => incoming(conv, message)).forEach(message => markSeen(conv, message.id));
 }
@@ -1160,10 +1227,13 @@ function showThread(conv) {
   openConv = conv;
   activePersona = controlledPersona(conv).key;
   panel.classList.add('is-reading');
-  panel.querySelector('.messages-state').textContent = '';
+  const state = panel.querySelector('.messages-state');
+  state.className = 'messages-state';
+  state.textContent = '';
+  if (conversationClosed(conv)) panel.querySelector('.messages-compose textarea').value = '';
   renderThread();
   renderList();
-  panel.querySelector('.messages-compose textarea').focus({ preventScroll: true });
+  if (!conversationClosed(conv)) panel.querySelector('.messages-compose textarea').focus({ preventScroll: true });
 }
 
 function refreshPanel(channel) {
@@ -1196,6 +1266,11 @@ async function sendFromPanel() {
   const field = panel.querySelector('.messages-compose textarea');
   const state = panel.querySelector('.messages-state');
   const sendButton = panel.querySelector('.messages-send');
+  if (conversationClosed(openConv)) {
+    state.className = 'messages-state is-closed';
+    state.textContent = 'This character is deceased. Messages cannot be sent to or from them.';
+    return;
+  }
   if (!field.value.trim()) return;
   sendButton.disabled = field.readOnly = true;
   state.className = 'messages-state';
@@ -1424,6 +1499,9 @@ function npcConversation(agentId, npc, side) {
   return conversations.find(conv => conv.kind === 'npc' && conv.side === side && String(conv.agentId) === String(agentId) && norm(conv.other) === norm(npc));
 }
 
+const writableConversation = conv => conv && !conversationClosed(conv) ? conv : null;
+const deadRelationshipNode = node => node?.classList.contains('net-rel') && node.classList.contains('dead');
+
 /** The agent-to-agent conversation available while speaking as `fromId`. */
 function agentConversation(fromId, toId) {
   return conversations.find(conv => {
@@ -1452,6 +1530,7 @@ function managerConversation(agentId, side) {
 
 /** Whom this map node lets the player speak as: their own agent, or a relationship they play. */
 function personaOf(node) {
+  if (deadRelationshipNode(node)) return null;
   if (node.dataset.manager) return getIdentity()?.manager
     ? { key: 'manager', type: 'manager', name: 'Manager' }
     : null;
@@ -1464,27 +1543,28 @@ function personaOf(node) {
 /** The conversation this node opens for the character picked to speak, if it can be written to. */
 function conversationTo(node) {
   if (!speaker) return null;
+  if (deadRelationshipNode(node)) return null;
   if (speaker.type === 'manager') {
-    return node.dataset.agentId ? managerConversation(node.dataset.agentId, 'npc') : null;
+    return writableConversation(node.dataset.agentId ? managerConversation(node.dataset.agentId, 'npc') : null);
   }
   if (speaker.type === 'agent') {
-    if (node.dataset.manager) return managerConversation(speaker.agentId, 'agent');
+    if (node.dataset.manager) return writableConversation(managerConversation(speaker.agentId, 'agent'));
     if (node.dataset.agentId && node.dataset.agentId !== speaker.agentId) {
-      return agentConversation(speaker.agentId, node.dataset.agentId);
+      return writableConversation(agentConversation(speaker.agentId, node.dataset.agentId));
     }
     if (!node.dataset.npc || !(node.dataset.agents || '').split(',').includes(speaker.agentId)) return null;
-    return npcConversation(speaker.agentId, node.dataset.npc, 'agent') || null;
+    return writableConversation(npcConversation(speaker.agentId, node.dataset.npc, 'agent'));
   }
   if (!node.dataset.agentId || !speaker.agentIds.includes(node.dataset.agentId)) return null;
-  return npcConversation(node.dataset.agentId, speaker.name, 'npc') || null;
+  return writableConversation(npcConversation(node.dataset.agentId, speaker.name, 'npc'));
 }
 
 function personaConversations(persona) {
-  if (persona.type === 'manager') return conversations.filter(conv => conv.kind === 'manager' && conv.side === 'npc');
+  if (persona.type === 'manager') return conversations.filter(conv => !conversationClosed(conv) && conv.kind === 'manager' && conv.side === 'npc');
   return persona.type === 'agent'
-    ? conversations.filter(conv => (conv.kind === 'npc' && conv.side === 'agent' && String(conv.agentId) === persona.agentId)
-      || (conv.kind === 'agent' && localAgentId(conv) === persona.agentId))
-    : persona.agentIds.map(id => npcConversation(id, persona.name, 'npc')).filter(Boolean);
+    ? conversations.filter(conv => !conversationClosed(conv) && ((conv.kind === 'npc' && conv.side === 'agent' && String(conv.agentId) === persona.agentId)
+      || (conv.kind === 'agent' && localAgentId(conv) === persona.agentId)))
+    : persona.agentIds.map(id => writableConversation(npcConversation(id, persona.name, 'npc'))).filter(Boolean);
 }
 
 /** A dot on a node with something unread. */
@@ -1578,6 +1658,8 @@ export async function startMessages() {
   }
   if (pendingEventResults().length) scheduleEventResultFlush();
   addButton();
+  // The Agency tab offers purchase requests once it knows there is a line to send them on.
+  document.dispatchEvent(new Event('messages-ready'));
   if (identity.manager) watchAgentCards();
   watchMaps();
 

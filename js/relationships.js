@@ -5,7 +5,7 @@
 // the Realtà track (ARC_Dossier page 8), the Dose di Realtà track (0-5, 5 = X) and their
 // relationships as tiles. Clicking one opens it on its own page, laid out like the Relazioni
 // sheet of the ARC dossier: name, picture, who plays them, description, a 0-9 track
-// (9 = Network) and a Relationship Bonus with its Active box. The data lives on the agent
+// (9 = Network) and a Relationship Bonus (bonusData.js) with its Active and Used boxes. The data lives on the agent
 // card (card._realityProgress, card._realityDose, card._relationships), so it is saved,
 // exported and restored together with the rest of the agent. Under the overview sit the
 // Network map, the phone and the HR ticker (relationshipsExtras.js).
@@ -14,8 +14,9 @@ import {
   MAX_CONNECTION, MAX_REALITY_DOSE, animateOnce, bindImagePicker, createChoiceSelect,
   getCharElements, loadImageFile, normalizeRelationship
 } from './charSystem.js';
+import { RELATIONSHIP_BONUSES, findBonus } from './bonusData.js';
 import { getConfig } from './config.js';
-import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
+import { createLifeWorkTrack, markCrossedOff, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { phoneScope } from './phoneFeed.js';
 import { createNetworkMap, createPhone, createTicker } from './relationshipsExtras.js';
 import { saveSettings } from './storage.js';
@@ -53,6 +54,23 @@ function portraitOf(card) {
 
 function inNetwork(relationship) {
   return relationship.connection >= MAX_CONNECTION;
+}
+
+/** An Anomalia kept as a relationship: same track and bonus, its own blue group on the agent's page. */
+function isAnomaly(relationship) {
+  return relationship.anomaly === true;
+}
+
+function isDead(relationship) {
+  return relationship.dead === true;
+}
+
+const kindName = relationship => (isAnomaly(relationship) ? 'anomaly' : 'relationship');
+
+/** The agent's relationships in their two categories, each in the order they were added. */
+function groupsOf(card) {
+  const list = relationshipsOf(card);
+  return { people: list.filter(item => !isAnomaly(item)), anomalies: list.filter(isAnomaly) };
 }
 
 /** Everyone who can play a relationship: the branch's players, then the Manager. */
@@ -240,6 +258,7 @@ function createRealityTrack(card) {
     label: 'Tracciato Realtà', className: 'reality-track', squareClass: 'reality-square', codes: DOCUMENTS,
     get: () => card._realityProgress || 0,
     set: value => { card._realityProgress = value; },
+    card, trackKey: 'reality',
     onChange: (previous, next) => {
       showCount();
       const unlocked = reachedCodes(DOCUMENTS, previous, next);
@@ -307,7 +326,36 @@ function createDose(card) {
   return box;
 }
 
-function createBonus(relationship) {
+/** What a relationship's Bonus Legame is called: the manual's name, the custom one, or ''. */
+function bonusLabel(relationship) {
+  if (relationship.bonusType === 'custom') return relationship.bonusName.trim() || 'Custom bonus';
+  return relationship.bonusType;
+}
+
+/** A Bonus box tick box (Active, Used) bound to one boolean of the relationship. */
+function createBonusCheck(relationship, key, text, className, onChange) {
+  const label = document.createElement('label');
+  label.className = `rel-active ${className}`;
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = relationship[key];
+  const tick = document.createElement('span');
+  tick.className = 'rel-check';
+  tick.setAttribute('aria-hidden', 'true');
+  label.append(checkbox, tick, text);
+  checkbox.addEventListener('change', () => {
+    relationship[key] = checkbox.checked;
+    onChange();
+    saveSettings();
+  });
+  return label;
+}
+
+/**
+ * The Bonus Legame: picked from the manual's list (with its short description) or written
+ * with the GM as a custom one. Active = available now; Used = spent during this Incarico.
+ */
+function createBonus(card, relationship) {
   const box = document.createElement('div');
   box.className = 'rel-bonus-box';
 
@@ -315,30 +363,112 @@ function createBonus(relationship) {
   caption.className = 'rel-label';
   caption.textContent = 'Relationship Bonus';
 
-  const field = createTextField(relationship, 'bonus', {
-    label: 'Relationship Bonus', multiline: true, rows: 2, maxLength: 280, placeholder: 'What this relationship grants'
-  });
+  // The manual has each Bonus go to one relationship: name who already holds it.
+  const holders = new Map(relationshipsOf(card)
+    .filter(other => other !== relationship && findBonus(other.bonusType))
+    .map(other => [other.bonusType, other.name.trim() || 'Unnamed']));
+  const select = document.createElement('select');
+  select.className = 'rel-field rel-bonus-type';
+  select.setAttribute('aria-label', 'Relationship Bonus');
+  const option = (value, text) => {
+    const node = document.createElement('option');
+    node.value = value;
+    node.textContent = text;
+    return node;
+  };
+  select.append(
+    option('', '— None —'),
+    ...RELATIONSHIP_BONUSES.map(({ name }) => option(name, holders.has(name) ? `${name} (già di ${holders.get(name)})` : name)),
+    option('custom', 'Custom…')
+  );
+  select.value = relationship.bonusType;
 
-  const active = document.createElement('label');
-  active.className = 'rel-active';
-  const checkbox = document.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = relationship.bonusActive;
-  const tick = document.createElement('span');
-  tick.className = 'rel-check';
-  tick.setAttribute('aria-hidden', 'true');
-  active.append(checkbox, tick, 'Active');
-
-  const showActive = () => box.classList.toggle('active', relationship.bonusActive);
-  checkbox.addEventListener('change', () => {
-    relationship.bonusActive = checkbox.checked;
-    showActive();
+  const detail = document.createElement('div');
+  detail.className = 'rel-bonus-detail';
+  const showDetail = () => {
+    const preset = findBonus(relationship.bonusType);
+    if (preset) {
+      const text = document.createElement('p');
+      text.className = 'rel-bonus-text';
+      text.textContent = preset.text;
+      detail.replaceChildren(text);
+    } else if (relationship.bonusType === 'custom') {
+      detail.replaceChildren(
+        createTextField(relationship, 'bonusName', { label: 'Bonus name', maxLength: 40, placeholder: 'Bonus name' }),
+        createTextField(relationship, 'bonus', {
+          label: 'Bonus description', multiline: true, rows: 2, maxLength: 280,
+          placeholder: 'Short description: what this relationship grants'
+        })
+      );
+    } else {
+      const hint = document.createElement('p');
+      hint.className = 'rel-bonus-hint';
+      hint.textContent = 'Pick a Bonus Legame from the manual, or write a custom one with the GM if none fits.';
+      detail.replaceChildren(hint);
+    }
+  };
+  select.addEventListener('change', () => {
+    relationship.bonusType = select.value;
+    showDetail();
+    if (relationship.bonusType === 'custom') detail.querySelector('input')?.focus();
     saveSettings();
   });
 
-  showActive();
-  box.append(caption, field, active);
+  const showState = () => {
+    box.classList.toggle('active', relationship.bonusActive);
+    box.classList.toggle('used', relationship.bonusUsed);
+  };
+  const checks = document.createElement('div');
+  checks.className = 'rel-bonus-checks';
+  checks.append(
+    createBonusCheck(relationship, 'bonusActive', 'Active', 'rel-bonus-active', showState),
+    createBonusCheck(relationship, 'bonusUsed', 'Used', 'rel-used', showState)
+  );
+
+  showDetail();
+  showState();
+  box.append(caption, select, detail, checks);
   return box;
+}
+
+/** The "Anomaly" box on a relationship's page: moves it between the agent's two groups. */
+function createAnomalyToggle(relationship, onChange) {
+  const toggle = document.createElement('label');
+  toggle.className = 'rel-active rel-anomaly-toggle';
+  toggle.title = 'An Anomalia rather than a person: listed under Anomalies, in blue';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = isAnomaly(relationship);
+  const tick = document.createElement('span');
+  tick.className = 'rel-check';
+  tick.setAttribute('aria-hidden', 'true');
+  toggle.append(checkbox, tick, 'Anomaly');
+  checkbox.addEventListener('change', () => {
+    relationship.anomaly = checkbox.checked;
+    saveSettings();
+    onChange();
+  });
+  return toggle;
+}
+
+/** Death is a status, not removal: the relationship and its history remain available. */
+function createDeadToggle(relationship, onChange) {
+  const toggle = document.createElement('label');
+  toggle.className = 'rel-active rel-dead-toggle';
+  toggle.title = 'Mark this relationship as dead without removing their record';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = isDead(relationship);
+  const tick = document.createElement('span');
+  tick.className = 'rel-check';
+  tick.setAttribute('aria-hidden', 'true');
+  toggle.append(checkbox, tick, 'Dead');
+  checkbox.addEventListener('change', () => {
+    relationship.dead = checkbox.checked;
+    saveSettings();
+    onChange();
+  });
+  return toggle;
 }
 
 /** Remove the open relationship, back to the agent's page, with an undo. */
@@ -351,7 +481,7 @@ function removeRelationship(card, relationship) {
   openRelationship = null;
   navigate();
 
-  toast(`${relationship.name.trim() || 'Relationship'} removed.`, {
+  toast(`${relationship.name.trim() || (isAnomaly(relationship) ? 'Anomaly' : 'Relationship')} removed.`, {
     duration: 6000,
     action: {
       label: 'Undo',
@@ -385,6 +515,8 @@ function createRelationshipTile(card, relationship) {
   tile.type = 'button';
   tile.className = 'rel-tile';
   tile.classList.toggle('network', inNetwork(relationship));
+  tile.classList.toggle('anomaly', isAnomaly(relationship));
+  tile.classList.toggle('dead', isDead(relationship));
 
   const text = document.createElement('span');
   text.className = 'rel-tile-text';
@@ -393,7 +525,8 @@ function createRelationshipTile(card, relationship) {
   name.textContent = relationship.name.trim() || 'Unnamed';
   const meta = document.createElement('span');
   meta.className = 'rel-tile-meta';
-  meta.textContent = relationship.playedBy ? `Played by ${relationship.playedBy}` : '';
+  meta.textContent = [isDead(relationship) ? 'Deceased' : '', isAnomaly(relationship) ? 'Anomalia' : '', relationship.playedBy ? `Played by ${relationship.playedBy}` : '']
+    .filter(Boolean).join(' · ');
 
   // bond 0-9 as a bar, with the Network globe and the Active bonus as badges
   const bond = document.createElement('span');
@@ -405,10 +538,12 @@ function createRelationshipTile(card, relationship) {
   value.className = 'rel-tile-value';
   value.textContent = inNetwork(relationship) ? '🌐 Network' : `${relationship.connection} / ${MAX_CONNECTION}`;
   bond.append(bar, value);
-  if (relationship.bonusActive) {
+  if (relationship.bonusActive || relationship.bonusUsed) {
     const active = document.createElement('span');
     active.className = 'rel-tile-active';
-    active.textContent = '✓ Bonus';
+    active.classList.toggle('used', relationship.bonusUsed);
+    const name = bonusLabel(relationship) || 'Bonus';
+    active.textContent = relationship.bonusUsed ? `${name} · used` : `✓ ${name}`;
     bond.appendChild(active);
   }
 
@@ -429,6 +564,8 @@ function createRelationshipPage(card, relationship) {
   const el = document.createElement('article');
   el.className = 'rel-card rel-page';
   el.classList.toggle('network', inNetwork(relationship));
+  el.classList.toggle('anomaly', isAnomaly(relationship));
+  el.classList.toggle('dead', isDead(relationship));
 
   const picture = createPicture(relationship);
   const name = createTextField(relationship, 'name', { label: 'Name', placeholder: 'Name', maxLength: 60 });
@@ -452,17 +589,30 @@ function createRelationshipPage(card, relationship) {
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'rel-remove-page';
-  remove.textContent = 'Remove relationship';
   remove.addEventListener('click', () => removeRelationship(card, relationship));
+
+  // Keep both status marks on the page and on its chip in the bar above.
+  const showStatus = () => {
+    el.classList.toggle('anomaly', isAnomaly(relationship));
+    el.classList.toggle('dead', isDead(relationship));
+    const chip = document.querySelector('.rel-switch[aria-current="true"]');
+    chip?.classList.toggle('anomaly', isAnomaly(relationship));
+    chip?.classList.toggle('dead', isDead(relationship));
+    remove.textContent = `Remove ${kindName(relationship)}`;
+  };
+  showStatus();
 
   const heading = document.createElement('div');
   heading.className = 'rel-page-heading';
   const fields = document.createElement('div');
   fields.className = 'rel-page-fields';
-  fields.append(name, createPlayedBy(relationship));
+  const options = document.createElement('div');
+  options.className = 'rel-page-options';
+  options.append(createPlayedBy(relationship), createAnomalyToggle(relationship, showStatus), createDeadToggle(relationship, showStatus));
+  fields.append(name, options);
   heading.append(picture.button, fields);
 
-  el.append(heading, description, track, createBonus(relationship), remove);
+  el.append(heading, description, track, createBonus(card, relationship), remove);
   return el;
 }
 
@@ -534,13 +684,16 @@ function createCounts(card) {
   const counts = document.createElement('span');
   counts.className = 'rel-counts';
   const total = createCount('Relationships');
+  const anomalies = createCount('Anomalies', { lit: true });
+  anomalies.box.classList.add('anomaly');
   const network = createCount('In Network', { icon: '🌐', lit: true });
-  counts.append(total.box, network.box);
+  counts.append(total.box, network.box, anomalies.box);   // Anomalies: a slim row of its own under the two
 
   const update = () => {
-    const list = relationshipsOf(card);
-    total.set(list.length);
-    network.set(list.filter(inNetwork).length);
+    const groups = groupsOf(card);
+    total.set(groups.people.length);
+    anomalies.set(groups.anomalies.length);
+    network.set(relationshipsOf(card).filter(inNetwork).length);
   };
   update();
   return { counts, update };
@@ -569,6 +722,7 @@ function createRealityTrackSummary(card) {
     square.classList.toggle('reached', n <= progress);
     square.style.gridRow = n <= row ? '1' : '2';
     square.style.gridColumn = String(n <= row ? n : TRACK_LENGTH + 1 - n);
+    markCrossedOff(square, n, card, 'reality');
     squares.appendChild(square);
   }
 
@@ -580,6 +734,7 @@ function createRealityTrackSummary(card) {
 function createSummary(card, index) {
   const relationships = relationshipsOf(card);
   const network = relationships.filter(inNetwork).length;
+  const anomalies = relationships.filter(isAnomaly).length;
 
   const tile = document.createElement('button');
   tile.type = 'button';
@@ -590,7 +745,7 @@ function createSummary(card, index) {
   tile.setAttribute('aria-label', [
     agentName(card, index),
     `Reality: ${statOf(card, 'reality') || 'none'}`,
-    `${relationships.length} relationships, ${network} in Network`,
+    `${relationships.length - anomalies} relationships, ${anomalies} anomalies, ${network} in Network`,
     `Tracciato Realtà ${card._realityProgress || 0} of ${TRACK_LENGTH}`
   ].join('. '));
 
@@ -656,10 +811,13 @@ function createRelationshipNav(card, index) {
 
   const switcher = document.createElement('div');
   switcher.className = 'rel-switcher';
-  relationshipsOf(card).forEach(relationship => {
+  const { people, anomalies } = groupsOf(card);
+  [...people, ...anomalies].forEach(relationship => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'rel-switch';
+    chip.classList.toggle('anomaly', isAnomaly(relationship));
+    chip.classList.toggle('dead', isDead(relationship));
     if (relationship === openRelationship) chip.setAttribute('aria-current', 'true');
     const name = document.createElement('span');
     name.className = 'rel-switch-name';
@@ -699,27 +857,41 @@ function createDetail(card, cards) {
   profile.classList.toggle('dead', card.classList.contains('dead'));
   profile.append(createIdentity(card, index, { heading: true }), createReality(card), counts, createRealityTrack(card), createDose(card));
 
-  const list = document.createElement('div');
-  list.className = 'rel-list';
+  // Two categories: the people, then the Anomalie in blue, each with its own Add tile.
+  const group = (title, relationships, anomaly) => {
+    const section = document.createElement('section');
+    section.className = `rel-group${anomaly ? ' anomaly' : ''}`;
+    const heading = document.createElement('h3');
+    heading.className = 'rel-group-title';
+    heading.textContent = `${title} · ${relationships.length}`;
 
-  const add = document.createElement('button');
-  add.type = 'button';
-  add.className = 'rel-add';
-  add.textContent = '+ Add Relationship';
-  add.addEventListener('click', () => {
-    const relationship = normalizeRelationship();
-    relationshipsOf(card).push(relationship);
-    saveSettings();
-    openRelationship = relationship;
-    navigate();
-    view.querySelector('.rel-page .rel-name')?.focus();
-  });
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = `rel-add${anomaly ? ' anomaly' : ''}`;
+    add.textContent = anomaly ? '+ Add Anomaly' : '+ Add Relationship';
+    add.addEventListener('click', () => {
+      const relationship = normalizeRelationship({ anomaly });
+      relationshipsOf(card).push(relationship);
+      saveSettings();
+      openRelationship = relationship;
+      navigate();
+      view.querySelector('.rel-page .rel-name')?.focus();
+    });
 
-  list.append(...relationshipsOf(card).map(relationship => createRelationshipTile(card, relationship)), add);
+    const list = document.createElement('div');
+    list.className = 'rel-list';
+    list.append(...relationships.map(relationship => createRelationshipTile(card, relationship)), add);
+    section.append(heading, list);
+    return section;
+  };
+  const { people, anomalies } = groupsOf(card);
+  const groups = document.createElement('div');
+  groups.className = 'rel-groups';
+  groups.append(group('Relationships', people, false), group('Anomalies', anomalies, true));
 
   const body = document.createElement('div');
   body.className = 'rel-detail-body';
-  body.append(profile, list);
+  body.append(profile, groups);
 
   detail.append(createAgentNav(cards), body);
   return detail;
@@ -765,7 +937,7 @@ function relationshipSources() {
   const mine = (card, relationship) => !scope || String(card._id) === scope.agentId
     || scope.npcs.has(`${card._id}|${relationship.name.trim().toLowerCase()}`);
   return getCharElements().flatMap((card, index) =>
-    relationshipsOf(card).filter(relationship => mine(card, relationship))
+    relationshipsOf(card).filter(relationship => !isDead(relationship) && mine(card, relationship))
       .map(relationship => ({ card, relationship, agent: agentName(card, index) })));
 }
 

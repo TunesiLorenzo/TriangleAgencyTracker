@@ -118,6 +118,8 @@ function layout(agents) {
     node.connection = Math.max(...node.links.map(link => link.relationship.connection));
     node.name = node.links[0].relationship.name.trim() || 'Unnamed';
     node.picture = node.links.find(link => link.relationship.picture)?.relationship.picture || '';
+    node.anomaly = node.links.some(link => link.relationship.anomaly === true);
+    node.dead = node.links.some(link => link.relationship.dead === true);
   });
   return nodes;
 }
@@ -232,9 +234,9 @@ export function createNetworkMap(agents, open, { managerPicture = '' } = {}) {
     const radius = 16 + item.connection * 0.8;
     const owners = item.links.map(link => link.agent.name).join(', ');
     const node = createNode({
-      className: `net-rel${network ? ' network' : ''}${item.links.length > 1 ? ' shared' : ''}`,
+      className: `net-rel${network ? ' network' : ''}${item.links.length > 1 ? ' shared' : ''}${item.anomaly ? ' anomaly' : ''}${item.dead ? ' dead' : ''}`,
       x: item.x, y: item.y, radius, picture: item.picture, name: item.name,
-      label: `${item.name} (${owners}): ${network ? 'Network' : `legame ${item.connection} / ${MAX_CONNECTION}`}`,
+      label: `${item.name}${item.anomaly ? ', Anomalia' : ''}${item.dead ? ', deceased' : ''} (${owners}): ${network ? 'Network' : `legame ${item.connection} / ${MAX_CONNECTION}`}`,
       onOpen: () => open(item.links[0].agent.card, item.links[0].relationship),
       data: { npc: item.name, agents: item.links.map(link => link.agent.card._id || '').join(',') }
     });
@@ -243,7 +245,7 @@ export function createNetworkMap(agents, open, { managerPicture = '' } = {}) {
     const edges = item.links.map(({ agent, relationship }) => {
       const bond = relationship.connection;
       const edge = svg('line', {
-        class: `net-edge${bond >= MAX_CONNECTION ? ' network' : ''}${bond === 0 ? ' zero' : ''}`,
+        class: `net-edge${bond >= MAX_CONNECTION ? ' network' : ''}${bond === 0 ? ' zero' : ''}${relationship.anomaly === true ? ' anomaly' : ''}${relationship.dead === true ? ' dead' : ''}`,
         x1: agent.x.toFixed(1), y1: agent.y.toFixed(1), x2: item.x.toFixed(1), y2: item.y.toFixed(1),
         'stroke-width': (1.5 + bond * 0.55).toFixed(2)
       });
@@ -276,7 +278,9 @@ export function createNetworkMap(agents, open, { managerPicture = '' } = {}) {
   legend.append(
     el('span', 'net-key bond', 'Spessore = Legame'),
     el('span', 'net-key network', 'Nel Network'),
-    el('span', 'net-key shared', 'Condivisa')
+    el('span', 'net-key shared', 'Condivisa'),
+    ...(nodes.some(node => node.anomaly) ? [el('span', 'net-key anomaly', 'Anomalia')] : []),
+    ...(nodes.some(node => node.dead) ? [el('span', 'net-key dead', 'Deceased')] : [])
   );
 
   panel.append(head, map, legend);
@@ -409,7 +413,7 @@ export function createPhone({ sources, open, pictureOf = () => '', openMessage =
       sender: source.relationship.name.trim() || 'Sconosciuto',
       picture: source.relationship.picture,
       text: fill(text, { agent }),
-      agent, network: tier === 'network', source
+      agent, network: tier === 'network', anomaly: source.relationship.anomaly === true, source
     };
   };
 
@@ -418,7 +422,7 @@ export function createPhone({ sources, open, pictureOf = () => '', openMessage =
     if (!data) return;
     lastText = data.text;
     const note = createNote({
-      className: `${data.agency ? 'agency' : ''}${data.network ? ' network' : ''}`.trim(),
+      className: `${data.agency ? 'agency' : ''}${data.network ? ' network' : ''}${data.anomaly ? ' anomaly' : ''}`.trim(),
       at,
       picture: data.picture,
       initial: data.agency ? '▲' : initialOf(data.sender),

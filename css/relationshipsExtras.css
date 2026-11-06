@@ -485,3 +485,34 @@
   .rel-phone-side .hr-ticker-track { position: static; animation: none; }
   .rel-phone-side .hr-ticker-window { overflow-y: auto; }
 }
+
+/* ---------- Anomalies (relationships.js): blue nodes, lines and phone texts ---------- */
+.net-rel.anomaly, .net-edge.anomaly, .net-key.anomaly, .phone-note.anomaly { --reality-color: var(--anomaly-color); }
+.net-rel.anomaly .net-ring { stroke-opacity: 0.85; }
+.net-rel.anomaly .net-disc { fill: #17202e; }
+.net-rel.anomaly .net-label { fill: #a7cdff; }
+.net-key.anomaly::before {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--reality-color);
+  border-radius: 50%;
+  background: #17202e;
+}
+.phone-note.anomaly { box-shadow: inset 2px 0 0 var(--reality-color); }
+
+/* A deceased relationship remains on the Network map, but no longer generates phone chatter. */
+.net-rel.dead image { filter: grayscale(1); opacity: 0.55; }
+.net-rel.dead .net-disc { fill: #211010; }
+.net-rel.dead .net-ring { stroke: #ff3b30; stroke-opacity: 1; stroke-dasharray: 3 3; }
+.net-rel.dead .net-label { fill: #ff8a82; text-decoration: line-through; }
+.net-edge.dead { stroke: #ff3b30; stroke-dasharray: 2 7; opacity: 0.38; animation: none; filter: none; }
+.net-key.dead::before {
+  content: '×';
+  width: 14px;
+  color: #ff3b30;
+  border: 1px solid #ff3b30;
+  border-radius: 50%;
+  font-weight: 900;
+  line-height: 12px;
+  text-align: center;
+}

@@ -395,6 +395,7 @@ export function getCharacterData(character) {
     realityDose: character._realityDose || 0,
     realityProgress: character._realityProgress || 0,
     competencyProgress: character._competencyProgress || 0,
+    crossedOff: { ...character._crossedOff },
     distinctions: { mvp: 0, suspended: 0, ...character._distinctions },
     anomalyState: normalizeAnomalyState(character._anomalyState),
     // Copies, so a snapshot (undo, export) isn't changed by later edits.

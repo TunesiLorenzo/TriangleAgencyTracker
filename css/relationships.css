@@ -735,11 +735,26 @@
   background: color-mix(in srgb, var(--reality-color) 8%, rgba(0,0,0,0.25));
 }
 .rel-bonus-box > .rel-label,
-.rel-bonus-box > .rel-field { grid-column: 1; }
-.rel-active {
+.rel-bonus-box > .rel-field,
+.rel-bonus-detail { grid-column: 1; }
+.rel-bonus-box select.rel-field { cursor: pointer; }
+.rel-bonus-box select.rel-field option { background: #222; color: #fff; }
+.rel-bonus-detail { display: grid; gap: 4px; transition: opacity 200ms ease; }
+.rel-bonus-text, .rel-bonus-hint { margin: 0; font-size: 12px; line-height: 1.4; }
+.rel-bonus-hint { opacity: 0.55; font-style: italic; }
+/* Used during this Incarico: the Bonus is spent until the GM clears the box */
+.rel-bonus-box.used { border-left-color: rgba(255,255,255,0.25); }
+.rel-bonus-box.used .rel-bonus-detail { opacity: 0.45; }
+.rel-bonus-box.used .rel-bonus-text { text-decoration: line-through; }
+.rel-bonus-checks {
   display: flex;
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
+  align-self: start;
+  gap: 10px;
+}
+.rel-active {
+  display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
@@ -974,6 +989,7 @@
   font-size: 12px;
   font-weight: 700;
 }
+.rel-tile-active.used { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); }
 .rel-tile .rel-open { margin: 0; font-size: 24px; opacity: 0.7; }
 
 /* ---------- Relationship page: one relationship, whole view, large type ---------- */
@@ -997,6 +1013,8 @@
 .rel-page .rel-node-num { font-size: 16px; }
 .rel-page .rel-network-caption { font-size: 14px; }
 .rel-page .rel-bonus-box { gap: 8px 14px; padding: 14px; }
+.rel-page .rel-bonus-text, .rel-page .rel-bonus-hint { font-size: 17px; }
+.rel-page .rel-bonus-checks { gap: 18px; }
 .rel-page .rel-active { font-size: 13px; gap: 6px; }
 .rel-page .rel-check { width: 44px; height: 44px; border-radius: 10px; }
 .rel-page .rel-active input:checked + .rel-check::after { font-size: 26px; }
@@ -1060,3 +1078,48 @@
 @media (max-width: 560px) {
   .rel-page-heading { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---------- Anomalies: an Anomalia kept as a relationship, in the Anomalia blue ----------
+   Everything a relationship draws in --reality-color turns blue for an anomaly. */
+.rel-group.anomaly, .rel-tile.anomaly, .rel-card.anomaly, .rel-switch.anomaly,
+.rel-count.anomaly, .rel-anomaly-toggle { --reality-color: var(--anomaly-color); }
+
+/* the agent's page: the people, then the anomalies, each under its heading */
+.rel-groups { display: flex; flex-direction: column; gap: clamp(18px, 2.4vw, 28px); min-width: 0; }
+.rel-group-title {
+  margin: 0 0 10px;
+  color: var(--reality-color);
+  font-size: clamp(13px, 1.9vw, 16px);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.rel-tile.anomaly .rel-tile-meta { color: #a7cdff; }
+.rel-tile.anomaly .rel-tile-picture { background: #27344a; }
+.rel-switch.anomaly { border-color: color-mix(in srgb, var(--reality-color) 45%, transparent); }
+
+/* Played by and the Anomaly box, side by side */
+.rel-page-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; min-width: 0; }
+.rel-page-options .rel-played { flex: 1; }
+.rel-anomaly-toggle, .rel-dead-toggle { flex: none; }
+.rel-dead-toggle { --reality-color: #ff3b30; }
+
+/* Dead relationships stay in the record, visibly marked instead of being removed. */
+.rel-tile.dead, .rel-card.rel-page.dead { border-color: rgba(255,59,48,0.62); }
+.rel-tile.dead { opacity: 0.68; }
+.rel-tile.dead .rel-tile-name, .rel-switch.dead .rel-switch-name,
+.rel-card.rel-page.dead .rel-name { text-decoration: line-through; text-decoration-color: #ff3b30; }
+.rel-tile.dead .rel-tile-picture, .rel-switch.dead .rel-switch-picture,
+.rel-card.rel-page.dead .rel-picture { filter: grayscale(1); }
+.rel-card.rel-page.dead { box-shadow: 0 16px 30px rgba(0,0,0,0.8), inset 4px 0 rgba(255,59,48,0.45); }
+
+/* the Anomalies count: a slim row under Relationships and In Network */
+.rel-count.anomaly {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  justify-content: center;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+}
+.rel-count.anomaly strong { font-size: 1em; }
+.rel-count.anomaly small { order: -1; }

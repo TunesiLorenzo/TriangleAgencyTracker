@@ -2,7 +2,7 @@ import { ANOMALY_ABILITIES } from './anomalyData.js';
 import { normalizeAbilityState } from './anomalyState.js';
 import { getCharElements } from './charSystem.js';
 import { getSnapshot } from './config.js';
-import { createLifeWorkTrack, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
+import { createLifeWorkTrack, markCrossedOff, reachedCodes, TRACK_LENGTH } from './lifeWorkTrack.js';
 import { saveSettings } from './storage.js';
 import { createUnderground } from './underground.js';
 import { openModal, toast } from './ui.js';
@@ -37,6 +37,7 @@ function track(card) {
     label: 'Tracciato Anomalia', className: 'anomaly-track', squareClass: 'anomaly-square', codes: DOCUMENTS,
     get: () => card._anomalyState.progress,
     set: value => { card._anomalyState.progress = value; },
+    card, trackKey: 'anomaly',
     onChange: (previous, next) => {
       showCount();
       const unlocked = reachedCodes(DOCUMENTS, previous, next);
@@ -72,6 +73,7 @@ function trackSummary(card) {
     square.classList.toggle('reached', n <= card._anomalyState.progress);
     square.style.gridRow = n <= 15 ? '1' : '2';
     square.style.gridColumn = String(n <= 15 ? n : 31 - n);
+    markCrossedOff(square, n, card, 'anomaly');
     squares.append(square);
   }
   section.append(count, squares);
