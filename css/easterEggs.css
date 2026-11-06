@@ -209,6 +209,65 @@ html[data-motion="reduced"] :is(.egg, .egg-cipher, .egg-banner, .egg-verdict, .e
 .egg-picker small { color: rgba(255,255,255,0.55); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
 .egg-picker button { grid-row: 1; grid-column: 2; }
 
+/* Manager-authored tests use the same tracked-result path as the phishing test, but their
+   appearance is entirely supplied by the Manager's title, description and colours. */
+.custom-test {
+  position: fixed;
+  inset: 0;
+  z-index: 10048;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  animation: transmission-in 260ms ease-out both;
+}
+.custom-test-box {
+  width: min(560px, 100%);
+  padding: clamp(20px, 4vw, 34px);
+  border: 3px solid var(--test-colour);
+  border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--test-colour) 18%, #071018), #06080d 68%);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--test-colour) 56%, transparent);
+  color: #fff;
+}
+.custom-test-kicker { margin: 0; color: var(--test-colour); font-size: 11px; font-weight: 900; letter-spacing: .2em; text-transform: uppercase; }
+.custom-test h2 { margin: 10px 0 0; font-size: clamp(24px, 5vw, 38px); line-height: 1.08; }
+.custom-test-description { margin: 16px 0 0; color: rgba(255,255,255,.86); font-size: 16px; line-height: 1.5; white-space: pre-wrap; }
+.custom-test-choices { display: grid; gap: 10px; margin-top: 22px; }
+.custom-test-choice {
+  width: 100%; padding: 12px 16px; border: 2px solid var(--choice-colour); border-radius: 7px;
+  background: color-mix(in srgb, var(--choice-colour) 15%, transparent); color: #fff; font: inherit;
+  font-weight: 800; letter-spacing: .04em; cursor: pointer; transition: transform 130ms ease, background 130ms ease;
+}
+.custom-test-choice:is(:hover, :focus-visible) { background: var(--choice-colour); color: #07090d; outline: none; transform: translateX(4px); }
+.custom-test-confirm { margin: 22px 0 0; color: rgba(255,255,255,.74); font-size: 14px; }
+
+/* The form is deliberately compact: each test has one colour and up to three individually
+   coloured responses. */
+.custom-test-form { display: grid; gap: 14px; }
+.custom-test-form label { display: grid; gap: 6px; }
+.custom-test-form input:not([type="color"]), .custom-test-form textarea { width: 100%; box-sizing: border-box; }
+.custom-test-form input[type="color"] { width: 48px; height: 34px; padding: 2px; cursor: pointer; }
+.custom-test-choice-fields { display: grid; gap: 8px; }
+.custom-test-choice-fields > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.custom-test-form .invalid { outline: 2px solid #ff453a; outline-offset: 2px; }
+
+/* A rare triangle floats over a signed-in agent view for a few seconds. */
+.session-triangle {
+  position: fixed; left: var(--triangle-x); top: var(--triangle-y); z-index: 10042;
+  width: 42px; height: 42px; padding: 0; border: 0; background: transparent; color: #ffd60a;
+  font: 42px/1 system-ui, sans-serif; cursor: pointer; filter: drop-shadow(0 0 8px rgba(255,214,10,.8));
+  animation: session-triangle-in 210ms ease-out both, session-triangle-pulse 900ms ease-in-out infinite;
+}
+.session-triangle span { display: block; transform: rotate(12deg); }
+.session-triangle:is(:hover, :focus-visible) { color: #fff0a1; outline: none; transform: scale(1.16); }
+.session-triangle.is-dissipating { pointer-events: none; animation: session-triangle-out 420ms ease-in both; }
+@keyframes session-triangle-in { from { opacity: 0; scale: .4; } }
+@keyframes session-triangle-pulse { 50% { filter: drop-shadow(0 0 16px rgba(255,214,10,1)); } }
+@keyframes session-triangle-out { to { opacity: 0; scale: 1.8; rotate: 24deg; filter: blur(5px); } }
+html[data-motion="reduced"] .session-triangle { animation: none; }
+
 /* Manager-only history of tracked interactions and the structured results returned by agents. */
 .egg-ledger-modal {
   width: min(900px, calc(100vw - 32px));

@@ -2,7 +2,7 @@
    advance things are gone. The controls that also show a value stay, frozen. */
 
 html[data-read-only] :is(
-  .top-buttons-left, .top-buttons-right > :not(#logoutButton, #messagesButton, #eventTrackerButton), .session-controls,
+  .top-buttons-left, .top-buttons-right > :not(#logoutButton, #messagesButton, #eventTrackerButton, #playwallButton), .session-controls,
   .mission-controls, #restartTimelineButton,
   .remove-btn, .death-btn, .add-task-btn, .task-del,
   .rel-add, .rel-remove-page, .anomaly-custom-controls,

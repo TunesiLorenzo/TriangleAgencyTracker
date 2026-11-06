@@ -74,18 +74,42 @@ function accountKeys(username, password) {
   return { id: hex(sha256(concat(utf8('id'), secret))), key: sha256(concat(utf8('key'), secret)) };
 }
 
-/** Undo build_static.seal. */
-function unseal(key, { nonce, data }) {
-  const sealed = fromBase64(data);
-  const salt = fromBase64(nonce);
+/** `sealed` XOR the SHA-256 keystream of (key, salt): sealing and unsealing are the same. */
+function applyKeystream(key, salt, sealed) {
   const out = new Uint8Array(sealed.length);
+  const input = concat(key, salt, new Uint8Array(4));
+  const counter = new DataView(input.buffer, key.length + salt.length, 4);
   for (let block = 0; block * 32 < sealed.length; block++) {
-    const counter = new Uint8Array(4);
-    new DataView(counter.buffer).setUint32(0, block);
-    const stream = sha256(concat(key, salt, counter));
+    counter.setUint32(0, block);
+    const stream = sha256(input);
     for (let i = 0; i < 32 && block * 32 + i < sealed.length; i++) out[block * 32 + i] = sealed[block * 32 + i] ^ stream[i];
   }
-  return JSON.parse(new TextDecoder().decode(out));
+  return out;
+}
+
+/** Undo build_static.seal. */
+function unseal(key, { nonce, data }) {
+  return JSON.parse(new TextDecoder().decode(applyKeystream(key, fromBase64(nonce), fromBase64(data))));
+}
+
+/** Undo playwall.seal_bytes: a sealed file is its 16-byte nonce, then the sealed bytes. */
+export function unsealFile(keyBase64, buffer) {
+  const bytes = new Uint8Array(buffer);
+  return applyKeystream(fromBase64(keyBase64), bytes.subarray(0, 16), bytes.subarray(16));
+}
+
+/** The key of one Document in Playwall, from the Playwall key (playwall.document_key). */
+export function documentKey(keyBase64, code) {
+  const key = sha256(concat(utf8('document\n'), fromBase64(keyBase64), utf8(code)));
+  return btoa(String.fromCharCode(...key));
+}
+
+/** The Playwall of an account: the Manager's key to all of it, or a player's unlocked Documents. */
+function playwallOf(details, manager) {
+  const playwall = details.playwall;
+  if (manager) return playwall?.key && playwall?.index ? playwall : null;
+  const documents = Array.isArray(playwall?.documents) ? playwall.documents.filter(doc => doc?.code && doc?.key) : [];
+  return documents.length ? { documents } : null;
 }
 
 /* ---------- who is signed in ---------- */
@@ -117,7 +141,7 @@ function agentOf(charId) {
 /** A visitor without an account: AGENT# and a five-digit number drawn for the visit. */
 export function guestIdentity() {
   const badge = String(10000 + Math.floor(Math.random() * 90000));
-  return { guest: true, manager: false, accountId: '', username: `AGENT#${badge}`, badge, name: '', picture: '', charId: '', player: '', inbox: '', messages: [], conversations: [], watch: [] };
+  return { guest: true, manager: false, accountId: '', username: `AGENT#${badge}`, badge, name: '', picture: '', charId: '', player: '', inbox: '', messages: [], conversations: [], watch: [], playwall: null };
 }
 
 /** The account these credentials open, as an identity; null when they open none. */
@@ -145,7 +169,9 @@ export function findAccount(username, password) {
       inbox: details.inbox || '',
       messages: Array.isArray(details.messages) ? details.messages : [],
       conversations: Array.isArray(details.conversations) ? details.conversations : [],
-      watch: Array.isArray(details.watch) ? details.watch : []   // the Manager's: every channel
+      watch: Array.isArray(details.watch) ? details.watch : [],   // the Manager's: every channel
+      // The Documents in Playwall this account may read (playwall.py, js/playwall.js).
+      playwall: playwallOf(details, manager)
     };
   } catch {
     return null;

@@ -28,7 +28,7 @@
 
 import { access, getIdentity, publish, who } from './access.js';
 import { getConfig, getSnapshot } from './config.js';
-import { EGGS, eggById, playEgg } from './easterEggs.js';
+import { EGGS, eggById, normalizeCustomTest, playCustomTest, playEgg } from './easterEggs.js';
 import { playButton } from './soundEffects.js';
 import { confirmDialog, openModal, toast } from './ui.js';
 
@@ -45,6 +45,7 @@ const HEADINGS = { manager: 'Incoming transmission', agent: 'Incoming agent mess
 const SIDES = ['agent', 'npc', 'a', 'b'];
 const MESSAGE_CLASSES = ['manager', 'agent', 'npc', 'anomaly'];
 const EGG_TAG = 'ta-egg-';
+const CUSTOM_TEST_TAG = 'ta-custom-test';
 const EVENT_RESULT_TAG = 'ta-event-result';
 const EVENT_RESULT_DELETE_TAG = 'ta-event-result-delete';
 const LEGACY_EGG_RESULT_TAG = 'ta-egg-result';
@@ -150,6 +151,12 @@ function history(channel) {
   return histories.get(channel);
 }
 
+// Test definitions are transport data, not a chat transcript. Keep the direct-line history
+// readable after a Manager-authored test has been delivered.
+function displayMessageText(message) {
+  return message?.test ? `[Custom test] ${message.test.title}` : String(message?.text || '');
+}
+
 function deletedSet(channel) {
   if (!deletedMessages.has(channel)) deletedMessages.set(channel, new Set());
   return deletedMessages.get(channel);
@@ -174,8 +181,9 @@ function remember(channel, message, { canonical = false } = {}) {
     const cachedTime = Number(list[at].time) || 0;
     const archiveTime = Number(message.time) || 0;
     const canonicalMessage = {
-      // An archive that does not carry the egg yet must not turn it into plain text.
+      // An archive that does not carry an interactive definition yet must not turn it into plain text.
       ...(list[at].egg ? { egg: list[at].egg } : {}),
+      ...(list[at].test ? { test: list[at].test } : {}),
       ...message,
       time: cachedTime && archiveTime ? Math.min(cachedTime, archiveTime) : archiveTime || cachedTime
     };
@@ -247,6 +255,11 @@ function eventResultFromEvent(event) {
   catch { return null; }
 }
 
+function customTestFromPayload(payload) {
+  try { return normalizeCustomTest((JSON.parse(String(payload || '')) || {}).customTest); }
+  catch { return null; }
+}
+
 function deletedEventResultFromEvent(event) {
   try { return String((JSON.parse(String(event.message || '')) || {}).sourceId || '').slice(0, 160); }
   catch { return ''; }
@@ -306,6 +319,7 @@ function ingest(event) {
   if (!id || deletedSet(event.topic).has(id)) return null;
   const messageClass = MESSAGE_CLASSES.find(item => tags.includes(`ta-class-${item}`));
   const egg = tags.find(tag => tag.startsWith(EGG_TAG))?.slice(EGG_TAG.length);
+  const test = tags.includes(CUSTOM_TEST_TAG) ? customTestFromPayload(event.message) : null;
   const message = {
     // A rejuvenated ntfy event has a new event id but keeps the original sequence id.
     // Treat the entire sequence as one logical message in history and in read receipts.
@@ -315,7 +329,8 @@ function ingest(event) {
     from: event.title || '',
     text: String(event.message || ''),
     ...(messageClass ? { class: messageClass } : {}),
-    ...(egg ? { egg } : {})
+    ...(egg ? { egg } : {}),
+    ...(test ? { test } : {})
   };
   if (!remember(event.topic, message)) return null;
   refreshPanel(event.topic);
@@ -346,6 +361,8 @@ async function loadPublishedArchive(topics) {
     });
     (Array.isArray(saved.messages) ? saved.messages : []).forEach(item => {
       if (!item || !item.id || !SIDES.includes(item.side) || deletedSet(channel).has(String(item.id))) return;
+      const test = normalizeCustomTest(item.test)
+        || (Array.isArray(item.tags) && item.tags.includes(CUSTOM_TEST_TAG) ? customTestFromPayload(item.text) : null);
       remember(channel, {
         id: String(item.id),
         time: Number(item.time) || 0,
@@ -353,7 +370,8 @@ async function loadPublishedArchive(topics) {
         from: String(item.from || ''),
         text: String(item.text || ''),
         ...(MESSAGE_CLASSES.includes(item.class) ? { class: item.class } : {}),
-        ...(typeof item.egg === 'string' && item.egg ? { egg: item.egg } : {})
+        ...(typeof item.egg === 'string' && item.egg ? { egg: item.egg } : {}),
+        ...(test ? { test } : {})
       }, { canonical: true });
     });
     const archivedResults = Array.isArray(saved.eventResults) ? saved.eventResults
@@ -550,13 +568,14 @@ export function recordTrackedEventResult(value) {
  * messages use the conversation's channel and are copied when the Manager plays the other
  * side or wants every message.
  */
-async function send(conv, text, { answering = null, from = '', messageClass = '', egg = '', notify = null } = {}) {
+async function send(conv, text, { answering = null, from = '', messageClass = '', egg = '', customTest = null, notify = null } = {}) {
   if (conversationClosed(conv)) return false;
-  text = text.trim().slice(0, MAX_TEXT);
+  const test = normalizeCustomTest(customTest);
+  text = test ? JSON.stringify({ customTest: test }) : text.trim().slice(0, MAX_TEXT);
   if (!text) return false;
   const author = String(from || myName(conv)).trim().slice(0, 80) || myName(conv);
   const className = MESSAGE_CLASSES.includes(messageClass) ? messageClass : '';
-  const tags = [`ta-${conv.side}`, ...(className ? [`ta-class-${className}`] : []), ...(egg ? [`${EGG_TAG}${egg}`] : [])];
+  const tags = [`ta-${conv.side}`, ...(className ? [`ta-class-${className}`] : []), ...(egg ? [`${EGG_TAG}${egg}`] : []), ...(test ? [CUSTOM_TEST_TAG] : [])];
   const messageId = newMessageId();
   if (conv.kind === 'manager') {
     const sent = await post(conv.channel, { title: author, message: text, tags, sequence_id: messageId });
@@ -568,13 +587,15 @@ async function send(conv, text, { answering = null, from = '', messageClass = ''
       from: author,
       text,
       ...(className ? { class: className } : {}),
-      ...(egg ? { egg } : {})
+      ...(egg ? { egg } : {}),
+      ...(test ? { test } : {})
     });
     // Keep the Manager's ntfy subscription useful when they are not signed into the site.
     if (conv.side === 'agent' && access().notify !== conv.channel && notify) {
       publish(notify.title, notify.text, notify.tags);
     } else if (conv.side === 'agent' && access().notify !== conv.channel) {
-      const quote = answering ? `\n\n↩ to ${answering.from || 'The Manager'}: “${answering.text.length > 120 ? `${answering.text.slice(0, 117)}…` : answering.text}”` : '';
+      const answerText = displayMessageText(answering);
+      const quote = answering ? `\n\n↩ to ${answering.from || 'The Manager'}: “${answerText.length > 120 ? `${answerText.slice(0, 117)}…` : answerText}”` : '';
       publish(`${answering ? 'Reply' : 'Message'} from ${who()}`, text + quote, ['speech_balloon']);
     }
   } else {
@@ -737,7 +758,7 @@ function present({ conv, message }) {
   overlay.hidden = false;
   playButton('session', 'badgeRead');
   return new Promise(resolve => {
-    const text = message.text;
+  const text = displayMessageText(message);
     let shown = 0;
     let timer = 0;
     const finish = () => {
@@ -790,8 +811,12 @@ async function drain() {
     // Read on another device (or in the panel) while it waited.
     if (isSeen(next.conv, next.message.id)) continue;
     const egg = next.conv.kind === 'manager' && eggById(next.message.egg);
+    const test = next.conv.kind === 'manager' && next.message.test;
     if (egg) {
       await playEgg(egg, result => queueEventResult(next.conv, next.message.id, result));
+      markSeen(next.conv, next.message.id);
+    } else if (test) {
+      await playCustomTest(test, result => queueEventResult(next.conv, next.message.id, result));
       markSeen(next.conv, next.message.id);
     } else {
       await present(next);
@@ -976,7 +1001,7 @@ function renderList() {
     choose.dataset.conv = String(conversations.indexOf(conv));
     choose.innerHTML = '<span class="messages-dot" aria-hidden="true"></span><span class="messages-who"><strong></strong><small></small></span><span class="messages-count"></span>';
     choose.querySelector('strong').textContent = name;
-    choose.querySelector('small').textContent = last ? `${last.side === conv.side ? 'You: ' : ''}${last.text}` : note;
+    choose.querySelector('small').textContent = last ? `${last.side === conv.side ? 'You: ' : ''}${displayMessageText(last)}` : note;
     const count = choose.querySelector('.messages-count');
     count.textContent = unread ? String(unread) : '';
     count.hidden = !unread;
@@ -1002,8 +1027,10 @@ function managerDirectLines() {
 function trackedAttempts(conv) {
   const deleted = deletedEventResults(conv.channel);
   return history(conv.channel)
-    .filter(message => message.egg && !deleted.has(message.id))
-    .map(message => ({ id: message.id, time: message.time, category: 'easter-egg', eventId: message.egg }));
+    .filter(message => (message.egg || message.test) && !deleted.has(message.id))
+    .map(message => message.test
+      ? { id: message.id, time: message.time, category: 'custom-test', eventId: message.test.id, test: message.test }
+      : { id: message.id, time: message.time, category: 'easter-egg', eventId: message.egg });
 }
 
 function trackedEventTypesFor(conv) {
@@ -1013,8 +1040,8 @@ function trackedEventTypesFor(conv) {
     if (!types.has(key)) types.set(key, {
       category: attempt.category,
       eventId: attempt.eventId,
-      title: eggById(attempt.eventId)?.title || attempt.eventId,
-      summary: eggById(attempt.eventId)?.summary || ''
+      title: attempt.test?.title || eggById(attempt.eventId)?.title || attempt.eventId,
+      summary: attempt.test?.description || eggById(attempt.eventId)?.summary || ''
     });
   });
   (eventResults.get(conv.channel) || new Map()).forEach(result => {
@@ -1194,7 +1221,7 @@ function renderThread() {
     const meta = document.createElement('small');
     meta.textContent = `${message.side === conv.side ? `You, as ${message.from || myName(conv)}` : message.from || theirName(conv)}${message.time ? ` · ${clock(message.time)}` : ''}`;
     const text = document.createElement('p');
-    text.textContent = message.text;
+    text.textContent = displayMessageText(message);
     entry.append(meta, text);
     return entry;
   }));
@@ -1388,6 +1415,75 @@ function openQuickMessage(card) {
   });
 }
 
+/** The Manager's per-agent test designer. The definition travels with the message, so an
+ * agent only ever receives the test selected for their own direct line. */
+function openCustomTestDesigner(card, conv) {
+  const agentName = card.querySelector('[data-stat="name"]')?.value?.trim() || 'Agent';
+  const form = document.createElement('form');
+  form.className = 'custom-test-form';
+  form.noValidate = true;
+  form.innerHTML = `
+    <label>Title<input name="title" maxlength="160" required autofocus placeholder="e.g. Field protocol check"></label>
+    <label>Box colour<input name="colour" type="color" value="#64d2ff"></label>
+    <label>Description<textarea name="description" rows="4" maxlength="1000" required placeholder="What should the agent consider?"></textarea></label>
+    <div class="custom-test-choice-fields">
+      <strong>Choices <small>(up to three)</small></strong>
+      <div><input name="choice-1" maxlength="80" required placeholder="Choice 1"><input name="choice-colour-1" type="color" value="#64d2ff" aria-label="Choice 1 colour"></div>
+      <div><input name="choice-2" maxlength="80" placeholder="Choice 2"><input name="choice-colour-2" type="color" value="#ffd60a" aria-label="Choice 2 colour"></div>
+      <div><input name="choice-3" maxlength="80" placeholder="Choice 3"><input name="choice-colour-3" type="color" value="#ff9f0a" aria-label="Choice 3 colour"></div>
+    </div>
+    <p class="manager-message-state" aria-live="polite"></p>`;
+  const state = form.querySelector('.manager-message-state');
+  let close = null;
+  const transmit = async () => {
+    const title = form.elements.title.value.trim();
+    const description = form.elements.description.value.trim();
+    const choices = [1, 2, 3].map(index => ({
+      label: form.elements[`choice-${index}`].value.trim(),
+      colour: form.elements[`choice-colour-${index}`].value
+    })).filter(choice => choice.label);
+    form.querySelectorAll('.invalid').forEach(field => field.classList.remove('invalid'));
+    if (!title || !description || !choices.length) {
+      const field = !title ? form.elements.title : !description ? form.elements.description : form.elements['choice-1'];
+      field.classList.add('invalid');
+      field.focus();
+      state.textContent = 'Add a title, description and at least one choice.';
+      return false;
+    }
+    const test = normalizeCustomTest({
+      id: `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      title, description, colour: form.elements.colour.value, choices
+    });
+    if (!test) {
+      state.textContent = 'One of the test colours or choices is invalid.';
+      return false;
+    }
+    const button = form.closest('.modal-panel')?.querySelector('.modal-btn-primary');
+    if (button) button.disabled = true;
+    [...form.elements].forEach(field => { field.disabled = true; });
+    state.className = 'manager-message-state';
+    state.textContent = 'Transmitting…';
+    if (await send(conv, test.title, { from: 'Triangle Agency', messageClass: 'anomaly', customTest: test })) {
+      close?.();
+      toast(`${test.title} sent to ${agentName}. Their choice will appear in the Event log.`, { kind: 'success' });
+      return true;
+    }
+    [...form.elements].forEach(field => { field.disabled = false; });
+    if (button) button.disabled = false;
+    state.classList.add('is-error');
+    state.textContent = 'Transmission failed · try again';
+    return false;
+  };
+  close = openModal({
+    title: `Custom test for ${agentName}`,
+    content: form,
+    className: 'egg-picker-modal tx-anomaly',
+    closeLabel: 'Cancel',
+    actions: [{ label: 'Send test', variant: 'primary', submit: true, onClick: () => { transmit(); return false; } }]
+  });
+  form.addEventListener('submit', event => { event.preventDefault(); transmit(); });
+}
+
 /** The easter eggs the Manager can fire at an agent, each with how it went so far. */
 function openEggPicker(card, conv) {
   const agentName = card.querySelector('[data-stat="name"]')?.value?.trim() || 'Agent';
@@ -1426,6 +1522,18 @@ function openEggPicker(card, conv) {
     item.append(title, summary, state, fire);
     return item;
   }));
+  const custom = document.createElement('li');
+  const title = document.createElement('strong');
+  title.textContent = 'Custom test';
+  const summary = document.createElement('p');
+  summary.textContent = 'Create a title, description, box colour and up to three coloured choices for this agent only.';
+  const create = document.createElement('button');
+  create.type = 'button';
+  create.className = 'modal-btn modal-btn-primary';
+  create.textContent = 'Create';
+  create.addEventListener('click', () => { close?.(); openCustomTestDesigner(card, conv); });
+  custom.append(title, summary, create);
+  list.append(custom);
   close = openModal({
     title: `Easter egg per ${agentName}`,
     content: list,

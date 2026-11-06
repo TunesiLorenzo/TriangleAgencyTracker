@@ -7,10 +7,14 @@
 // anything locked buzzes and throws UNAUTHORIZED ACCESS across the screen; the third time,
 // the agent is logged out. Each attempt is also reported to the Manager, in words
 // (describeAttempt), through access.js.
+// The Manager is never warned, reported or logged out: the locked controls just stay still.
+// A Playwall code clicked opens its Document instead of counting as an attempt: any code for
+// the Manager, only the ones their agent has unlocked for a player (playwall.js).
 
 import { getConfig } from './config.js';
 import { isMuted, playSlot } from './soundEffects.js';
 import { getIdentity, noteTerminated, playWarning, reportAttempt } from './access.js';
+import { openPlaywall, playwallCodeAt } from './playwall.js';
 
 // Clicked, right-clicked or dropped on, these change the team.
 const LOCKED = [
@@ -25,7 +29,7 @@ const LOCKED = [
 // Step tracks that also move with the arrow keys.
 const KEYBOARD_LOCKED = '.rel-track, .dose-track';
 // Fields that only change how something is shown, not the team; and the login screen's own.
-const FREE_FIELDS = '.case-brightness-panel input, .login-entry, .transmission-answer, .messages-compose textarea, .manager-message-form input, .manager-message-form select, .manager-message-form textarea';
+const FREE_FIELDS = '.case-brightness-panel input, .login-entry, .transmission-answer, .messages-compose textarea, .manager-message-form input, .manager-message-form select, .manager-message-form textarea, .playwall-filter';
 const TEXT_INPUTS = new Set(['text', 'number', 'search', 'email', 'url', 'tel', 'password']);
 // Keys that only move focus or select, which a frozen field still takes.
 const HARMLESS_KEYS = new Set(['Tab', 'Shift', 'Control', 'Alt', 'Meta', 'Escape']);
@@ -107,6 +111,7 @@ function describeAttempt(target, type) {
  * tilt, numbering the violation. The third one ends the session once the banner has gone.
  */
 function warn(target, type) {
+  if (getIdentity()?.manager) return;   // the Manager may press anything: no banner, no report, no logout
   violations++;
   reportAttempt(describeAttempt(target, type));
   const reprimand = 1000 + Math.floor(Math.random() * 9000);
@@ -270,6 +275,15 @@ export function initReadOnly() {
   // Capturing on window runs before every handler the page put on its elements.
   const guard = event => {
     if (!(event.target instanceof Element)) return;
+    // A Playwall code this account may read: its Document, instead of whatever the box would do.
+    if (event.type === 'click' || event.type === 'dblclick') {
+      const code = playwallCodeAt(event.target);
+      if (code) {
+        block(event);
+        if (event.type === 'click') openPlaywall(code);
+        return;
+      }
+    }
     // A frozen checkbox is pressed through the label drawn over it.
     const frozenLabel = event.type === 'click' && event.target.closest('label')?.control?.matches('[data-frozen]');
     if (!event.target.closest(LOCKED) && !frozenLabel) return;

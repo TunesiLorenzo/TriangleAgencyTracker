@@ -1,0 +1,151 @@
+/* The Documents in Playwall on a published copy (js/playwall.js): every one for the
+   Manager, the ones their agent unlocked for a player. */
+
+/* The codes on screen that open their Document for whoever is signed in. */
+[data-playwall-open] { cursor: zoom-in; }
+[data-playwall-open]:not(.answer-square):hover {
+  outline: 2px solid #0a84ff;
+  outline-offset: 1px;
+  box-shadow: 0 0 10px rgba(10,132,255,0.6);
+}
+
+/* The PLAYWALL button, beside Messages and the Event log. */
+html[data-read-only] #playwallButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 10px;
+  padding: 12px 20px;
+  border: 2px solid #0a84ff;
+  border-radius: 8px;
+  background: rgba(10,132,255,0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(10,132,255,0.25);
+}
+html[data-read-only] #playwallButton:is(:hover, :focus-visible) { background: rgba(10,132,255,0.35); outline: none; }
+
+/* The viewer: over the message alert and the tracker's dialogs, under the login screen. */
+.modal-backdrop:has(.playwall-modal) { z-index: 10042; }
+.modal-panel.playwall-modal {
+  position: relative;   /* anchors the modal's x button */
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, 100%);
+  height: calc(100dvh - 32px);
+  max-height: none;
+  overflow: hidden;
+}
+.playwall-modal .modal-title { padding-right: 36px; }
+.playwall-modal .modal-actions { display: none; }
+.playwall-viewer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.playwall-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.playwall-meta {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 14px;
+  opacity: 0.8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.playwall-viewer[data-mode="document"] .playwall-meta { order: -1; }
+.playwall-bar button {
+  padding: 6px 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.playwall-bar .playwall-nav { min-width: 36px; font-size: 18px; line-height: 1; }
+.playwall-bar button:is(:hover, :focus-visible):not(:disabled) { background: rgba(10,132,255,0.3); border-color: #0a84ff; outline: none; }
+.playwall-bar button:disabled { opacity: 0.3; cursor: default; }
+.playwall-viewer[data-mode="index"] .playwall-nav { display: none; }
+
+.playwall-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.playwall-page {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  background: #fff;
+}
+.playwall-page + .playwall-page { margin-top: 10px; }
+.playwall-error { margin: 16px 0; color: #ff6b61; }
+
+/* The index: every Code, by letter, with its Title. */
+.playwall-filter {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.3);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+}
+.playwall-filter:focus-visible { border-color: #0a84ff; outline: none; }
+.playwall-group + .playwall-group { margin-top: 12px; }
+.playwall-group[hidden], .playwall-entry[hidden] { display: none; }
+.playwall-letter {
+  margin: 0 0 6px;
+  color: #0a84ff;
+  font-size: 13px;
+  letter-spacing: 2px;
+}
+.playwall-codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 6px;
+}
+.playwall-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.playwall-entry strong { flex: none; min-width: 2.4em; color: #0a84ff; }
+.playwall-entry span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
+.playwall-entry:is(:hover, :focus-visible) { border-color: #0a84ff; background: rgba(10,132,255,0.18); outline: none; }
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 760px) {
+  html[data-read-only] #playwallButton { margin-right: 6px; padding: 6px 10px; border-width: 1.5px; font-size: 11px; letter-spacing: 1px; }
+  .modal-panel.playwall-modal { height: calc(100dvh - 12px); padding: 10px 12px; }
+  .playwall-codes { grid-template-columns: 1fr 1fr; }
+}
