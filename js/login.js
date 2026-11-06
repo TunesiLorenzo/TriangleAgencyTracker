@@ -25,7 +25,9 @@ import {
   reportFailedSignIn, setIdentity, startSession
 } from './access.js';
 import { startMessages, stopMessages } from './messages.js';
+import { startSessionTriangles, stopSessionTriangles } from './sessionTriangles.js';
 import { showAgentTag, showOwnAgent } from './readOnly.js';
+import { startPlaywall, stopPlaywall } from './playwall.js';
 import { createBackdrop } from './loginBackdrop.js';
 import { createBadgeRig } from './loginBadge.js';
 import { divisionOf, drawBarcode, qualificationOf } from './badge.js';
@@ -690,6 +692,8 @@ function beginSession() {
   showOwnAgent();
   startSession();
   startMessages();
+  startSessionTriangles();
+  startPlaywall();
 }
 
 async function signOut() {
@@ -697,6 +701,8 @@ async function signOut() {
   if (agent) {
     endSession();
     stopMessages();
+    stopSessionTriangles();
+    stopPlaywall();
     showOwnAgent(null);
   }
   // The sound comes from the button itself (Log in / out on /settings).

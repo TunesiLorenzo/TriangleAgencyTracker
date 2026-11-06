@@ -8,7 +8,8 @@ once into snapshot.json beside it: the settings, the sound list, the team and th
 archive, as they are in the tracker file right now. The viewer looks for that file first
 (js/config.js) and, finding it, runs as a published copy, for looking only: every page can
 be opened and heard, but nothing can be changed (js/readOnly.js), saved, or sent to the
-lights. The settings page, the room lights and the rulebook scans of Materiale/ are left out.
+lights. The settings page, the room lights and the rulebook scans of Materiale/ are left out;
+of the manual, only the Documents in Playwall that playwall.py cut out, sealed for the Manager.
 The players' accounts (the Players tab of /settings) go in sealed: each can only be opened
 with its own username and password, typed at the login screen (js/access.js).
 
@@ -29,6 +30,8 @@ import subprocess
 import tempfile
 import urllib.parse
 from pathlib import Path
+
+import playwall
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"       # the tracker file, unless TRACKER_DATA_DIR puts it elsewhere
@@ -300,7 +303,12 @@ def make_access(players, team=None):
             "inbox": "",
             "messages": [],
         }
+        # The key to the Documents in Playwall (playwall.py): only the Manager can read them.
+        playwall_access = playwall.manager_details()
+        if playwall_access:
+            details["playwall"] = playwall_access
         accounts.append({"id": account_id, **seal(key, json.dumps(details, ensure_ascii=False).encode("utf-8"))})
+    tables = playwall.track_tables() if playwall.built() else None
     for account in configured_accounts:
         if not isinstance(account, dict):
             continue
@@ -321,6 +329,10 @@ def make_access(players, team=None):
             "inbox": str(account.get("inbox") or "").strip(),
             "messages": [{"id": hashlib.sha256(message.encode("utf-8")).hexdigest()[:16], "text": message}] if message else [],
         }
+        # The keys to the Documents in Playwall their agent has unlocked, and no others (playwall.py).
+        unlocked = playwall.player_details(char, tables) if tables else None
+        if unlocked:
+            details["playwall"] = unlocked
         accounts.append({"id": account_id, **seal(key, json.dumps(details, ensure_ascii=False).encode("utf-8"))})
     return {
         "server": ntfy_server(players.get("server")),
@@ -382,6 +394,8 @@ def site_files(cases):
         for item in sorted((BASE_DIR / folder).rglob("*")):
             if item.is_file():
                 files[item.relative_to(BASE_DIR).as_posix()] = item.relative_to(BASE_DIR).as_posix()
+    # The Documents in Playwall, sealed (playwall.py), when they have been cut out of the manual.
+    files.update(playwall.published_files())
     missing = []
     for name in case_scans(cases):
         if (CASES_DIR / name).is_file():

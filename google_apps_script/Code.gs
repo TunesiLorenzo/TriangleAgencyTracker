@@ -470,6 +470,19 @@ function eggOf_(tags) {
   return tag ? { egg: tag.slice('ta-egg-'.length) } : {};
 }
 
+// A Manager-authored test keeps its definition in the message body so it can be recreated on
+// an agent's next visit. Only tagged test messages expose that structured body in the archive.
+function customTestOf_(message) {
+  const tags = Array.isArray(message.tags) ? message.tags.map(String) : [];
+  if (!tags.includes('ta-custom-test')) return {};
+  try {
+    const test = JSON.parse(String(message.text || '')).customTest;
+    return test && typeof test === 'object' && !Array.isArray(test) ? { test } : {};
+  } catch (error) {
+    return {};
+  }
+}
+
 function publicArchive_(state, nextAutomaticSyncAt) {
   const topics = Object.create(null);
   Object.keys(state.topics).sort().forEach(channel => {
@@ -485,7 +498,8 @@ function publicArchive_(state, nextAutomaticSyncAt) {
           text: message.text,
           expires: Number(message.expires || 0),
           ...(message.class ? { class: message.class } : {}),
-          ...eggOf_(message.tags)
+          ...eggOf_(message.tags),
+          ...customTestOf_(message)
         })),
       eventResults: Object.values(topic.eventResults)
         .sort((a, b) => Number(a.time || 0) - Number(b.time || 0)),

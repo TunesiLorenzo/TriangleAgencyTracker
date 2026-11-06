@@ -15,3 +15,5 @@ cases/
 Materiale/
 images/badge/
 dist/
+# The Documents in Playwall cut out of the manual, sealed for the Manager (playwall.py).
+playwall/

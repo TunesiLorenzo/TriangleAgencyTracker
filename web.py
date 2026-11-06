@@ -1654,6 +1654,8 @@ def public_site_asset(filename):
     folder, _, rest = filename.partition("/")
     if folder in build_static.ASSET_FOLDERS and rest:
         return send_from_directory(BASE_DIR / folder, rest)
+    if folder == "playwall" and filename in build_static.playwall.published_files():
+        return send_from_directory(build_static.playwall.FILES_DIR, rest)
     if folder == "cases" and rest:
         with cases_lock:
             scans = build_static.case_scans(load_cases())

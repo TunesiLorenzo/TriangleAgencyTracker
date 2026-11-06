@@ -66,6 +66,23 @@ export const EGGS = [
 
 export const eggById = id => EGGS.find(egg => egg.id === id) || null;
 
+const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
+
+/** Convert an untrusted transmission into the small, display-only test shape. */
+export function normalizeCustomTest(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const id = String(value.id || '').slice(0, 80);
+  const title = String(value.title || '').trim().slice(0, 160);
+  const description = String(value.description || '').trim().slice(0, 1000);
+  const colour = String(value.colour || '').trim();
+  const choices = Array.isArray(value.choices) ? value.choices.slice(0, 3).map(choice => ({
+    label: String(choice?.label || '').trim().slice(0, 80),
+    colour: String(choice?.colour || '').trim()
+  })).filter(choice => choice.label && HEX_COLOUR.test(choice.colour)) : [];
+  if (!/^[-_A-Za-z0-9]{1,80}$/.test(id) || !title || !description || !HEX_COLOUR.test(colour) || choices.length < 1) return null;
+  return { id, title, description, colour, choices };
+}
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -176,6 +193,42 @@ export function playEgg(egg, onResult = null) {
     // A click anywhere else stays on the page under it.
     overlay.addEventListener('click', event => event.stopPropagation());
 
+    document.body.append(overlay);
+    playButton('session', 'badgeRead');
+  });
+}
+
+/** A Manager-authored test. Its response is recorded by messages.js just like phishing. */
+export function playCustomTest(test, onResult = null) {
+  const safe = normalizeCustomTest(test);
+  if (!safe) return Promise.resolve();
+  return new Promise(resolve => {
+    const overlay = el('div', 'custom-test');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', safe.title);
+    const box = el('section', 'custom-test-box');
+    box.style.setProperty('--test-colour', safe.colour);
+    box.append(el('p', 'custom-test-kicker', 'Triangle Agency · Response requested'), el('h2', '', safe.title), el('p', 'custom-test-description', safe.description));
+    const choices = el('div', 'custom-test-choices');
+    safe.choices.forEach(choice => {
+      const button = el('button', 'custom-test-choice', choice.label);
+      button.type = 'button';
+      button.style.setProperty('--choice-colour', choice.colour);
+      button.addEventListener('click', () => {
+        choices.querySelectorAll('button').forEach(item => { item.disabled = true; });
+        try {
+          onResult?.({ eventId: safe.id, category: 'custom-test', title: safe.title, status: 'answered', choice: choice.label, outcome: `Selected: ${choice.label}`, time: Math.floor(Date.now() / 1000) });
+        } catch { /* messages.js retains and retries result delivery independently. */ }
+        publish(`Custom test · ${safe.title}`, `${who()} selected “${choice.label}”.`, ['ballot_box_with_check']);
+        const confirmation = el('p', 'custom-test-confirm', 'Response recorded.');
+        box.append(confirmation);
+        setTimeout(() => { overlay.remove(); resolve(); }, 850);
+      }, { once: true });
+      choices.append(button);
+    });
+    box.append(choices);
+    overlay.append(box);
     document.body.append(overlay);
     playButton('session', 'badgeRead');
   });
