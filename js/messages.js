@@ -116,24 +116,93 @@ const newMessageId = () => {
   return `ta-${Date.now().toString(36)}-${[...random].map(byte => byte.toString(36).padStart(2, '0')).join('')}`;
 };
 
-/** The colour a conversation is drawn in: a relationship marked as an anomaly is blue, like the agent's own. */
-const colourOf = conv => (conv.kind === 'npc' && conv.anomaly ? 'anomaly' : conv.kind);
+/* ---------- correspondents: chats of their own on a direct line ---------- */
+// An agent's direct line carries more than the Manager: the Communication Center and the quick
+// message on an agent card write as anyone ("The Agency", a caller, an anomaly). Each sender
+// that is not the Manager is a chat of its own on the same channel, for the agent and for the
+// Manager. What is written in it carries ta-thread-<key> (the collector keeps it as `thread`),
+// so the agent's answer stays in that chat instead of landing in the Manager's.
+const THREAD_TAG = 'ta-thread-';
+const isThreadKey = key => /^[0-9a-f]{8}$/.test(String(key || ''));
+const MANAGER_NAMES = new Set(['', 'manager', 'the manager', 'il manager']);
+const senderName = name => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** A sender's chat key: FNV-1a of the name, as the tag ntfy carries. */
+function threadKey(name) {
+  let hash = 0x811c9dc5;
+  for (const ch of senderName(name)) hash = Math.imul(hash ^ ch.codePointAt(0), 0x01000193) >>> 0;
+  return hash.toString(16).padStart(8, '0');
+}
+
+/** The chat a direct-line message belongs to: '' for the Manager's own, else its sender's key.
+ * Easter eggs and tests stay in the Manager's chat, whoever they claim to come from. */
+function threadOf(message) {
+  if (isThreadKey(message.thread)) return message.thread;
+  if (message.side !== 'npc' || message.egg || message.test || MANAGER_NAMES.has(senderName(message.from))) return '';
+  return threadKey(message.from);
+}
+
+/** Whether a message is shown in this conversation: on a direct line, only its own chat's. */
+const belongs = (conv, message) => conv.kind !== 'manager' || threadOf(message) === (conv.thread || '');
+const messagesOf = conv => history(conv.channel).filter(message => belongs(conv, message));
+/** What a chat shows: a custom test travels on the direct line and plays on the agent's screen,
+ * but is shown in no chat, the agent's or the Manager's; only in the Manager's Event log. */
+const shownIn = conv => messagesOf(conv).filter(message => !message.test);
+
+const threadConvs = new Map();   // `${channel}|${side}|${key}` -> the chat with that sender
+
+/** A chat for every sender found on this direct line, next to the line itself. */
+function discoverThreads(channel) {
+  const lines = (byChannel.get(channel) || []).filter(conv => conv.kind === 'manager' && !conv.thread);
+  if (!lines.length) return;
+  const senders = new Map();   // key -> { name, class } of the sender's latest message
+  history(channel).forEach(message => {
+    const key = threadOf(message);
+    if (!key) return;
+    const sender = senders.get(key) || {};
+    if (message.side === 'npc' && message.from.trim()) {
+      sender.name = message.from.trim();
+      if (MESSAGE_CLASSES.includes(message.class)) sender.class = message.class;
+    }
+    senders.set(key, sender);
+  });
+  senders.forEach((sender, key) => lines.forEach(line => {
+    const id = `${channel}|${line.side}|${key}`;
+    let conv = threadConvs.get(id);
+    if (!conv) {
+      conv = { ...line, thread: key };
+      threadConvs.set(id, conv);
+      conversations.push(conv);
+      byChannel.get(channel).push(conv);
+    }
+    conv.threadName = sender.name || conv.threadName || 'Unknown sender';
+    conv.threadClass = sender.class || conv.threadClass || 'manager';
+  }));
+}
+
+/** The colour a conversation is drawn in: a relationship marked as an anomaly is blue, like the
+ * agent's own; a sender's chat on a direct line, in the colour they last wrote in. */
+const colourOf = conv => (conv.kind === 'manager' && conv.thread ? conv.threadClass || 'manager'
+  : conv.kind === 'npc' && conv.anomaly ? 'anomaly' : conv.kind);
 const conversationClosed = conv => conv?.dead === true;
 
 /** Who the player writes as in a conversation, and who they write to. */
 function myName(conv) {
   if (conv.kind === 'agent') return conv.side === 'a' ? conv.agentName : conv.other;
-  if (conv.kind === 'manager') return conv.side === 'agent' ? conv.agentName || getIdentity()?.username : 'The Manager';
+  if (conv.kind === 'manager') return conv.side === 'agent' ? conv.agentName || getIdentity()?.username : conv.thread ? conv.threadName : 'The Manager';
   return conv.side === 'agent' ? conv.agentName || getIdentity()?.username : conv.other;
 }
 
 function theirName(conv) {
   if (conv.kind === 'agent') return conv.side === 'a' ? conv.other : conv.agentName;
-  if (conv.kind === 'manager') return conv.side === 'agent' ? 'The Manager' : `Agent ${conv.agentName}`;
+  if (conv.kind === 'manager') return conv.side === 'agent' ? (conv.thread ? conv.threadName : 'The Manager') : `Agent ${conv.agentName}`;
   return conv.side === 'agent' ? conv.other : `Agent ${conv.agentName}`;
 }
 
 function label(conv) {
+  if (conv.kind === 'manager' && conv.thread) return conv.side === 'npc'
+    ? { name: `${conv.threadName} → Agent ${conv.agentName}`, note: `Direct line · you write as ${conv.threadName}` }
+    : { name: conv.threadName, note: 'Direct line' };
   if (conv.kind === 'manager') return { name: conv.side === 'npc' ? `Agent ${conv.agentName}` : 'The Manager', note: 'Direct line' };
   if (conv.kind === 'agent') return { name: theirName(conv), note: 'Agent to agent' };
   if (conv.kind === 'anomaly') return conv.side === 'agent'
@@ -193,6 +262,7 @@ function remember(channel, message, { canonical = false } = {}) {
       // An archive that does not carry an interactive definition yet must not turn it into plain text.
       ...(list[at].egg ? { egg: list[at].egg } : {}),
       ...(list[at].test ? { test: list[at].test } : {}),
+      ...(list[at].thread ? { thread: list[at].thread } : {}),
       ...message,
       time: cachedTime && archiveTime ? Math.min(cachedTime, archiveTime) : archiveTime || cachedTime
     };
@@ -330,6 +400,7 @@ function ingest(event) {
   const messageClass = MESSAGE_CLASSES.find(item => tags.includes(`ta-class-${item}`));
   const egg = tags.find(tag => tag.startsWith(EGG_TAG))?.slice(EGG_TAG.length);
   const test = tags.includes(CUSTOM_TEST_TAG) ? customTestFromPayload(event.message) : null;
+  const thread = tags.find(tag => tag.startsWith(THREAD_TAG))?.slice(THREAD_TAG.length);
   const message = {
     // A rejuvenated ntfy event has a new event id but keeps the original sequence id.
     // Treat the entire sequence as one logical message in history and in read receipts.
@@ -340,9 +411,11 @@ function ingest(event) {
     text: String(event.message || ''),
     ...(messageClass ? { class: messageClass } : {}),
     ...(egg ? { egg } : {}),
-    ...(test ? { test } : {})
+    ...(test ? { test } : {}),
+    ...(isThreadKey(thread) ? { thread } : {})
   };
   if (!remember(event.topic, message)) return null;
+  discoverThreads(event.topic);
   refreshPanel(event.topic);
   return message;
 }
@@ -381,7 +454,8 @@ async function loadPublishedArchive(topics) {
         text: String(item.text || ''),
         ...(MESSAGE_CLASSES.includes(item.class) ? { class: item.class } : {}),
         ...(typeof item.egg === 'string' && item.egg ? { egg: item.egg } : {}),
-        ...(test ? { test } : {})
+        ...(test ? { test } : {}),
+        ...(isThreadKey(item.thread) ? { thread: item.thread } : {})
       }, { canonical: true });
     });
     const archivedResults = Array.isArray(saved.eventResults) ? saved.eventResults
@@ -584,8 +658,12 @@ async function send(conv, text, { answering = null, from = '', messageClass = ''
   text = test ? JSON.stringify({ customTest: test }) : text.trim().slice(0, MAX_TEXT);
   if (!text) return false;
   const author = String(from || myName(conv)).trim().slice(0, 80) || myName(conv);
-  const className = MESSAGE_CLASSES.includes(messageClass) ? messageClass : '';
-  const tags = [`ta-${conv.side}`, ...(className ? [`ta-class-${className}`] : []), ...(egg ? [`${EGG_TAG}${egg}`] : []), ...(test ? [CUSTOM_TEST_TAG] : [])];
+  // In a sender's chat on a direct line: the chat's tag, and on the Manager's side their colour.
+  const thread = conv.kind === 'manager' && !egg && !test ? conv.thread || '' : '';
+  const className = MESSAGE_CLASSES.includes(messageClass) ? messageClass
+    : thread && conv.side === 'npc' ? conv.threadClass || '' : '';
+  const tags = [`ta-${conv.side}`, ...(className ? [`ta-class-${className}`] : []), ...(egg ? [`${EGG_TAG}${egg}`] : []),
+    ...(test ? [CUSTOM_TEST_TAG] : []), ...(thread ? [`${THREAD_TAG}${thread}`] : [])];
   const messageId = newMessageId();
   if (conv.kind === 'manager') {
     const sent = await post(conv.channel, { title: author, message: text, tags, sequence_id: messageId });
@@ -598,15 +676,17 @@ async function send(conv, text, { answering = null, from = '', messageClass = ''
       text,
       ...(className ? { class: className } : {}),
       ...(egg ? { egg } : {}),
-      ...(test ? { test } : {})
+      ...(test ? { test } : {}),
+      ...(thread ? { thread } : {})
     });
+    discoverThreads(conv.channel);
     // Keep the Manager's ntfy subscription useful when they are not signed into the site.
     if (conv.side === 'agent' && access().notify !== conv.channel && notify) {
       publish(notify.title, notify.text, notify.tags);
     } else if (conv.side === 'agent' && access().notify !== conv.channel) {
       const answerText = displayMessageText(answering);
       const quote = answering ? `\n\n↩ to ${answering.from || 'The Manager'}: “${answerText.length > 120 ? `${answerText.slice(0, 117)}…` : answerText}”` : '';
-      publish(`${answering ? 'Reply' : 'Message'} from ${who()}`, text + quote, ['speech_balloon']);
+      publish(`${answering ? 'Reply' : 'Message'} from ${who()}${thread ? ` to ${conv.threadName}` : ''}`, text + quote, ['speech_balloon']);
     }
   } else {
     const sent = await post(conv.channel, { title: myName(conv), message: text, tags: [`ta-${conv.side}`], sequence_id: messageId });
@@ -627,12 +707,17 @@ async function send(conv, text, { answering = null, from = '', messageClass = ''
 function purchaseLine() {
   const identity = getIdentity();
   if (!started || !identity || identity.guest || identity.manager) return null;
-  return conversations.find(conv => conv.kind === 'manager' && conv.side === 'agent' && isTopic(conv.channel)) || null;
+  return conversations.find(conv => conv.kind === 'manager' && conv.side === 'agent' && !conv.thread && isTopic(conv.channel)) || null;
 }
+
+/** A test account shops as this agent id: on no card, and in no denied pair of the Players tab. */
+export const TEST_AGENT_ID = 'test-account';
 
 /** The agent (card id) whose player can ask the Manager for an Acquisizione here, or ''. */
 export function purchasingAgentId() {
-  return purchaseLine() ? String(getIdentity().charId || '') : '';
+  if (!purchaseLine()) return '';
+  const identity = getIdentity();
+  return String(identity.charId || '') || (identity.test ? TEST_AGENT_ID : '');
 }
 
 /**
@@ -660,7 +745,9 @@ export async function requestPurchase({ item, option = '', cost = null, availabl
   return send(conv, `🛒 Richiesta di acquisto: ${what}\n${costLine}${balanceLine}${note ? `\nNota: ${note}` : ''}`, {
     notify: {
       title: `🛒 Purchase request from ${who()}`,
-      text: `${what}\n${managerCost}${note ? `\n\n“${note}”` : ''}\n\nGive it on the Agency tab, take the Note di Merito, then publish.`,
+      text: `${what}\n${managerCost}${note ? `\n\n“${note}”` : ''}\n\n${getIdentity()?.test
+        ? 'Test account: nothing to give, the balance is pretend.'
+        : 'Give it on the Agency tab, take the Note di Merito, then publish.'}`,
       tags: ['shopping_cart']
     }
   });
@@ -800,7 +887,8 @@ function present({ conv, message }) {
 /** Queue a message for this agent, unless it has been seen, here or on another device. */
 function offer(conv, message) {
   const key = `${conv.channel}|${conv.side}|${message.id}`;
-  if (!incoming(conv, message) || !message.text.trim() || isSeen(conv, message.id) || offered.has(key)) return;
+  // On a direct line, each chat takes only its own sender's messages, so a reply goes back there.
+  if (!belongs(conv, message) || !incoming(conv, message) || !message.text.trim() || isSeen(conv, message.id) || offered.has(key)) return;
   // Old clients may still post after the relationship was marked dead. Acknowledge the
   // blocked message so the collector does not rejuvenate it, but never present it.
   if (conversationClosed(conv)) {
@@ -843,7 +931,7 @@ let openConv = null;   // the conversation on show in the panel
 let activePersona = ''; // the controlled character whose conversation list is on show
 
 const unreadIn = conv => conversationClosed(conv) ? 0
-  : history(conv.channel).filter(message => incoming(conv, message) && !isSeen(conv, message.id)).length;
+  : shownIn(conv).filter(message => incoming(conv, message) && !isSeen(conv, message.id)).length;
 
 function updateBadge() {
   renderEventTracker();
@@ -894,6 +982,7 @@ function buildPanel() {
           <header class="messages-thread-top">
             <button type="button" class="messages-back" aria-label="Back to the list">&lsaquo;</button>
             <p class="messages-thread-name"></p>
+            <button type="button" class="messages-egg" hidden>&#10059;</button>
           </header>
           <ol class="messages-log" aria-live="polite"></ol>
           <div class="messages-compose">
@@ -909,6 +998,7 @@ function buildPanel() {
     if (event.target.closest('.messages-close')) closePanel();
     else if (event.target.closest('.messages-back')) panel.classList.remove('is-reading');
     else if (event.target.closest('.messages-send')) sendFromPanel();
+    else if (event.target.closest('.messages-egg') && testableLine(openConv)) openEggPicker(openConv.agentName || 'Agent', openConv);
     const persona = event.target.closest('[data-persona]');
     if (persona) {
       selectPersona(personaGroups()[Number(persona.dataset.persona)]);
@@ -949,12 +1039,13 @@ function controlledPersona(conv) {
 function personaGroups() {
   const groups = [];
   const byKey = new Map();
-  // An account on no agent (a test account) has no map node to start a chat from:
-  // its line to the Manager is listed from the start.
+  // An account on no agent (a test account) has no map node or card to start a chat from:
+  // its line with the Manager is listed from the start, on both sides.
   const identity = getIdentity();
-  const listedEmpty = conv => conv.kind === 'manager' && conv.side === 'agent' && isTopic(conv.channel)
-    && !identity?.manager && !identity?.charId;
-  conversations.filter(conv => history(conv.channel).length > 0 || listedEmpty(conv)).forEach(conv => {
+  const listedEmpty = conv => conv.kind === 'manager' && !conv.thread && isTopic(conv.channel) && (identity?.manager
+    ? conv.side === 'npc' && !conv.agentId
+    : conv.side === 'agent' && !identity?.charId);
+  conversations.filter(conv => shownIn(conv).length > 0 || listedEmpty(conv)).forEach(conv => {
     const persona = controlledPersona(conv);
     let group = byKey.get(persona.key);
     if (!group) {
@@ -1008,7 +1099,7 @@ function renderList() {
   list.replaceChildren(...visible.map(conv => {
     const { name, note } = label(conv);
     const unread = unreadIn(conv);
-    const last = history(conv.channel).at(-1);
+    const last = shownIn(conv).at(-1);
     const item = document.createElement('li');
     const choose = document.createElement('button');
     choose.type = 'button';
@@ -1034,7 +1125,7 @@ const clock = time => {
 function managerDirectLines() {
   const unique = new Map();
   conversations
-    .filter(conv => conv.kind === 'manager' && conv.side === 'npc')
+    .filter(conv => conv.kind === 'manager' && conv.side === 'npc' && !conv.thread)
     .forEach(conv => { if (!unique.has(conv.channel)) unique.set(conv.channel, conv); });
   return [...unique.values()].sort((a, b) => String(a.agentName || '').localeCompare(String(b.agentName || '')));
 }
@@ -1079,12 +1170,17 @@ function attemptStatus(conv, attempt, result) {
     className: ['pass', 'passed'].includes(result.status) ? 'is-pass'
       : ['fail', 'failed'].includes(result.status) ? 'is-fail'
         : 'is-recorded',
-    detail: [result.choice ? `Choice: ${result.choice}` : '', result.outcome, result.reward ? `Reward: ${result.reward}` : ''].filter(Boolean)
+    // A custom test's choice is shown among its choices (renderEventTracker), not repeated here.
+    detail: [
+      result.choice && !attempt.test?.choices?.length ? `Choice: ${result.choice}` : '',
+      result.outcome === `Selected: ${result.choice}` ? '' : result.outcome,
+      result.reward ? `Reward: ${result.reward}` : ''
+    ].filter(Boolean)
   };
   if (receiptSets(conv.channel).agent.has(attempt.id)) return {
     label: 'Discovered · result unavailable',
     className: 'is-legacy',
-    detail: ['This attempt was acknowledged before structured result tracking was available.']
+    detail: ['Marked as seen, but no answer came back: read in the Messages panel before it could pop up, or acknowledged before results were tracked.']
   };
   return { label: 'Awaiting agent', className: 'is-pending', detail: [] };
 }
@@ -1192,6 +1288,24 @@ function renderEventTracker() {
           remove.addEventListener('click', () => removeTrackedEventRecord(conv, attempt, type));
           line.append(label, date, remove);
           item.append(line);
+          // A custom test: what it offered, with the agent's pick marked, or that it was open.
+          if (attempt.test) {
+            const offered = document.createElement('ul');
+            offered.className = 'egg-ledger-choices';
+            const options = attempt.test.mode === 'open'
+              ? [{ label: 'Open answer', colour: attempt.test.colour, open: true }]
+              : attempt.test.choices;
+            offered.append(...options.map(choice => {
+              const chip = document.createElement('li');
+              const picked = !choice.open && !!result && result.choice === choice.label;
+              chip.className = `${picked ? 'is-picked' : ''}${choice.open ? ' is-open' : ''}`.trim();
+              chip.style.setProperty('--choice-colour', choice.colour);
+              chip.textContent = picked ? `✓ ${choice.label}` : choice.label;
+              return chip;
+            }));
+            offered.setAttribute('aria-label', 'Choices offered');
+            item.append(offered);
+          }
           status.detail.forEach(text => {
             const detail = document.createElement('small');
             detail.textContent = text;
@@ -1228,7 +1342,7 @@ function renderThread() {
   const { name, note } = label(conv);
   panel.querySelector('.messages-thread').className = `messages-thread tx-${colourOf(conv)}${conversationClosed(conv) ? ' is-dead' : ''}`;
   panel.querySelector('.messages-thread-name').textContent = `${name} · ${note}`;
-  const messages = history(conv.channel);
+  const messages = shownIn(conv);
   log.replaceChildren(...messages.map(message => {
     const entry = document.createElement('li');
     const messageClass = MESSAGE_CLASSES.includes(message.class) ? message.class : colourOf(conv);
@@ -1256,13 +1370,22 @@ function renderThread() {
   panel.querySelector('.messages-send').disabled = conversationClosed(conv);
   // The Manager is reached through the Manager's channel, if there is one.
   panel.querySelector('.messages-compose').hidden = !isTopic(conv.channel) || spectating();
+  // The Manager's tests and easter eggs, from the thread too: the only way to reach an account
+  // with no agent card (a test account).
+  const egg = panel.querySelector('.messages-egg');
+  egg.hidden = !testableLine(conv);
+  egg.title = `Send a test or easter egg to ${conv.agentName || 'this agent'}`;
+  egg.setAttribute('aria-label', egg.title);
   if (conversationClosed(conv)) {
     const state = panel.querySelector('.messages-state');
     state.className = 'messages-state is-closed';
     state.textContent = 'This character is deceased. The conversation is read-only.';
   }
   // Reading it here is seeing it.
-  messages.filter(message => incoming(conv, message)).forEach(message => markSeen(conv, message.id));
+  // Not an easter egg or a test: those are seen once played (drain), and one seen here first
+  // would never pop up, so the Manager would get no answer.
+  messages.filter(message => incoming(conv, message) && !message.egg && !message.test)
+    .forEach(message => markSeen(conv, message.id));
 }
 
 function showThread(conv) {
@@ -1430,10 +1553,17 @@ function openQuickMessage(card) {
   });
 }
 
+/** A direct line the signed-in Manager can send tests and easter eggs on. */
+function testableLine(conv) {
+  return !!conv && !!getIdentity()?.manager && conv.kind === 'manager' && conv.side === 'npc' && !conv.thread
+    && isTopic(conv.channel) && !spectating();
+}
+
+const cardName = card => card.querySelector('[data-stat="name"]')?.value?.trim() || 'Agent';
+
 /** The Manager's per-agent test designer. The definition travels with the message, so an
  * agent only ever receives the test selected for their own direct line. */
-function openCustomTestDesigner(card, conv) {
-  const agentName = card.querySelector('[data-stat="name"]')?.value?.trim() || 'Agent';
+function openCustomTestDesigner(agentName, conv) {
   const form = document.createElement('form');
   form.className = 'custom-test-form';
   form.noValidate = true;
@@ -1556,8 +1686,7 @@ function openCustomTestDesigner(card, conv) {
 }
 
 /** The easter eggs the Manager can fire at an agent, each with how it went so far. */
-function openEggPicker(card, conv) {
-  const agentName = card.querySelector('[data-stat="name"]')?.value?.trim() || 'Agent';
+function openEggPicker(agentName, conv) {
   const list = document.createElement('ul');
   list.className = 'egg-picker';
   let close = null;
@@ -1602,7 +1731,7 @@ function openEggPicker(card, conv) {
   create.type = 'button';
   create.className = 'modal-btn modal-btn-primary';
   create.textContent = 'Create';
-  create.addEventListener('click', () => { close?.(); openCustomTestDesigner(card, conv); });
+  create.addEventListener('click', () => { close?.(); openCustomTestDesigner(agentName, conv); });
   custom.append(title, summary, create);
   list.append(custom);
   close = openModal({
@@ -1634,7 +1763,7 @@ function decorateAgentCards() {
         event.preventDefault();
         event.stopPropagation();
         const conv = directLine(card._id);
-        if (conv?.kind) openEggPicker(card, conv);
+        if (conv?.kind) openEggPicker(cardName(card), conv);
       });
       card.append(eggButton);
     }
@@ -1703,7 +1832,7 @@ function agentPersona(node) {
 }
 
 function managerConversation(agentId, side) {
-  return conversations.find(conv => conv.kind === 'manager' && conv.side === side
+  return conversations.find(conv => conv.kind === 'manager' && conv.side === side && !conv.thread
     && String(conv.agentId) === String(agentId)) || null;
 }
 
@@ -1830,6 +1959,7 @@ export async function startMessages() {
     kind: 'manager', side: 'agent', agentId: identity.charId, agentName: identity.name || identity.username, other: 'The Manager', manager: true
   };
   conversations = [...(manager ? [manager] : []), ...identity.conversations.filter(conv => isTopic(conv.channel))];
+  threadConvs.clear();
   for (const conv of conversations) {
     if (!byChannel.has(conv.channel)) byChannel.set(conv.channel, []);
     byChannel.get(conv.channel).push(conv);
@@ -1846,6 +1976,8 @@ export async function startMessages() {
   const since = now();
   await loadPublishedArchive(topics);
   if (topics.length) (await poll(topics)).forEach(ingest);
+  // The senders' chats in what this device and the archive kept (live ones arrive through ingest).
+  topics.forEach(discoverThreads);
   if (hasPendingReceipts()) scheduleReceiptFlush();
   // What waited: the message left on the account first, then the rest in the order sent.
   identity.messages.forEach(left => {
@@ -1856,7 +1988,7 @@ export async function startMessages() {
     }
   });
   conversations
-    .flatMap(conv => history(conv.channel).map(message => ({ conv, message })))
+    .flatMap(conv => messagesOf(conv).map(message => ({ conv, message })))
     .sort((a, b) => a.message.time - b.message.time)
     .forEach(({ conv, message }) => offer(conv, message));
   updateBadge();

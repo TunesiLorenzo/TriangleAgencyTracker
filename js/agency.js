@@ -16,7 +16,8 @@ import { loadSettings, saveSettings, updateSettings } from './storage.js';
 import { openModal, toast } from './ui.js';
 import { createUuid } from './uuid.js';
 import { motionAllowed } from './motion.js';
-import { purchasingAgentId, requestPurchase } from './messages.js';
+import { purchasingAgentId, requestPurchase, TEST_AGENT_ID } from './messages.js';
+import { getIdentity } from './access.js';
 import { onConfigChange, PURCHASE_OTHER, purchaseAllowed, purchaseCatalog } from './config.js';
 
 const TEAM = 'team';   // owner or holder of a communal item
@@ -642,6 +643,8 @@ function purchaseChoices(agentId) {
  * (the triangle itself is this Incarico's, added to the total when it ends, and may be sealed).
  */
 function availableMerits(agentId) {
+  // A test account has no card: it shops with the pretend balance set on the Players tab.
+  if (agentId === TEST_AGENT_ID) return getIdentity()?.testMerits || 0;
   return meritsOf(getCharElements().find(candidate => String(candidate._id) === agentId));
 }
 

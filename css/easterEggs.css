@@ -192,6 +192,26 @@ html[data-motion="reduced"] :is(.egg, .egg-cipher, .egg-banner, .egg-verdict, .e
   outline: none;
   transform: scale(1.08);
 }
+/* The same picker from a direct line open in the Messages panel: the only way to an account
+   with no agent card (a test account). Its modal opens over the panel. */
+.messages-egg {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid rgba(61,155,255,0.6);
+  border-radius: 50%;
+  background: rgba(4,12,24,0.9);
+  color: #7cbcff;
+  font-size: 15px;
+  cursor: pointer;
+}
+.messages-egg[hidden] { display: none; }
+.messages-egg:is(:hover, :focus-visible) { background: rgba(61,155,255,0.24); box-shadow: 0 0 13px rgba(61,155,255,0.5); outline: none; }
+.modal-backdrop:has(.egg-picker-modal) { z-index: 10047; }   /* over the Messages panel (readOnly.css) */
 .egg-picker-modal { width: min(460px, 100%); border-color: rgba(var(--tx-rgb),0.55); }
 .egg-picker { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .egg-picker li {
@@ -354,6 +374,22 @@ html[data-motion="reduced"] .session-triangle { animation: none; }
 .egg-ledger-attempts strong { color: #fff; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
 .egg-ledger-attempts time { color: rgba(255,255,255,0.5); font-size: 11px; }
 .egg-ledger-attempts small { display: block; margin-top: 4px; color: rgba(255,255,255,0.65); line-height: 1.35; }
+/* A custom test's choices in the Event log, the agent's pick filled in its colour. */
+.egg-ledger-choices { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0 2px; padding: 0; list-style: none; }
+.egg-ledger-choices li {
+  padding: 2px 8px;
+  border: 1px solid var(--choice-colour, #64d2ff);
+  border-radius: 999px;
+  color: rgba(255,255,255,0.6);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.egg-ledger-choices li.is-picked {
+  background: color-mix(in srgb, var(--choice-colour, #64d2ff) 35%, transparent);
+  color: #fff;
+  font-weight: 800;
+}
+.egg-ledger-choices li.is-open { border-style: dashed; font-style: italic; }
 .egg-ledger-remove {
   flex: none;
   padding: 2px 7px;

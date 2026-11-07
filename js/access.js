@@ -18,6 +18,7 @@ import { isMuted, playSlot } from './soundEffects.js';
 const WARNING_SOUND = { source: 'file:buzz.wav', volume: 1, next: '' };
 const BATCH_MS = 8000;          // attempts are reported together, at most this often
 const MAX_FAILED_REPORTS = 5;   // failed sign-ins reported per page load
+export const TEST_MERITS = 100; // a test account's Note di Merito when the Players tab sets none
 
 /* ---------- SHA-256 ---------- */
 const rotr = (x, n) => (x >>> n) | (x << (32 - n));
@@ -141,7 +142,7 @@ function agentOf(charId) {
 /** A visitor without an account: AGENT# and a five-digit number drawn for the visit. */
 export function guestIdentity() {
   const badge = String(10000 + Math.floor(Math.random() * 90000));
-  return { guest: true, manager: false, accountId: '', username: `AGENT#${badge}`, badge, name: '', picture: '', charId: '', player: '', inbox: '', messages: [], conversations: [], watch: [], playwall: null };
+  return { guest: true, manager: false, test: false, testMerits: 0, accountId: '', username: `AGENT#${badge}`, badge, name: '', picture: '', charId: '', player: '', inbox: '', messages: [], conversations: [], watch: [], playwall: null };
 }
 
 /** The account these credentials open, as an identity; null when they open none. */
@@ -153,9 +154,14 @@ export function findAccount(username, password) {
     const details = unseal(key, account);
     const agent = agentOf(details.charId);
     const manager = details.manager === true;
+    // An account on no agent is a test account: on no card and in no one else's conversations,
+    // it shops with the pretend Note di Merito set for it on the Players tab.
+    const test = !manager && !details.charId;
     return {
       guest: false,
       manager,
+      test,
+      testMerits: test ? (Number.isInteger(details.testMerits) && details.testMerits >= 0 ? details.testMerits : TEST_MERITS) : 0,
       accountId: id,
       username: details.username,
       badge: details.badge || String(10000 + Math.floor(Math.random() * 90000)),
