@@ -26,7 +26,7 @@
 // of the channel side. A Manager message tagged ta-egg-<id> is an easter egg (easterEggs.js),
 // played on the agent's screen instead of being typed out.
 
-import { access, getIdentity, publish, who } from './access.js';
+import { access, getIdentity, publish, spectating, who } from './access.js';
 import { getConfig, getSnapshot } from './config.js';
 import { EGGS, eggById, normalizeCustomTest, playCustomTest, playEgg } from './easterEggs.js';
 import { playButton } from './soundEffects.js';
@@ -70,7 +70,11 @@ let source = null;               // the live EventSource on every channel
 let started = false;
 
 /* ---------- storage ---------- */
+// Spectating (/spectate), this browser's own history and seen lists are left alone: the
+// page starts from what the player's devices share (the archive and ntfy) and keeps
+// everything in memory, so a reload shows the next login again.
 function storage(action) {
+  if (spectating()) return null;
   try { return action(localStorage); } catch { return null; }
 }
 function readList(key) {
@@ -279,6 +283,7 @@ function server() {
 
 /** Post on a channel; resolves to the posted message ({ id, time }), or null. */
 function post(topic, body) {
+  if (spectating()) return Promise.resolve(null);
   return fetch(`${server()}/`, { method: 'POST', keepalive: true, body: JSON.stringify({ topic, ...body }) })
     .then(response => (response.ok ? response.json().catch(() => ({})) : null))
     .catch(() => null);
@@ -476,7 +481,7 @@ function markSeen(conv, id) {
   mine.add(id);
   writeList(`ta-seen-${conv.channel}|${conv.side}`, [...mine].slice(-SEEN_LIMIT));
   receiptSets(conv.channel)[conv.side].add(id);
-  if (isTopic(conv.channel)) {
+  if (isTopic(conv.channel) && !spectating()) {
     const key = `${conv.channel}|${conv.side}`;
     const pending = pendingReceiptSet(key);
     pending.add(id);
@@ -545,7 +550,7 @@ function flushEventResults() {
 
 function queueEventResult(conv, sourceId, value) {
   const result = normalizeEventResult({ ...value, sourceId });
-  if (!result || !isTopic(conv.channel)) return;
+  if (!result || !isTopic(conv.channel) || spectating()) return;
   const pending = pendingEventResults();
   const key = `${conv.channel}|${result.sourceId}`;
   const item = { channel: conv.channel, side: conv.side, result };
@@ -756,7 +761,8 @@ function present({ conv, message }) {
   part('answer').readOnly = false;
   part('state').textContent = '';
   // Nowhere for an answer to the Manager to go without the Manager's channel.
-  part('answer-button').hidden = !isTopic(conv.channel) || conversationClosed(conv);
+  part('answer-button').hidden = !isTopic(conv.channel) || conversationClosed(conv) || spectating();
+  part('close').textContent = spectating() ? 'Close · not acknowledged' : 'Acknowledge';
   part('answer-button').textContent = `Reply as ${myName(conv)}`;
   part('send').hidden = true;
   part('send').disabled = false;
@@ -1249,7 +1255,7 @@ function renderThread() {
   compose.readOnly = conversationClosed(conv);
   panel.querySelector('.messages-send').disabled = conversationClosed(conv);
   // The Manager is reached through the Manager's channel, if there is one.
-  panel.querySelector('.messages-compose').hidden = !isTopic(conv.channel);
+  panel.querySelector('.messages-compose').hidden = !isTopic(conv.channel) || spectating();
   if (conversationClosed(conv)) {
     const state = panel.querySelector('.messages-state');
     state.className = 'messages-state is-closed';

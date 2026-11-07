@@ -1474,22 +1474,22 @@ def send_communication_message():
     })
 
 
-def fetch_json_url(url):
+def fetch_json_url(url, what="published message archive", limit_mb=10):
     request_object = urllib.request.Request(
         url + ("&" if "?" in url else "?") + f"local={int(time.time())}",
         headers={"Accept": "application/json", "User-Agent": "TriangleAgencyTracker/1.0"},
     )
     try:
         with urllib.request.urlopen(request_object, timeout=20) as response:
-            body = response.read(10 * 1024 * 1024 + 1)
+            body = response.read(limit_mb * 1024 * 1024 + 1)
     except (urllib.error.URLError, TimeoutError) as error:
-        raise RuntimeError(f"Could not read the published message archive: {error}") from error
-    if len(body) > 10 * 1024 * 1024:
-        raise RuntimeError("The published message archive is larger than 10 MB")
+        raise RuntimeError(f"Could not read the {what}: {error}") from error
+    if len(body) > limit_mb * 1024 * 1024:
+        raise RuntimeError(f"The {what} is larger than {limit_mb} MB")
     try:
         return json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as error:
-        raise RuntimeError("The published message archive is not valid JSON") from error
+        raise RuntimeError(f"The {what} is not valid JSON") from error
 
 
 @app.get("/api/communication-center/config")
@@ -1662,6 +1662,121 @@ def public_site_asset(filename):
         if rest in scans:
             return send_from_directory(CASES_DIR, rest)
     abort(404)
+
+
+# /spectate: the published copy as a player gets it, signed in as any account, with nothing
+# sent back. /spectate/ shows what GitHub Pages serves now (its snapshot.json), so what the
+# player will see on their next login; /spectate/local/ builds it from the tracker file, as
+# /public does. Both read the Google collector's message archive, which /public leaves
+# empty. The guard below runs before anything else on the page: it refuses every request
+# that is not a GET or HEAD (ntfy posts, receipts, the tracker's API), and js/access.js and
+# js/messages.js also check data-spectate, so the page says so instead of failing.
+SPECTATE_GUARD = """<script>
+(function () {
+  var data = document.documentElement.dataset;
+  data.spectate = '';
+  data.publishPreview = '';   // Disconnect leaves the page open, as on /publish
+  var refuse = function (what) { console.info('[spectate] not sent:', what); };
+  var send = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+    if (method === 'GET' || method === 'HEAD') return send(input, init);
+    refuse(method + ' ' + (input && input.url ? input.url : input));
+    return Promise.reject(new TypeError('Spectating: nothing is sent'));
+  };
+  if (navigator.sendBeacon) navigator.sendBeacon = function (url) { refuse('beacon ' + url); return false; };
+  var open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    if (!/^(GET|HEAD)$/i.test(method)) { refuse(method + ' ' + url); throw new TypeError('Spectating: nothing is sent'); }
+    return open.apply(this, arguments);
+  };
+})();
+</script>"""
+SPECTATE_PAGE_ADDITIONS = (
+    '  <link rel="stylesheet" href="/static/publish.css">\n'
+    '  <link rel="stylesheet" href="/static/spectate.css">\n'
+    '  <script src="/static/spectate.js" defer></script>\n'
+)
+SPECTATE_CACHE_SECONDS = 30
+spectate_cache = {}
+
+
+def spectate_local(filename):
+    return filename == "local" or filename.startswith("local/")
+
+
+def published_snapshot():
+    """GitHub Pages' snapshot.json, kept a few seconds (the page and its bar both read it)."""
+    site = published_site() or DEFAULT_MESSAGE_ARCHIVE_URL.rsplit("/", 1)[0] + "/"
+    url = site + build_static.SNAPSHOT_FILE
+    saved = spectate_cache.get(url)
+    if saved and time.time() - saved[0] < SPECTATE_CACHE_SECONDS:
+        return saved[1]
+    snapshot = fetch_json_url(url, what="published snapshot", limit_mb=64)
+    if not isinstance(snapshot, dict) or snapshot.get("format") != "triangle-agency-snapshot":
+        raise RuntimeError("The published snapshot.json is not a Triangle Agency snapshot")
+    spectate_cache[url] = (time.time(), snapshot)
+    return snapshot
+
+
+def spectate_snapshot(local):
+    """The snapshot to spectate, saying where it came from. Never an error: without a
+    snapshot the page would take itself for the tracker's own viewer."""
+    if not local:
+        try:
+            return {**published_snapshot(), "spectate": {"source": "published"}}
+        except (RuntimeError, ValueError, OSError) as error:
+            return {**public_snapshot(), "spectate": {"source": "local", "fallback": str(error)}}
+    return {**public_snapshot(), "spectate": {"source": "local"}}
+
+
+def spectate_message_archive():
+    """The collector's archive (the one the published copy reads), else an empty one."""
+    config = read_communication_config()
+    try:
+        archive = fetch_json_url(valid_archive_url(config.get("archiveUrl") or DEFAULT_MESSAGE_ARCHIVE_URL))
+    except (RuntimeError, ValueError, OSError):
+        archive = None
+    if not isinstance(archive, dict) or archive.get("format") != "triangle-agency-message-archive":
+        return app.response_class(build_static.empty_message_archive_text(), mimetype="application/json")
+    return jsonify(archive)
+
+
+@app.get("/spectate")
+def spectate_redirect():
+    return redirect("/spectate/")
+
+
+@app.get("/spectate/")
+@app.get("/spectate/local/")
+def spectate_page():
+    base = "/spectate/local/" if request.path.startswith("/spectate/local") else "/spectate/"
+    page = (BASE_DIR / "index.html").read_text(encoding="utf-8")
+    page = page.replace("<head>", f'<head>\n{SPECTATE_GUARD}\n  <base href="{base}">', 1)
+    return page.replace("</head>", SPECTATE_PAGE_ADDITIONS + "</head>", 1)
+
+
+@app.get("/spectate/<path:filename>")
+def spectate_asset(filename):
+    local = spectate_local(filename)
+    if filename == "local":
+        return redirect("/spectate/local/")
+    name = filename.partition("/")[2] if local else filename
+    if name == build_static.SNAPSHOT_FILE:
+        response = jsonify(spectate_snapshot(local))
+    elif name == build_static.MESSAGE_ARCHIVE_FILE:
+        response = spectate_message_archive()
+    else:
+        return public_site_asset(name)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/api/spectate/accounts")
+def spectate_accounts():
+    """The accounts to spectate as, from the tracker file (like /badges/access, only here)."""
+    return jsonify({"ok": True, "accounts": [{key: card[key] for key in ("name", "username", "password")}
+                                             for card in access_cards()]})
 
 
 @app.get("/publish")

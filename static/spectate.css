@@ -1,0 +1,25 @@
+/* The spectate bar on /spectate (static/spectate.js), on top of the publish bar's look
+   (static/publish.css). Cyan rather than the reality colour, so it is never taken for
+   /publish. */
+
+#publishBar.is-spectate { border-top-color: #3fc8d8; }
+#publishBar.is-spectate .publish-tag { color: #3fc8d8; }
+
+.spectate-pick {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaa;
+}
+.spectate-pick select {
+  min-height: 38px;
+  max-width: 240px;
+  padding: 0 10px;
+  border: 1px solid #3fc8d8;
+  border-radius: 8px;
+  background: #262626;
+  color: #eee;
+  font: inherit;
+  font-weight: 700;
+}
