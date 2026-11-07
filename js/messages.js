@@ -46,6 +46,11 @@ const SIDES = ['agent', 'npc', 'a', 'b'];
 const MESSAGE_CLASSES = ['manager', 'agent', 'npc', 'anomaly'];
 const EGG_TAG = 'ta-egg-';
 const CUSTOM_TEST_TAG = 'ta-custom-test';
+// The Manager's custom tests: at least this many choices (or an open answer), and no more than
+// fits in one ntfy message (4096 bytes), with room to spare.
+const MIN_TEST_CHOICES = 2;
+const MAX_TEST_BYTES = 3800;
+const TEST_CHOICE_COLOURS = ['#64d2ff', '#ffd60a', '#ff9f0a', '#30d158', '#bf5af2', '#ff453a', '#5e5ce6', '#ff375f'];
 const EVENT_RESULT_TAG = 'ta-event-result';
 const EVENT_RESULT_DELETE_TAG = 'ta-event-result-delete';
 const LEGACY_EGG_RESULT_TAG = 'ta-egg-result';
@@ -1426,37 +1431,92 @@ function openCustomTestDesigner(card, conv) {
     <label>Title<input name="title" maxlength="160" required autofocus placeholder="e.g. Field protocol check"></label>
     <label>Box colour<input name="colour" type="color" value="#64d2ff"></label>
     <label>Description<textarea name="description" rows="4" maxlength="1000" required placeholder="What should the agent consider?"></textarea></label>
+    <fieldset class="custom-test-mode">
+      <legend>Answer</legend>
+      <label><input type="radio" name="mode" value="choice" checked> Choices</label>
+      <label><input type="radio" name="mode" value="open"> Open answer <small>· the agent writes their own</small></label>
+    </fieldset>
     <div class="custom-test-choice-fields">
-      <strong>Choices <small>(up to three)</small></strong>
-      <div><input name="choice-1" maxlength="80" required placeholder="Choice 1"><input name="choice-colour-1" type="color" value="#64d2ff" aria-label="Choice 1 colour"></div>
-      <div><input name="choice-2" maxlength="80" placeholder="Choice 2"><input name="choice-colour-2" type="color" value="#ffd60a" aria-label="Choice 2 colour"></div>
-      <div><input name="choice-3" maxlength="80" placeholder="Choice 3"><input name="choice-colour-3" type="color" value="#ff9f0a" aria-label="Choice 3 colour"></div>
+      <strong>Choices <small>(two or more)</small></strong>
+      <div class="custom-test-choice-list"></div>
+      <button type="button" class="custom-test-add">+ Add choice</button>
     </div>
     <p class="manager-message-state" aria-live="polite"></p>`;
   const state = form.querySelector('.manager-message-state');
+  const choiceFields = form.querySelector('.custom-test-choice-fields');
+  const list = form.querySelector('.custom-test-choice-list');
+  const mode = () => form.elements.mode.value;
+  const rows = () => [...list.children];
+
+  /** Number the rows, and keep at least MIN_TEST_CHOICES of them. */
+  const renumber = () => rows().forEach((row, index) => {
+    const [label, colour, remove] = row.children;
+    label.placeholder = `Choice ${index + 1}`;
+    colour.setAttribute('aria-label', `Choice ${index + 1} colour`);
+    remove.setAttribute('aria-label', `Remove choice ${index + 1}`);
+    remove.disabled = rows().length <= MIN_TEST_CHOICES;
+  });
+  const addChoice = () => {
+    const row = document.createElement('div');
+    const label = document.createElement('input');
+    label.maxLength = 80;
+    const colour = document.createElement('input');
+    colour.type = 'color';
+    colour.value = TEST_CHOICE_COLOURS[rows().length % TEST_CHOICE_COLOURS.length];
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'custom-test-remove';
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      if (rows().length <= MIN_TEST_CHOICES) return;
+      row.remove();
+      renumber();
+    });
+    row.append(label, colour, remove);
+    list.append(row);
+    renumber();
+    return label;
+  };
+  for (let i = 0; i < MIN_TEST_CHOICES; i++) addChoice();
+  form.querySelector('.custom-test-add').addEventListener('click', () => addChoice().focus());
+  const showMode = () => { choiceFields.hidden = mode() === 'open'; };
+  form.querySelectorAll('input[name="mode"]').forEach(radio => radio.addEventListener('change', showMode));
+
   let close = null;
+  const fail = (field, message) => {
+    if (field) {
+      field.classList.add('invalid');
+      field.focus();
+    }
+    state.className = 'manager-message-state is-error';
+    state.textContent = message;
+    return false;
+  };
   const transmit = async () => {
     const title = form.elements.title.value.trim();
     const description = form.elements.description.value.trim();
-    const choices = [1, 2, 3].map(index => ({
-      label: form.elements[`choice-${index}`].value.trim(),
-      colour: form.elements[`choice-colour-${index}`].value
-    })).filter(choice => choice.label);
+    const open = mode() === 'open';
+    const choices = open ? [] : rows()
+      .map(row => ({ label: row.children[0].value.trim(), colour: row.children[1].value }))
+      .filter(choice => choice.label);
     form.querySelectorAll('.invalid').forEach(field => field.classList.remove('invalid'));
-    if (!title || !description || !choices.length) {
-      const field = !title ? form.elements.title : !description ? form.elements.description : form.elements['choice-1'];
-      field.classList.add('invalid');
-      field.focus();
-      state.textContent = 'Add a title, description and at least one choice.';
-      return false;
+    if (!title) return fail(form.elements.title, 'Add a title.');
+    if (!description) return fail(form.elements.description, 'Add a description.');
+    if (!open && choices.length < MIN_TEST_CHOICES) {
+      const empty = rows().map(row => row.children[0]).find(field => !field.value.trim());
+      return fail(empty, `Add at least ${MIN_TEST_CHOICES} choices, or make it an open answer.`);
     }
     const test = normalizeCustomTest({
       id: `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      title, description, colour: form.elements.colour.value, choices
+      title, description, colour: form.elements.colour.value, choices, ...(open ? { mode: 'open' } : {})
     });
-    if (!test) {
-      state.textContent = 'One of the test colours or choices is invalid.';
-      return false;
+    if (!test || (!open && test.choices.length !== choices.length)) {
+      return fail(null, 'One of the test colours or choices is invalid.');
+    }
+    // The test travels as one ntfy message: past its size it would not arrive as one.
+    const size = new TextEncoder().encode(JSON.stringify({ customTest: test })).length;
+    if (size > MAX_TEST_BYTES) {
+      return fail(null, `Too long to send as one transmission (${size} of ${MAX_TEST_BYTES} bytes): shorten the description or the choices.`);
     }
     const button = form.closest('.modal-panel')?.querySelector('.modal-btn-primary');
     if (button) button.disabled = true;
@@ -1465,10 +1525,11 @@ function openCustomTestDesigner(card, conv) {
     state.textContent = 'Transmitting…';
     if (await send(conv, test.title, { from: 'Triangle Agency', messageClass: 'anomaly', customTest: test })) {
       close?.();
-      toast(`${test.title} sent to ${agentName}. Their choice will appear in the Event log.`, { kind: 'success' });
+      toast(`${test.title} sent to ${agentName}. Their ${open ? 'answer' : 'choice'} will appear in the Event log.`, { kind: 'success' });
       return true;
     }
     [...form.elements].forEach(field => { field.disabled = false; });
+    renumber();
     if (button) button.disabled = false;
     state.classList.add('is-error');
     state.textContent = 'Transmission failed · try again';
@@ -1479,9 +1540,9 @@ function openCustomTestDesigner(card, conv) {
     content: form,
     className: 'egg-picker-modal tx-anomaly',
     closeLabel: 'Cancel',
+    // openModal also runs this if the form is ever submitted: one handler, so one send.
     actions: [{ label: 'Send test', variant: 'primary', submit: true, onClick: () => { transmit(); return false; } }]
   });
-  form.addEventListener('submit', event => { event.preventDefault(); transmit(); });
 }
 
 /** The easter eggs the Manager can fire at an agent, each with how it went so far. */
@@ -1526,7 +1587,7 @@ function openEggPicker(card, conv) {
   const title = document.createElement('strong');
   title.textContent = 'Custom test';
   const summary = document.createElement('p');
-  summary.textContent = 'Create a title, description, box colour and up to three coloured choices for this agent only.';
+  summary.textContent = 'Create a title, description and box colour for this agent only, with two or more coloured choices or an open answer.';
   const create = document.createElement('button');
   create.type = 'button';
   create.className = 'modal-btn modal-btn-primary';

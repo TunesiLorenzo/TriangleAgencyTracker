@@ -243,14 +243,44 @@ html[data-motion="reduced"] :is(.egg, .egg-cipher, .egg-banner, .egg-verdict, .e
 .custom-test-choice:is(:hover, :focus-visible) { background: var(--choice-colour); color: #07090d; outline: none; transform: translateX(4px); }
 .custom-test-confirm { margin: 22px 0 0; color: rgba(255,255,255,.74); font-size: 14px; }
 
-/* The form is deliberately compact: each test has one colour and up to three individually
-   coloured responses. */
+/* Many choices scroll inside the box rather than off the screen. */
+.custom-test-box { max-height: calc(100dvh - 32px); overflow: auto; box-sizing: border-box; }
+.custom-test-choice:disabled { opacity: .45; cursor: default; transform: none; }
+
+/* An open answer: the agent writes their own. */
+.custom-test-open { display: grid; gap: 10px; margin-top: 22px; }
+.custom-test-answer {
+  width: 100%; box-sizing: border-box; min-height: 110px; padding: 12px 14px; resize: vertical;
+  border: 2px solid var(--test-colour); border-radius: 7px; background: rgba(0,0,0,.35);
+  color: #fff; font: inherit; font-size: 15px; line-height: 1.45;
+}
+.custom-test-answer:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--test-colour) 40%, transparent); }
+.custom-test-open-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.custom-test-open-footer .custom-test-choice { width: auto; }
+.custom-test-count { color: rgba(255,255,255,.55); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* The form: one colour for the box, then two or more individually coloured choices (rows
+   added and removed at will) or an open answer. */
 .custom-test-form { display: grid; gap: 14px; }
 .custom-test-form label { display: grid; gap: 6px; }
-.custom-test-form input:not([type="color"]), .custom-test-form textarea { width: 100%; box-sizing: border-box; }
+.custom-test-form input:not([type="color"], [type="radio"]), .custom-test-form textarea { width: 100%; box-sizing: border-box; }
 .custom-test-form input[type="color"] { width: 48px; height: 34px; padding: 2px; cursor: pointer; }
+.custom-test-mode { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 0; border: 0; }
+.custom-test-mode legend { margin-bottom: 6px; padding: 0; font-weight: 700; }
+.custom-test-form .custom-test-mode label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.custom-test-mode small { color: rgba(255,255,255,.6); }
 .custom-test-choice-fields { display: grid; gap: 8px; }
-.custom-test-choice-fields > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.custom-test-choice-fields[hidden] { display: none; }
+.custom-test-choice-list { display: grid; gap: 8px; }
+.custom-test-choice-list > div { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.custom-test-remove, .custom-test-add {
+  border: 1px solid rgba(255,255,255,.2); border-radius: 6px; background: rgba(255,255,255,.06);
+  color: #fff; font: inherit; cursor: pointer;
+}
+.custom-test-remove { width: 34px; height: 34px; padding: 0; font-size: 18px; line-height: 1; }
+.custom-test-remove:disabled { opacity: .3; cursor: default; }
+.custom-test-add { justify-self: start; padding: 6px 12px; font-size: 13px; font-weight: 700; }
+.custom-test-remove:is(:hover, :focus-visible):not(:disabled), .custom-test-add:is(:hover, :focus-visible) { background: rgba(255,255,255,.16); outline: none; }
 .custom-test-form .invalid { outline: 2px solid #ff453a; outline-offset: 2px; }
 
 /* A rare triangle floats over a signed-in agent view for a few seconds. */
