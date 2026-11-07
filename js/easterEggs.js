@@ -67,19 +67,29 @@ export const EGGS = [
 export const eggById = id => EGGS.find(egg => egg.id === id) || null;
 
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
+// A bound on what a transmission may carry; in practice the size of one ntfy message
+// (messages.js MAX_TEST_BYTES) limits a test long before this.
+const MAX_CHOICES = 50;
+export const OPEN_ANSWER_MAX = 500;   // characters an agent may write in an open answer
 
-/** Convert an untrusted transmission into the small, display-only test shape. */
+/**
+ * Convert an untrusted transmission into the small, display-only test shape. A test either
+ * offers coloured choices, or (mode 'open') asks the agent to write their own answer.
+ * Choice tests keep the original shape, without a mode, so older copies still play them.
+ */
 export function normalizeCustomTest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const id = String(value.id || '').slice(0, 80);
   const title = String(value.title || '').trim().slice(0, 160);
   const description = String(value.description || '').trim().slice(0, 1000);
   const colour = String(value.colour || '').trim();
-  const choices = Array.isArray(value.choices) ? value.choices.slice(0, 3).map(choice => ({
+  if (!/^[-_A-Za-z0-9]{1,80}$/.test(id) || !title || !description || !HEX_COLOUR.test(colour)) return null;
+  if (value.mode === 'open') return { id, title, description, colour, mode: 'open', choices: [] };
+  const choices = Array.isArray(value.choices) ? value.choices.slice(0, MAX_CHOICES).map(choice => ({
     label: String(choice?.label || '').trim().slice(0, 80),
     colour: String(choice?.colour || '').trim()
   })).filter(choice => choice.label && HEX_COLOUR.test(choice.colour)) : [];
-  if (!/^[-_A-Za-z0-9]{1,80}$/.test(id) || !title || !description || !HEX_COLOUR.test(colour) || choices.length < 1) return null;
+  if (choices.length < 1) return null;
   return { id, title, description, colour, choices };
 }
 
@@ -210,6 +220,55 @@ export function playCustomTest(test, onResult = null) {
     const box = el('section', 'custom-test-box');
     box.style.setProperty('--test-colour', safe.colour);
     box.append(el('p', 'custom-test-kicker', 'Triangle Agency · Response requested'), el('h2', '', safe.title), el('p', 'custom-test-description', safe.description));
+    const finish = () => {
+      box.append(el('p', 'custom-test-confirm', 'Response recorded.'));
+      setTimeout(() => { overlay.remove(); resolve(); }, 850);
+    };
+
+    if (safe.mode === 'open') {
+      // The agent writes their own answer.
+      const form = el('form', 'custom-test-open');
+      const answer = el('textarea', 'custom-test-answer');
+      answer.rows = 4;
+      answer.maxLength = OPEN_ANSWER_MAX;
+      answer.placeholder = 'Your answer…';
+      answer.setAttribute('aria-label', 'Your answer');
+      const count = el('span', 'custom-test-count', `0 / ${OPEN_ANSWER_MAX}`);
+      const submit = el('button', 'custom-test-choice', 'Send answer');
+      submit.type = 'submit';
+      submit.disabled = true;
+      submit.style.setProperty('--choice-colour', safe.colour);
+      const footer = el('div', 'custom-test-open-footer');
+      footer.append(count, submit);
+      form.append(answer, footer);
+      answer.addEventListener('input', () => {
+        count.textContent = `${answer.value.length} / ${OPEN_ANSWER_MAX}`;
+        submit.disabled = !answer.value.trim();
+      });
+      // Ctrl/Cmd+Enter sends; Enter alone is a new line.
+      answer.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) form.requestSubmit();
+      });
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const text = answer.value.trim().slice(0, OPEN_ANSWER_MAX);
+        if (!text || answer.readOnly) return;
+        answer.readOnly = true;
+        submit.disabled = true;
+        try {
+          onResult?.({ eventId: safe.id, category: 'custom-test', title: safe.title, status: 'answered', choice: '', outcome: `Answer: ${text}`, time: Math.floor(Date.now() / 1000) });
+        } catch { /* messages.js retains and retries result delivery independently. */ }
+        publish(`Custom test · ${safe.title}`, `${who()} answered:\n“${text}”`, ['memo']);
+        finish();
+      });
+      box.append(form);
+      overlay.append(box);
+      document.body.append(overlay);
+      playButton('session', 'badgeRead');
+      requestAnimationFrame(() => answer.focus());
+      return;
+    }
+
     const choices = el('div', 'custom-test-choices');
     safe.choices.forEach(choice => {
       const button = el('button', 'custom-test-choice', choice.label);
@@ -221,9 +280,7 @@ export function playCustomTest(test, onResult = null) {
           onResult?.({ eventId: safe.id, category: 'custom-test', title: safe.title, status: 'answered', choice: choice.label, outcome: `Selected: ${choice.label}`, time: Math.floor(Date.now() / 1000) });
         } catch { /* messages.js retains and retries result delivery independently. */ }
         publish(`Custom test · ${safe.title}`, `${who()} selected “${choice.label}”.`, ['ballot_box_with_check']);
-        const confirmation = el('p', 'custom-test-confirm', 'Response recorded.');
-        box.append(confirmation);
-        setTimeout(() => { overlay.remove(); resolve(); }, 850);
+        finish();
       }, { once: true });
       choices.append(button);
     });

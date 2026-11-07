@@ -191,11 +191,13 @@ export function who(person = identity) {
 
 /* ---------- notifications to the Manager ---------- */
 const preview = () => 'publishPreview' in document.documentElement.dataset;
+/** /spectate on the tracker server (web.py): signed in as a player, nothing goes out. */
+export const spectating = () => 'spectate' in document.documentElement.dataset;
 
 /** A notification on the Manager's channel; resolves to ntfy's response, or null when it could not be sent. */
 export function publish(title, message, tags = []) {
   const { server, notify } = access();
-  if (!notify) return Promise.resolve(null);
+  if (!notify || spectating()) return Promise.resolve(null);
   // A plain-text body and no custom headers: a "simple" request, with no CORS preflight.
   return fetch(`${server}/`, {
     method: 'POST',

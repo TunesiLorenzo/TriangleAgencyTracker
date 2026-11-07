@@ -29,7 +29,7 @@ const LOCKED = [
 // Step tracks that also move with the arrow keys.
 const KEYBOARD_LOCKED = '.rel-track, .dose-track';
 // Fields that only change how something is shown, not the team; and the login screen's own.
-const FREE_FIELDS = '.case-brightness-panel input, .login-entry, .transmission-answer, .messages-compose textarea, .manager-message-form input, .manager-message-form select, .manager-message-form textarea, .playwall-filter';
+const FREE_FIELDS = '.case-brightness-panel input, .login-entry, .transmission-answer, .messages-compose textarea, .manager-message-form input, .manager-message-form select, .manager-message-form textarea, .playwall-filter, .custom-test-form :is(input, textarea), .custom-test-answer';
 const TEXT_INPUTS = new Set(['text', 'number', 'search', 'email', 'url', 'tel', 'password']);
 // Keys that only move focus or select, which a frozen field still takes.
 const HARMLESS_KEYS = new Set(['Tab', 'Shift', 'Control', 'Alt', 'Meta', 'Escape']);

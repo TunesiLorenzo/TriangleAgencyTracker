@@ -26,7 +26,7 @@
 // of the channel side. A Manager message tagged ta-egg-<id> is an easter egg (easterEggs.js),
 // played on the agent's screen instead of being typed out.
 
-import { access, getIdentity, publish, who } from './access.js';
+import { access, getIdentity, publish, spectating, who } from './access.js';
 import { getConfig, getSnapshot } from './config.js';
 import { EGGS, eggById, normalizeCustomTest, playCustomTest, playEgg } from './easterEggs.js';
 import { playButton } from './soundEffects.js';
@@ -46,6 +46,11 @@ const SIDES = ['agent', 'npc', 'a', 'b'];
 const MESSAGE_CLASSES = ['manager', 'agent', 'npc', 'anomaly'];
 const EGG_TAG = 'ta-egg-';
 const CUSTOM_TEST_TAG = 'ta-custom-test';
+// The Manager's custom tests: at least this many choices (or an open answer), and no more than
+// fits in one ntfy message (4096 bytes), with room to spare.
+const MIN_TEST_CHOICES = 2;
+const MAX_TEST_BYTES = 3800;
+const TEST_CHOICE_COLOURS = ['#64d2ff', '#ffd60a', '#ff9f0a', '#30d158', '#bf5af2', '#ff453a', '#5e5ce6', '#ff375f'];
 const EVENT_RESULT_TAG = 'ta-event-result';
 const EVENT_RESULT_DELETE_TAG = 'ta-event-result-delete';
 const LEGACY_EGG_RESULT_TAG = 'ta-egg-result';
@@ -65,7 +70,11 @@ let source = null;               // the live EventSource on every channel
 let started = false;
 
 /* ---------- storage ---------- */
+// Spectating (/spectate), this browser's own history and seen lists are left alone: the
+// page starts from what the player's devices share (the archive and ntfy) and keeps
+// everything in memory, so a reload shows the next login again.
 function storage(action) {
+  if (spectating()) return null;
   try { return action(localStorage); } catch { return null; }
 }
 function readList(key) {
@@ -274,6 +283,7 @@ function server() {
 
 /** Post on a channel; resolves to the posted message ({ id, time }), or null. */
 function post(topic, body) {
+  if (spectating()) return Promise.resolve(null);
   return fetch(`${server()}/`, { method: 'POST', keepalive: true, body: JSON.stringify({ topic, ...body }) })
     .then(response => (response.ok ? response.json().catch(() => ({})) : null))
     .catch(() => null);
@@ -471,7 +481,7 @@ function markSeen(conv, id) {
   mine.add(id);
   writeList(`ta-seen-${conv.channel}|${conv.side}`, [...mine].slice(-SEEN_LIMIT));
   receiptSets(conv.channel)[conv.side].add(id);
-  if (isTopic(conv.channel)) {
+  if (isTopic(conv.channel) && !spectating()) {
     const key = `${conv.channel}|${conv.side}`;
     const pending = pendingReceiptSet(key);
     pending.add(id);
@@ -540,7 +550,7 @@ function flushEventResults() {
 
 function queueEventResult(conv, sourceId, value) {
   const result = normalizeEventResult({ ...value, sourceId });
-  if (!result || !isTopic(conv.channel)) return;
+  if (!result || !isTopic(conv.channel) || spectating()) return;
   const pending = pendingEventResults();
   const key = `${conv.channel}|${result.sourceId}`;
   const item = { channel: conv.channel, side: conv.side, result };
@@ -751,7 +761,8 @@ function present({ conv, message }) {
   part('answer').readOnly = false;
   part('state').textContent = '';
   // Nowhere for an answer to the Manager to go without the Manager's channel.
-  part('answer-button').hidden = !isTopic(conv.channel) || conversationClosed(conv);
+  part('answer-button').hidden = !isTopic(conv.channel) || conversationClosed(conv) || spectating();
+  part('close').textContent = spectating() ? 'Close · not acknowledged' : 'Acknowledge';
   part('answer-button').textContent = `Reply as ${myName(conv)}`;
   part('send').hidden = true;
   part('send').disabled = false;
@@ -938,7 +949,12 @@ function controlledPersona(conv) {
 function personaGroups() {
   const groups = [];
   const byKey = new Map();
-  conversations.filter(conv => history(conv.channel).length > 0).forEach(conv => {
+  // An account on no agent (a test account) has no map node to start a chat from:
+  // its line to the Manager is listed from the start.
+  const identity = getIdentity();
+  const listedEmpty = conv => conv.kind === 'manager' && conv.side === 'agent' && isTopic(conv.channel)
+    && !identity?.manager && !identity?.charId;
+  conversations.filter(conv => history(conv.channel).length > 0 || listedEmpty(conv)).forEach(conv => {
     const persona = controlledPersona(conv);
     let group = byKey.get(persona.key);
     if (!group) {
@@ -948,7 +964,6 @@ function personaGroups() {
     }
     group.conversations.push(conv);
   });
-  const identity = getIdentity();
   const preferred = identity?.manager ? 'manager' : identity?.charId ? `agent:${identity.charId}` : '';
   const at = groups.findIndex(group => group.key === preferred);
   if (at > 0) groups.unshift(...groups.splice(at, 1));
@@ -1240,7 +1255,7 @@ function renderThread() {
   compose.readOnly = conversationClosed(conv);
   panel.querySelector('.messages-send').disabled = conversationClosed(conv);
   // The Manager is reached through the Manager's channel, if there is one.
-  panel.querySelector('.messages-compose').hidden = !isTopic(conv.channel);
+  panel.querySelector('.messages-compose').hidden = !isTopic(conv.channel) || spectating();
   if (conversationClosed(conv)) {
     const state = panel.querySelector('.messages-state');
     state.className = 'messages-state is-closed';
@@ -1426,37 +1441,92 @@ function openCustomTestDesigner(card, conv) {
     <label>Title<input name="title" maxlength="160" required autofocus placeholder="e.g. Field protocol check"></label>
     <label>Box colour<input name="colour" type="color" value="#64d2ff"></label>
     <label>Description<textarea name="description" rows="4" maxlength="1000" required placeholder="What should the agent consider?"></textarea></label>
+    <fieldset class="custom-test-mode">
+      <legend>Answer</legend>
+      <label><input type="radio" name="mode" value="choice" checked> Choices</label>
+      <label><input type="radio" name="mode" value="open"> Open answer <small>· the agent writes their own</small></label>
+    </fieldset>
     <div class="custom-test-choice-fields">
-      <strong>Choices <small>(up to three)</small></strong>
-      <div><input name="choice-1" maxlength="80" required placeholder="Choice 1"><input name="choice-colour-1" type="color" value="#64d2ff" aria-label="Choice 1 colour"></div>
-      <div><input name="choice-2" maxlength="80" placeholder="Choice 2"><input name="choice-colour-2" type="color" value="#ffd60a" aria-label="Choice 2 colour"></div>
-      <div><input name="choice-3" maxlength="80" placeholder="Choice 3"><input name="choice-colour-3" type="color" value="#ff9f0a" aria-label="Choice 3 colour"></div>
+      <strong>Choices <small>(two or more)</small></strong>
+      <div class="custom-test-choice-list"></div>
+      <button type="button" class="custom-test-add">+ Add choice</button>
     </div>
     <p class="manager-message-state" aria-live="polite"></p>`;
   const state = form.querySelector('.manager-message-state');
+  const choiceFields = form.querySelector('.custom-test-choice-fields');
+  const list = form.querySelector('.custom-test-choice-list');
+  const mode = () => form.elements.mode.value;
+  const rows = () => [...list.children];
+
+  /** Number the rows, and keep at least MIN_TEST_CHOICES of them. */
+  const renumber = () => rows().forEach((row, index) => {
+    const [label, colour, remove] = row.children;
+    label.placeholder = `Choice ${index + 1}`;
+    colour.setAttribute('aria-label', `Choice ${index + 1} colour`);
+    remove.setAttribute('aria-label', `Remove choice ${index + 1}`);
+    remove.disabled = rows().length <= MIN_TEST_CHOICES;
+  });
+  const addChoice = () => {
+    const row = document.createElement('div');
+    const label = document.createElement('input');
+    label.maxLength = 80;
+    const colour = document.createElement('input');
+    colour.type = 'color';
+    colour.value = TEST_CHOICE_COLOURS[rows().length % TEST_CHOICE_COLOURS.length];
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'custom-test-remove';
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      if (rows().length <= MIN_TEST_CHOICES) return;
+      row.remove();
+      renumber();
+    });
+    row.append(label, colour, remove);
+    list.append(row);
+    renumber();
+    return label;
+  };
+  for (let i = 0; i < MIN_TEST_CHOICES; i++) addChoice();
+  form.querySelector('.custom-test-add').addEventListener('click', () => addChoice().focus());
+  const showMode = () => { choiceFields.hidden = mode() === 'open'; };
+  form.querySelectorAll('input[name="mode"]').forEach(radio => radio.addEventListener('change', showMode));
+
   let close = null;
+  const fail = (field, message) => {
+    if (field) {
+      field.classList.add('invalid');
+      field.focus();
+    }
+    state.className = 'manager-message-state is-error';
+    state.textContent = message;
+    return false;
+  };
   const transmit = async () => {
     const title = form.elements.title.value.trim();
     const description = form.elements.description.value.trim();
-    const choices = [1, 2, 3].map(index => ({
-      label: form.elements[`choice-${index}`].value.trim(),
-      colour: form.elements[`choice-colour-${index}`].value
-    })).filter(choice => choice.label);
+    const open = mode() === 'open';
+    const choices = open ? [] : rows()
+      .map(row => ({ label: row.children[0].value.trim(), colour: row.children[1].value }))
+      .filter(choice => choice.label);
     form.querySelectorAll('.invalid').forEach(field => field.classList.remove('invalid'));
-    if (!title || !description || !choices.length) {
-      const field = !title ? form.elements.title : !description ? form.elements.description : form.elements['choice-1'];
-      field.classList.add('invalid');
-      field.focus();
-      state.textContent = 'Add a title, description and at least one choice.';
-      return false;
+    if (!title) return fail(form.elements.title, 'Add a title.');
+    if (!description) return fail(form.elements.description, 'Add a description.');
+    if (!open && choices.length < MIN_TEST_CHOICES) {
+      const empty = rows().map(row => row.children[0]).find(field => !field.value.trim());
+      return fail(empty, `Add at least ${MIN_TEST_CHOICES} choices, or make it an open answer.`);
     }
     const test = normalizeCustomTest({
       id: `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      title, description, colour: form.elements.colour.value, choices
+      title, description, colour: form.elements.colour.value, choices, ...(open ? { mode: 'open' } : {})
     });
-    if (!test) {
-      state.textContent = 'One of the test colours or choices is invalid.';
-      return false;
+    if (!test || (!open && test.choices.length !== choices.length)) {
+      return fail(null, 'One of the test colours or choices is invalid.');
+    }
+    // The test travels as one ntfy message: past its size it would not arrive as one.
+    const size = new TextEncoder().encode(JSON.stringify({ customTest: test })).length;
+    if (size > MAX_TEST_BYTES) {
+      return fail(null, `Too long to send as one transmission (${size} of ${MAX_TEST_BYTES} bytes): shorten the description or the choices.`);
     }
     const button = form.closest('.modal-panel')?.querySelector('.modal-btn-primary');
     if (button) button.disabled = true;
@@ -1465,10 +1535,11 @@ function openCustomTestDesigner(card, conv) {
     state.textContent = 'Transmitting…';
     if (await send(conv, test.title, { from: 'Triangle Agency', messageClass: 'anomaly', customTest: test })) {
       close?.();
-      toast(`${test.title} sent to ${agentName}. Their choice will appear in the Event log.`, { kind: 'success' });
+      toast(`${test.title} sent to ${agentName}. Their ${open ? 'answer' : 'choice'} will appear in the Event log.`, { kind: 'success' });
       return true;
     }
     [...form.elements].forEach(field => { field.disabled = false; });
+    renumber();
     if (button) button.disabled = false;
     state.classList.add('is-error');
     state.textContent = 'Transmission failed · try again';
@@ -1479,9 +1550,9 @@ function openCustomTestDesigner(card, conv) {
     content: form,
     className: 'egg-picker-modal tx-anomaly',
     closeLabel: 'Cancel',
+    // openModal also runs this if the form is ever submitted: one handler, so one send.
     actions: [{ label: 'Send test', variant: 'primary', submit: true, onClick: () => { transmit(); return false; } }]
   });
-  form.addEventListener('submit', event => { event.preventDefault(); transmit(); });
 }
 
 /** The easter eggs the Manager can fire at an agent, each with how it went so far. */
@@ -1526,7 +1597,7 @@ function openEggPicker(card, conv) {
   const title = document.createElement('strong');
   title.textContent = 'Custom test';
   const summary = document.createElement('p');
-  summary.textContent = 'Create a title, description, box colour and up to three coloured choices for this agent only.';
+  summary.textContent = 'Create a title, description and box colour for this agent only, with two or more coloured choices or an open answer.';
   const create = document.createElement('button');
   create.type = 'button';
   create.className = 'modal-btn modal-btn-primary';
@@ -1756,7 +1827,7 @@ export async function startMessages() {
   started = true;
   const manager = identity.manager ? null : {
     channel: isTopic(identity.inbox) ? identity.inbox : `manager:${identity.username}`,   // ':' is never a channel
-    kind: 'manager', side: 'agent', agentId: identity.charId, agentName: identity.name, other: 'The Manager', manager: true
+    kind: 'manager', side: 'agent', agentId: identity.charId, agentName: identity.name || identity.username, other: 'The Manager', manager: true
   };
   conversations = [...(manager ? [manager] : []), ...identity.conversations.filter(conv => isTopic(conv.channel))];
   for (const conv of conversations) {
