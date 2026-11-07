@@ -943,7 +943,12 @@ function controlledPersona(conv) {
 function personaGroups() {
   const groups = [];
   const byKey = new Map();
-  conversations.filter(conv => history(conv.channel).length > 0).forEach(conv => {
+  // An account on no agent (a test account) has no map node to start a chat from:
+  // its line to the Manager is listed from the start.
+  const identity = getIdentity();
+  const listedEmpty = conv => conv.kind === 'manager' && conv.side === 'agent' && isTopic(conv.channel)
+    && !identity?.manager && !identity?.charId;
+  conversations.filter(conv => history(conv.channel).length > 0 || listedEmpty(conv)).forEach(conv => {
     const persona = controlledPersona(conv);
     let group = byKey.get(persona.key);
     if (!group) {
@@ -953,7 +958,6 @@ function personaGroups() {
     }
     group.conversations.push(conv);
   });
-  const identity = getIdentity();
   const preferred = identity?.manager ? 'manager' : identity?.charId ? `agent:${identity.charId}` : '';
   const at = groups.findIndex(group => group.key === preferred);
   if (at > 0) groups.unshift(...groups.splice(at, 1));
@@ -1817,7 +1821,7 @@ export async function startMessages() {
   started = true;
   const manager = identity.manager ? null : {
     channel: isTopic(identity.inbox) ? identity.inbox : `manager:${identity.username}`,   // ':' is never a channel
-    kind: 'manager', side: 'agent', agentId: identity.charId, agentName: identity.name, other: 'The Manager', manager: true
+    kind: 'manager', side: 'agent', agentId: identity.charId, agentName: identity.name || identity.username, other: 'The Manager', manager: true
   };
   conversations = [...(manager ? [manager] : []), ...identity.conversations.filter(conv => isTopic(conv.channel))];
   for (const conv of conversations) {

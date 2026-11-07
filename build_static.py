@@ -213,24 +213,28 @@ def account_conversations(conversations, char, player, linked):
 def manager_conversations(conversations, accounts, chars):
     """The Manager's direct lines to the agents, every NPC/anomaly side assigned to the
     Manager, and an agent side whose player has no usable account. These use the same
-    channels as the agent accounts, so both sides see one shared history."""
+    channels as the agent accounts, so both sides see one shared history. An account with
+    no agent (a test account) gets its direct line too, under its username: being on no
+    agent, it is in nobody else's conversations and on no card in the tracker."""
     mine = []
     for account in accounts:
         if not isinstance(account, dict):
             continue
-        if not str(account.get("username") or "").strip() or not account.get("password"):
+        username = str(account.get("username") or "").strip()
+        if not username or not account.get("password"):
             continue
-        char = chars.get(str(account.get("charId") or ""))
+        char_id = str(account.get("charId") or "")
+        char = chars.get(char_id)
         channel = str(account.get("inbox") or "").strip()
-        if not char or not re.fullmatch(r"[-_A-Za-z0-9]{1,64}", channel):
+        if (char_id and not char) or not re.fullmatch(r"[-_A-Za-z0-9]{1,64}", channel):
             continue
         mine.append({
             "channel": channel,
             "kind": "manager",
             "side": "npc",
-            "username": str(account.get("username") or "").strip(),
-            "agentId": str(char.get("id") or ""),
-            "agentName": str(char.get("name") or "").strip(),
+            "username": username,
+            "agentId": str((char or {}).get("id") or ""),
+            "agentName": str((char or {}).get("name") or "").strip() or username,
             "other": MANAGER,
             "manager": True,
         })
